@@ -24,6 +24,7 @@ sys.path.insert(0, str(ROOT))
 from stutterclear.audio import save_wav  # noqa: E402
 from stutterclear.config import HOP, PRESETS, SAMPLE_RATE as SR, preset  # noqa: E402
 from stutterclear.pipeline import Pipeline  # noqa: E402
+from run_file import add_detector_args, make_detector  # noqa: E402
 
 
 def wasapi():
@@ -59,6 +60,7 @@ def main():
     ap.add_argument("--out-device", help="index or name; omit to record only (no playback)")
     ap.add_argument("--seconds", type=float, help="stop automatically after this long")
     ap.add_argument("--list-devices", action="store_true")
+    add_detector_args(ap)
     args = ap.parse_args()
     if args.list_devices:
         return list_devices()
@@ -68,7 +70,7 @@ def main():
     in_dev = in_dev if in_dev is not None else host["default_input_device"]
     args.out_device = find_device(args.out_device, "output")
     settings = sd.WasapiSettings(auto_convert=True)
-    pipe = Pipeline(preset(args.mode))
+    pipe = Pipeline(preset(args.mode), detector=make_detector(args))
     raw, out, detect_ms = [], [], []
     q: queue.Queue = queue.Queue()
     running = True

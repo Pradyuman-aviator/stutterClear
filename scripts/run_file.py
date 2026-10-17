@@ -14,9 +14,29 @@ from stutterclear.audio import load_wav, save_wav  # noqa: E402
 from stutterclear.config import HOP, PRESETS, SAMPLE_RATE as SR, preset  # noqa: E402
 from stutterclear.pipeline import Pipeline  # noqa: E402
 
+# Student head per mode: detection lookahead must fit inside the mode's delay.
+STUDENT_LOOKAHEAD_MS = {"verbatim": 0, "trim": 200, "clean": 500}
 
-def run(x: np.ndarray, mode: str, **overrides):
-    pipe = Pipeline(preset(mode, **overrides))
+
+def make_detector(args):
+    if args.detector != "student":
+        return None
+    from stutterclear.student_runtime import StudentDetector
+    report = Path(args.student).with_name("student_test_report.json")
+    lookahead = args.lookahead_ms if args.lookahead_ms is not None else STUDENT_LOOKAHEAD_MS[args.mode]
+    det = StudentDetector(args.student, lookahead, report)
+    print(f"student detector: {det.lookahead_ms} ms lookahead, thresholds {np.round(det.thresholds, 2).tolist()}")
+    return det
+
+
+def add_detector_args(ap):
+    ap.add_argument("--detector", choices=["heuristic", "student"], default="heuristic")
+    ap.add_argument("--student", default="runs/student/student.pt", help="trained student checkpoint")
+    ap.add_argument("--lookahead-ms", type=float, help="student head (default: by mode)")
+
+
+def run(x: np.ndarray, mode: str, detector=None, **overrides):
+    pipe = Pipeline(preset(mode, **overrides), detector=detector)
     out = []
     tail = np.zeros(int(SR * (pipe.cfg.target_delay_ms / 1000 + 1.0)), np.float32)
     for src in (x, tail):
@@ -34,11 +54,12 @@ def main():
     ap.add_argument("--mode", choices=list(PRESETS), default="clean")
     ap.add_argument("--labels", help="labels json (defaults to <wav>.labels.json if present)")
     ap.add_argument("--out", help="output wav (defaults to <wav>.<mode>.wav)")
+    add_detector_args(ap)
     args = ap.parse_args()
 
     wav = Path(args.wav)
     x = load_wav(wav)
-    pipe, y = run(x, args.mode)
+    pipe, y = run(x, args.mode, make_detector(args))
 
     labels_path = Path(args.labels) if args.labels else wav.with_suffix(".labels.json")
     labels = json.loads(labels_path.read_text())["remove"] if labels_path.exists() else None

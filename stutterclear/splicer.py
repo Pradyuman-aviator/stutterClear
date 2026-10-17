@@ -27,6 +27,7 @@ class SpliceStats:
     removed: int = 0  # input samples dropped by cuts
     held: int = 0  # silent samples inserted while waiting for lookahead
     skipped: int = 0  # pause samples dropped to catch up
+    dropped_cuts: int = 0  # open cuts abandoned by the max_open_cut_ms safety net
     lag_samples: list = field(default_factory=list)  # lag after each read() call
     removed_spans: list = field(default_factory=list)  # (start, end, kind) actually dropped
 
@@ -38,8 +39,9 @@ class Splicer:
         self.cfg = cfg
         self.target = ms(cfg.target_delay_ms)
         self.min_delay = ms(cfg.min_delay_ms)
-        self.max_delay = max(ms(cfg.max_delay_ms), self.target)
+        self.catchup = self.target + ms(cfg.catchup_slack_ms)
         self.xfade = max(1, ms(cfg.xfade_ms))
+        self.max_open = ms(cfg.max_open_cut_ms)
         self.quiet_win = ms(20)
         self.cap = int(cfg.buffer_s * sr)
         self.buf = np.zeros(self.cap, np.float32)
@@ -108,6 +110,11 @@ class Splicer:
         projected = self.write_pos - pos - (n - i)
 
         cut = self._cut_at(pos)
+        if cut is not None and cut.end is None and self.write_pos - cut.start > self.max_open:
+            self.cuts = {k: c for k, c in self.cuts.items() if c is not cut}
+            self.stats.dropped_cuts += 1
+            self.fade_in_start = pos
+            return 0
         if cut is not None:
             if cut.end is None or cut.end > self.write_pos:
                 self.stats.held += n - i  # stutter still going: hold silence
@@ -118,7 +125,7 @@ class Splicer:
             self._drop_finished_cuts()
             return 0
 
-        if projected > self.max_delay and self._quiet(pos):
+        if projected > self.catchup and self._quiet(pos):
             k = min(projected - self.target, self.quiet_win)
             self.read_pos += k
             self.fade_in_start = self.read_pos

@@ -85,6 +85,18 @@ def test_lag_rebuilds_in_next_pause():
     assert sp.lag_ms() == CFG.target_delay_ms
 
 
+def test_stuck_open_cut_is_dropped_and_audio_played():
+    a, b = tone(300, 0.5), tone(1000, 4.0)
+    x = np.concatenate([silence(0.5), a, b, silence(3.0)])
+    b0 = int(1.0 * SR)
+    sp = Splicer(SR, SpliceConfig(target_delay_ms=300, min_delay_ms=100, max_open_cut_ms=1000))
+    sp.set_cut(1, b0, None)  # a detector that never closes its cut
+    y = stream(sp, x)
+    assert sp.stats.dropped_cuts == 1 and sp.stats.removed == 0
+    assert band_energy(y, 1000) > 0.5 * band_energy(x, 1000)  # held speech came back
+    assert sp.lag_ms() <= 300 + 60  # the extra delay was shed in the closing pause
+
+
 def test_cancel_while_holding_plays_the_audio():
     a, b, c = tone(300, 0.5), tone(1000, 0.4), tone(500, 0.5)
     x = np.concatenate([silence(0.5), a, b, c, silence(1.0)])
