@@ -98,9 +98,9 @@ WavLM, PyTorch, CrisperWhisper, FastAPI, React, Vite, Tailwind, three.js, Tavily
 | Criterion | Where it shows |
 |---|---|
 | Technological implementation | Nemotron in four roles in the core flows; Token Factory API; hosted on Nebius AI Cloud GPU; measured live pipeline with a GPU model on sliding windows; NVIDIA streaming ASR |
-| Design | One coherent app: live, voice notes, real-recording demo, captions, A/B playback, insights; privacy defaults (nothing stored) |
+| Design | One coherent app: live, voice notes, real-recording demo, captions, A/B playback, insights; privacy defaults (nothing stored; a live session reaches only its own tab); works on phones; plain-language errors (mic blocked, busy, someone else's turn) |
 | Potential impact | 70M people; calls and voice messages; keeps the speaker's own voice; honest numbers on unseen speakers |
-| Quality of the idea | Nemotron as a meaning guard for speech editing (an LLM deciding which repeats were meant); word rescue for blocks |
+| Quality of the idea | Nemotron as a meaning guard for speech editing (an LLM deciding which repeats were meant, try it on any sentence); word rescue for blocks |
 
 ## Demo video (under 3 minutes)
 
