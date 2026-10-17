@@ -20,6 +20,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from eval_teacher import load_teacher  # noqa: E402
 from stutterclear.audio import load_wav, save_wav  # noqa: E402
+from stutterclear.segments import cut_segments  # noqa: E402
 from stutterclear.synth import CLASSES, FRAME, SR  # noqa: E402
 
 COLORS = ("tab:red", "tab:orange", "tab:green", "tab:purple", "tab:blue")
@@ -73,12 +74,18 @@ def main():
     ap.add_argument("--apply", action="store_true",
                     help="also write <wav>.teacher_clean.wav: teacher segments cut out by the splicer")
     ap.add_argument("--cut-interjections", action="store_true")
+    ap.add_argument("--reuse", action="store_true", help="reuse saved <wav>.teacher.npy instead of running the model")
     args = ap.parse_args()
 
-    dev = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model, ckpt = load_teacher(args.ckpt, dev)
     x = load_wav(args.wav)
-    probs = frame_probs(model, x, dev)
+    cache = Path(args.wav).with_suffix(".teacher.npy")
+    if args.reuse and cache.exists():
+        probs, ckpt = np.load(cache), json.loads(Path(args.wav).with_suffix(".teacher.json").read_text())
+        ckpt = {"step": ckpt.get("checkpoint_step")}
+    else:
+        dev = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        model, ckpt = load_teacher(args.ckpt, dev)
+        probs = frame_probs(model, x, dev)
     th = json.loads(Path(args.thresholds).read_text()) if args.thresholds else [0.5] * len(CLASSES)
     segs = segments(probs, th)
     np.save(Path(args.wav).with_suffix(".teacher.npy"), probs)
@@ -101,8 +108,8 @@ def main():
     for s in segs:
         print(f"{s['start']:7.2f}-{s['end']:6.2f}s  {s['kind']:<13} peak {s['peak']}")
     if args.apply:
-        kinds = {"sound_rep", "word_rep", "prolongation"} | ({"interjection"} if args.cut_interjections else set())
-        cuts = [s for s in segs if s["kind"] in kinds]
+        kinds = ("sound_rep", "word_rep", "prolongation") + (("interjection",) if args.cut_interjections else ())
+        cuts = cut_segments(probs, th, x, kinds)
         save_wav(wav.with_suffix(".teacher_live.wav"), apply_cuts(x, cuts))
         y = splice_offline(x, cuts)
         save_wav(wav.with_suffix(".teacher_edited.wav"), y)
