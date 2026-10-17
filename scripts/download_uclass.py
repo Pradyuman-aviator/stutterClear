@@ -47,13 +47,19 @@ def main():
             return 0
         dest.parent.mkdir(parents=True, exist_ok=True)
         tmp = dest.with_suffix(".part")
-        urllib.request.urlretrieve(url, tmp)
+        try:
+            urllib.request.urlretrieve(url, tmp)
+        except OSError as e:  # the index lists a few files the server no longer has (404)
+            print(f"skipped {task}/{name}: {e}", flush=True)
+            tmp.unlink(missing_ok=True)
+            return 0
         tmp.replace(dest)
         return dest.stat().st_size
 
     with ThreadPoolExecutor(8) as pool:
         total = sum(pool.map(fetch, items))
-    print(f"{len(items)} recordings in {out} ({total / 1e9:.2f} GB downloaded now)")
+    have = sum(1 for _ in out.rglob("*.wav"))
+    print(f"{have} of {len(items)} recordings in {out} ({total / 1e9:.2f} GB downloaded now)")
 
 
 if __name__ == "__main__":
