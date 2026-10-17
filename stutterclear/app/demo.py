@@ -13,6 +13,7 @@ The audio is read from the local UCLASS download (data/external) and never commi
 free for research and teaching with credit (CREDIT below), not for redistribution as a product.
 """
 import json
+import time
 from functools import lru_cache
 from pathlib import Path
 
@@ -96,9 +97,32 @@ def _captions(x: np.ndarray, y: np.ndarray) -> dict | None:
     return {"original": captions.caption_audio(x), "clean": captions.caption_audio(y)}
 
 
-@lru_cache(maxsize=16)
+_samples: dict = {}  # (sample, engine) -> (time, guard failed, render)
+GUARD_RETRY_S = 300.0
+
+
 def render(sid: str, engine: str) -> dict:
-    """Timeline for the page plus the original and cleaned audio of one sample or voice note."""
+    """Timeline for the page plus the original and cleaned audio of one sample or voice note.
+
+    Demo samples are rendered once and kept, so visitors' voice notes never push them out of the
+    cache (a re-render waits on Nemotron). If Nemotron did not answer, the guard is asked again
+    after GUARD_RETRY_S. Voice notes share a small cache of their own."""
+    if sid.startswith("note-"):
+        return _render_note(sid, engine)
+    hit = _samples.get((sid, engine))
+    if hit is None or (hit[1] and time.time() - hit[0] > GUARD_RETRY_S):
+        r = _render(sid, engine)
+        _samples[(sid, engine)] = (time.time(), bool((r["timeline"]["guard"] or {}).get("error")), r)
+        return r
+    return hit[2]
+
+
+@lru_cache(maxsize=12)
+def _render_note(sid: str, engine: str) -> dict:
+    return _render(sid, engine)
+
+
+def _render(sid: str, engine: str) -> dict:
     if engine in ("natural", "thorough"):
         x, probs, toks = _source(sid)
         stutter = probs[:, [0, 1, 2, 4]]  # sound_rep, word_rep, prolongation, interjection
