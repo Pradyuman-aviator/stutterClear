@@ -74,6 +74,10 @@ real pipeline: delay buffer, online detector, splicer):
 | causal student v1 | 19.8% / 8.37% | 19.5% / 8.33% |
 | teacher on GPU (sliding windows) | 31.7% / 3.18% | 65.2% / 5.64% |
 
+The live machinery costs almost nothing: cutting the same 200 ms-lookahead probabilities offline
+gives 34.6% / 3.70% in Gentle, and the online cut logic alone 32.0% / 3.14%. What holds Gentle
+back is how little the model hears ahead; Strong waits 500 ms and fillers are easier to hear.
+
 **How much lookahead the big model needs** (`scripts/teacher_lookahead.py`: probabilities from
 sliding windows, cut with the offline recipe, fillers included):
 
