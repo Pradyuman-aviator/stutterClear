@@ -47,3 +47,49 @@ def test_last_json_takes_the_outermost_object():
     assert last_json('ok {"keep": [{"id": 5}, {"id": 11}]} done') == {"keep": [{"id": 5}, {"id": 11}]}
     assert last_json('first ["a"] then ["b", "c"]', "[") == ["b", "c"]
     assert last_json("no json here") is None
+
+
+def test_chat_turns_reasoning_off_and_falls_back(monkeypatch):
+    import urllib.error
+    from stutterclear import nemotron
+    calls = []
+
+    class Reply(io.BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    def fake_urlopen(req, timeout):
+        body = json.loads(req.data)
+        calls.append(body)
+        if "chat_template_kwargs" in body:  # a server that does not take the switch
+            raise urllib.error.HTTPError(req.full_url, 400, "bad request", {}, None)
+        return Reply(json.dumps({"choices": [{"message": {"content": "<think>hmm</think>answer"}}]}).encode())
+
+    monkeypatch.setenv("NEBIUS_API_KEY", "k")
+    monkeypatch.setattr(nemotron.urllib.request, "urlopen", fake_urlopen)
+    assert nemotron.chat([{"role": "user", "content": "hi"}], max_tokens=100) == "answer"
+    assert calls[0]["chat_template_kwargs"] == {"enable_thinking": False}
+    assert "chat_template_kwargs" not in calls[1] and calls[1]["max_tokens"] == 2148
+
+
+def test_chat_reports_a_reply_that_is_only_reasoning(monkeypatch):
+    from stutterclear import nemotron
+
+    class Reply(io.BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    monkeypatch.setenv("NEBIUS_API_KEY", "k")
+    monkeypatch.setattr(nemotron.urllib.request, "urlopen", lambda req, timeout: Reply(json.dumps(
+        {"choices": [{"message": {"content": None, "reasoning_content": "thinking..."}}]}).encode()))
+    try:
+        nemotron.chat([{"role": "user", "content": "hi"}])
+        raise AssertionError("expected NemotronError")
+    except nemotron.NemotronError as e:
+        assert "reasoning" in str(e)

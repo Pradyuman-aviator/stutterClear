@@ -99,17 +99,10 @@ def compare(ears: Ears, name: str, original: np.ndarray, versions: dict) -> list
 
 
 def demo_versions(sid: str) -> tuple:
-    """Original, plus the cleaned audio as the app produced it before and after the smooth joins."""
+    """Original, plus the cleaned audio of every engine the app offers for that sample."""
     from stutterclear.app import demo
-    from stutterclear.segments import BALANCED_CUTS, JoinConfig, cut_segments, render_edited
-    x = demo._excerpt(sid)
-    s = demo.SAMPLES[sid]
-    probs = np.load(demo._wav(s).with_suffix(".teacher.npy"))
-    f0 = int(round(s["start"] * SR / demo.TEACHER_FRAME))
-    probs = probs[f0: f0 + len(x) // demo.TEACHER_FRAME]
-    old = render_edited(x, cut_segments(probs, BALANCED_CUTS, x), JoinConfig(xfade_ms=10.0))
-    return x, {"thorough, old joins": old, "thorough, smooth": demo.render(sid, "thorough")["clean"],
-               "natural": demo.render(sid, "natural")["clean"], "live": demo.render(sid, "live")["clean"]}
+    s = next(x for x in demo.available() if x["id"] == sid)
+    return demo._excerpt(sid), {e: demo.render(sid, e)["clean"] for e in s["engines"]}
 
 
 def main():

@@ -34,7 +34,7 @@ def review(toks: list, candidates: set) -> dict:
     """Nemotron's verdicts: {token index: reason} for the candidates to keep."""
     reply = nemotron.chat([{"role": "system", "content": SYSTEM},
                            {"role": "user", "content": marked_transcript(toks, candidates)}],
-                          max_tokens=800, timeout=40.0)
+                          max_tokens=4000, timeout=90.0, think=True)  # a judgement call: let it reason
     data = nemotron.last_json(reply, "{")
     keep = {}
     for item in (data or {}).get("keep", []) if isinstance(data, dict) else []:
