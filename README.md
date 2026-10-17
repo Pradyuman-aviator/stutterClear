@@ -140,7 +140,8 @@ Model checkpoints are not in the repository; the Kaggle jobs in `kaggle/` train 
 
 - Audio is processed on your computer. Nothing is recorded unless you switch saving on.
 - The last session and voice notes are kept in memory for playback (voice notes for at most an
-  hour) and are never written to disk. The hosted demo never stores recordings.
+  hour) and are never written to disk. The hosted demo never stores recordings, and a live
+  session's captions, waveforms and audio go only to the browser tab that started it.
 - Nemotron features send text only (recent captions, the context card, counts), never audio, and
   only when you use them.
 - The context card stays in your browser.
