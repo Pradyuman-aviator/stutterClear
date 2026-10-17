@@ -45,9 +45,9 @@ def review(toks: list, candidates: set) -> dict:
     return keep
 
 
-def guarded_cuts(toks: list, probs=None, cut_fillers: bool = False) -> tuple:
+def guarded_cuts(toks: list, probs=None, cut_fillers: bool = False, cut_phrases: bool = False) -> tuple:
     """Word-aligned cuts, checked by Nemotron. Returns (cuts, report); report is None without a key."""
-    cuts = word_cuts(toks, probs, cut_fillers=cut_fillers)
+    cuts = word_cuts(toks, probs, cut_fillers=cut_fillers, cut_phrases=cut_phrases)
     candidates = {i for c in cuts for i in c["tokens"]}
     if not candidates or not nemotron.available():
         return cuts, None
@@ -57,5 +57,5 @@ def guarded_cuts(toks: list, probs=None, cut_fillers: bool = False) -> tuple:
         return cuts, {"model": nemotron.MODEL, "checked": len(candidates), "kept": [], "error": str(e)}
     kept = [{"word": toks[i]["w"], "context": " ".join(t["w"] for t in toks[max(0, i - 3):i + 4]), "reason": r}
             for i, r in sorted(keep.items())]
-    return (word_cuts(toks, probs, cut_fillers=cut_fillers, keep=frozenset(keep)),
+    return (word_cuts(toks, probs, cut_fillers=cut_fillers, keep=frozenset(keep), cut_phrases=cut_phrases),
             {"model": nemotron.MODEL, "checked": len(candidates), "kept": kept})

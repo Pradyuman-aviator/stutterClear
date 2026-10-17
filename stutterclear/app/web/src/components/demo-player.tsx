@@ -13,10 +13,10 @@ const HEAR = [
   { value: "original" as Hear, label: "Original" },
   { value: "clean" as Hear, label: "Clean voice" },
 ]
-const ENGINES: { value: DemoEngine; label: string }[] = [
-  { value: "natural", label: "Natural" },
-  { value: "thorough", label: "Thorough" },
-  { value: "live", label: "Live" },
+const ENGINES: { value: DemoEngine; label: string; hint: string }[] = [
+  { value: "natural", label: "Natural", hint: "Repeated and broken-off words go, cut only between words; um and uh stay." },
+  { value: "thorough", label: "Thorough", hint: "Natural, plus um, uh and repeated phrases." },
+  { value: "live", label: "Live", hint: "Exactly what a call hears, decided in real time." },
 ]
 
 // Before a sample is chosen: real recordings anyone can try, no mic needed.
@@ -193,6 +193,7 @@ export function DemoBar({
       )}
       {tl && (
         <div className={cn("text-[11px] leading-relaxed text-white/40")}>
+          <span className="text-white/60">{ENGINES.find((e) => e.value === state.engine)?.hint}</span>{" "}
           {tl.cuts.length} stutter{tl.cuts.length === 1 ? "" : "s"} removed, {tl.removed_s.toFixed(1)} s shorter.{" "}
           {credit}
         </div>

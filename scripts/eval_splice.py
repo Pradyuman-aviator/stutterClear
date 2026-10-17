@@ -25,7 +25,7 @@ import torch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from stutterclear.audio import load_wav, save_wav  # noqa: E402
 from stutterclear.segments import CutConfig, JoinConfig, cut_segments, render_edited  # noqa: E402
-from stutterclear.silver import label_tokens, score_cuts  # noqa: E402
+from stutterclear.silver import intended_text, label_tokens, score_cuts  # noqa: E402
 
 SR = 16000
 CUTS = {
@@ -85,7 +85,7 @@ def prepare(root: Path, ckpt: str, student: str = None):
             r = cw.transcribe(x, sr=SR, language="en", word_timestamps=True)
             w.with_suffix(".crisper.json").write_text(json.dumps(
                 [{"w": t.word, "s": float(t.start), "e": float(t.end)} for t in r.words]))
-            w.with_suffix(".intended.txt").write_text(cw.transcribe(x, sr=SR, language="en", mode="intended").text)
+            w.with_suffix(".intended.txt").write_text(intended_text(cw, x))
             print("crisper:", w.name, flush=True)
 
 
@@ -212,7 +212,7 @@ def render(root: Path, cut_name: str, join_name: str, full: bool, probs: str = "
             toks = label_tokens([{"w": t.word, "s": float(t.start), "e": float(t.end)} for t in v.words])
             left = sum(t["label"] != "fluent" for t in toks)
             orig = sum(t["label"] != "fluent" for t in r["toks"])
-            intended = cw.transcribe(y, sr=SR, language="en", mode="intended").text
+            intended = intended_text(cw, y)
             row.update(stutter_tokens_orig=orig, stutter_tokens_left=left,
                        audible_removed_pct=round(100 * (1 - left / max(1, orig)), 1),
                        meaning_wer=round(wer(words(r["wav"].with_suffix(".intended.txt").read_text()), words(intended)), 3))

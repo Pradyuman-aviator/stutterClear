@@ -3,7 +3,8 @@
 Tokens of a verbatim transcript are labelled:
 - filler  ([UM], [UH], ...)                    -> interjection
 - cutoff  (a word ending in "-", e.g. "l-")    -> sound_rep
-- repeat  (every copy of a repeated word or 2-3 word phrase except the last) -> word_rep
+- repeat  (every copy of a repeated word or 2-3 word phrase except the last) -> word_rep;
+            the tokens of one copy share "copy" (the index of its first token)
 - fluent  (everything else, which must survive)
 A stutter token's label runs on through the silence after it, up to the next word, so a cut
 covers the gap too (as the synthetic labels do). Prolongations and blocks are not marked in a
@@ -41,31 +42,51 @@ def label_tokens(words: list) -> list:
             if a == b and all(toks[i]["label"] == "fluent" for i in content[k:k + n]):
                 for i in content[k:k + n]:
                     toks[i]["label"] = "repeat"
+                    toks[i]["copy"] = content[k]
             k += 1
     return toks
 
 
+def intended_text(model, x: np.ndarray) -> str:
+    """CrisperWhisper's intended (clean) transcript. Without word timestamps, its path for clips
+    under 30 s often returns nothing at all, so shorter clips are padded with silence past 30 s."""
+    n = int(30.5 * SR)
+    if len(x) < n:
+        x = np.concatenate([np.asarray(x, np.float32), np.zeros(n - len(x), np.float32)])
+    return model.transcribe(x, sr=SR, language="en", mode="intended").text
+
+
 def word_cuts(toks: list, probs=None, cut_fillers: bool = False, confirm: float = 0.3,
-              frame_s: float = 0.02, keep: frozenset = frozenset()) -> list:
+              frame_s: float = 0.02, keep: frozenset = frozenset(), cut_phrases: bool = False) -> list:
     """Cuts placed on word boundaries from a verbatim transcript, for recordings (not live).
 
     Removes repeated and cut-off words (and fillers if asked), each from its start to the start of
     the next word, so no real word is ever sliced: model frame edges are about 100 ms off, a whole
     syllable, and a word that loses its first or last sound is what a listener hears as a jerk.
     With teacher probabilities, a candidate is cut only if the model also hears a stutter there
-    (so a deliberate "very very" survives). `keep` lists token indices never to cut (the meaning
-    guard's verdicts). Each cut lists the token indices it removes.
+    (so a deliberate "very very" survives). A repeated phrase ("when he was when he was") is one
+    candidate, cut or kept whole, never left half-cut as "when when he was". `cut_phrases` cuts
+    repeated 2-3 word phrases without the acoustic check: like fillers they are ordinary
+    disfluencies, rarely meant, and the model hears them less well than repeated sounds. `keep`
+    lists token indices never to cut (the meaning guard's verdicts; one kept word keeps its whole
+    phrase). Each cut lists the token indices it removes.
     """
     kinds = {"repeat", "cutoff"} | ({"filler"} if cut_fillers else set())
-    cuts = []
+    groups = {}
     for i, t in enumerate(toks):
-        if t["label"] not in kinds or i in keep:
-            continue
-        if probs is not None:
-            a = max(0, int((t["s"] - 0.1) / frame_s))
-            b = min(len(probs), int((t["e"] + 0.1) / frame_s) + 1)
-            if b <= a or float(probs[a:b].max()) < confirm:
-                continue
+        if t["label"] in kinds:
+            groups.setdefault(t.get("copy", i), []).append(i)
+
+    def heard(ids):
+        a = max(0, int((toks[ids[0]]["s"] - 0.1) / frame_s))
+        b = min(len(probs), int((toks[ids[-1]]["e"] + 0.1) / frame_s) + 1)
+        return b > a and float(probs[a:b].max()) >= confirm
+
+    chosen = sorted(i for ids in groups.values() if not keep.intersection(ids)
+                    and (probs is None or (cut_phrases and len(ids) > 1) or heard(ids)) for i in ids)
+    cuts = []
+    for i in chosen:
+        t = toks[i]
         end = t["e"]
         if i + 1 < len(toks) and 0 <= toks[i + 1]["s"] - end <= 0.3:
             end = toks[i + 1]["s"]

@@ -22,7 +22,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from stutterclear.audio import load_wav  # noqa: E402
-from stutterclear.silver import label_tokens  # noqa: E402
+from stutterclear.silver import intended_text, label_tokens  # noqa: E402
 
 SR = 16000
 
@@ -67,7 +67,7 @@ class Ears:
     def listen(self, x: np.ndarray) -> dict:
         r = self.cw.transcribe(x, sr=SR, language="en", word_timestamps=True)
         toks = label_tokens([{"w": t.word, "s": float(t.start), "e": float(t.end)} for t in r.words])
-        intended = self.cw.transcribe(x, sr=SR, language="en", mode="intended").text
+        intended = intended_text(self.cw, x)
         return {"verbatim": " ".join(t["w"] for t in toks), "intended": intended,
                 "stutter_tokens": sum(t["label"] != "fluent" for t in toks),
                 "fluent_words": sum(t["label"] == "fluent" for t in toks),

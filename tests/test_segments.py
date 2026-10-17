@@ -44,3 +44,18 @@ def test_word_cuts_never_slice_real_words():
         assert all(not (t["s"] < c["start"] < t["e"] or t["s"] < c["end"] < t["e"]) for t in toks)
     quiet = np.zeros((200, 4))  # the model hears nothing: a transcript repeat alone is not cut
     assert word_cuts(toks, quiet) == []
+
+
+def test_repeated_phrases_are_cut_whole():
+    from stutterclear.silver import label_tokens, word_cuts
+    said = "when he was ye- when he was younger".split()
+    toks = label_tokens([{"w": w, "s": 0.4 * i, "e": 0.4 * i + 0.3} for i, w in enumerate(said)])
+    probs = np.zeros((200, 4))
+    probs[int(0.5 / 0.02), 1] = 0.9  # the model hears a stutter only on "he" of the first copy
+    cut = [i for c in word_cuts(toks, probs) for i in c["tokens"]]
+    assert cut == [0, 1, 2]  # the whole copy goes, never "when when he was"; "ye-" was not heard
+    assert word_cuts(toks, probs, keep=frozenset({1})) == []  # one kept word keeps its phrase
+    quiet = np.zeros((200, 4))
+    assert word_cuts(toks, quiet) == []
+    thorough = [i for c in word_cuts(toks, quiet, cut_phrases=True) for i in c["tokens"]]
+    assert thorough == [0, 1, 2]  # Thorough cuts repeated phrases without the acoustic check

@@ -17,7 +17,7 @@ mic ──► delay buffer (0.25-0.85 s) ──► splicer: skip the stutter, jo
 | | What it is | How well it works today (7 speakers it never trained on) |
 |---|---|---|
 | **Live** | Your mic (or your browser's, on the hosted demo), cleaned in real time, sent to headphones or a virtual mic (Zoom, Meet). | Big model on a laptop GPU: **32% of stutters removed in Gentle** (fillers kept, 3.2% of words lost) and **65% in Strong** (fillers too, 5.6% lost), about 0.5-0.85 s behind you. Without a GPU the rule-based detector removes ~8%. |
-| **Clean a voice note** | Record or upload a message in the browser and get it back cleaned. | Cuts land **between words only**: about 49% of stutters removed (75% if fillers go too) with **no real word cut**. |
+| **Clean a voice note** | Record or upload a message in the browser and get it back cleaned. | Cuts land **between words only**: 50% of stutters removed in Natural, **80% in Thorough** (which also removes fillers and repeated phrases), with **no real word cut**. |
 | **Try a real recording** | Three real stuttered recordings (UCLASS, adult speakers) with A/B playback. | Same engines as above, side by side. |
 
 The app also shows a **Fluency Mirror**: your voice and what the listener hears, scrolling live,
@@ -84,13 +84,18 @@ sliding windows, cut with the offline recipe, fillers included):
 
 One 5 s window takes 60 ms on a laptop RTX 4050, so it keeps up live with room to spare.
 
-**Recordings** (`stutterclear/silver.py: word_cuts`):
+**Recordings** (`scripts/eval_recordings.py`; cuts by `stutterclear/silver.py: word_cuts`):
 
 | recipe | real words sliced | real words removed | stutters removed |
 |---|---|---|---|
 | model edges, natural settings | 98 | 183 | 49.9% |
-| word-aligned | 0 | 0 | 48.7% |
-| word-aligned + fillers | 0 | 0 | 75.4% |
+| word-aligned (Natural) | 0 | 0 | 50.1% |
+| word-aligned + fillers | 0 | 0 | 76.8% |
+| Thorough: fillers and repeated phrases too | 0 | 0 | 79.9% |
+
+A repeated phrase ("when he was, when he was younger") is cut or kept as a whole, never left
+half-cut. The words come from the same transcript as the labels, so these numbers cannot show
+whether a repeat was meant: the teacher's acoustic check and Nemotron's meaning guard decide that.
 
 **Causal student, v1** (0.3M parameters): too small. SEP-28k macro F1 0.38 vs the teacher's 0.65,
 and live it removes 19.8% of stutters while losing 8.4% of words, so the app does not use it. A

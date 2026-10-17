@@ -3,7 +3,7 @@ three engines, served as a timeline the page replays in sync with the audio (no 
 
 - natural: the offline teacher finds the stutters, the verbatim transcript (CrisperWhisper) places
   every cut on word boundaries, so no real word is ever sliced; fillers are kept
-- thorough: the same, and fillers (um, uh) are removed too
+- thorough: the same, and ordinary disfluencies go too: fillers (um, uh) and repeated phrases
 - live: the real-time pipeline exactly as a call gets it (delay buffer, online detector, splicer)
 
 Model-edge cutting sliced real words in 30-43% of cuts (a word that loses its first or last sound is
@@ -103,7 +103,7 @@ def render(sid: str, engine: str) -> dict:
         x, probs, toks = _source(sid)
         stutter = probs[:, [0, 1, 2, 4]]  # sound_rep, word_rep, prolongation, interjection
         thorough = engine == "thorough"
-        cuts, guard = guarded_cuts(toks, stutter, cut_fillers=thorough)  # Nemotron checks each cut
+        cuts, guard = guarded_cuts(toks, stutter, cut_fillers=thorough, cut_phrases=thorough)  # Nemotron checks each cut
         label = f"{'Thorough' if thorough else 'Natural'} · offline model"
         y = render_edited(x, cuts, NATURAL_JOIN)
         cuts = [{"kind": c["kind"], "start": c["start"], "end": c["end"],

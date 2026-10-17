@@ -71,7 +71,7 @@ On 7 speakers the models never trained on, through the real live pipeline:
 | Live, rule-based baseline | 7.6% | 1.25% |
 | Live, teacher on GPU, Gentle (keeps fillers) | 31.7% | 3.18% |
 | Live, teacher on GPU, Strong (fillers too) | 65.2% | 5.64% |
-| Recordings, word-aligned (fillers kept / removed) | 48.7% / 75.4% | 0 words sliced |
+| Recordings, word-aligned: Natural / Thorough (fillers, repeated phrases) | 50.1% / 79.9% | 0 words sliced |
 
 ### What we learned
 
