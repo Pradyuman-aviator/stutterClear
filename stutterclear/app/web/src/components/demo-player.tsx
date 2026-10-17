@@ -135,7 +135,7 @@ export function DemoBar({
           <div className="flex items-center gap-1.5 text-[11px] text-white/45">
             <AudioLines className="size-3" />
             <span className="truncate">{tl ? tl.label : "Cleaning…"}</span>
-            <span className="tabular-nums">
+            <span className="shrink-0 whitespace-nowrap tabular-nums">
               · {clock(state.t)} / {clock(total)}
             </span>
           </div>
