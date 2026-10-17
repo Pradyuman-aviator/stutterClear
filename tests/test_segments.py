@@ -29,3 +29,18 @@ def test_slivers_between_cuts_are_merged():
     assert [(c["start"], c["end"]) for c in merged] == [(0.2, 0.9)]
     apart = smooth_cuts(cuts, x, merge_ms=50.0, snap_ms=0.0)
     assert len(apart) == 2
+
+
+def test_word_cuts_never_slice_real_words():
+    from stutterclear.silver import label_tokens, word_cuts
+    words = [{"w": "I", "s": 0.0, "e": 0.2}, {"w": "I", "s": 0.3, "e": 0.5}, {"w": "want", "s": 0.6, "e": 0.9},
+             {"w": "[UM]", "s": 1.0, "e": 1.3}, {"w": "to", "s": 1.4, "e": 1.5}, {"w": "g-", "s": 1.6, "e": 1.7},
+             {"w": "go", "s": 1.8, "e": 2.0}]
+    toks = label_tokens(words)
+    cuts = word_cuts(toks)
+    assert [(c["start"], c["end"]) for c in cuts] == [(0.0, 0.3), (1.6, 1.8)]  # "I " and "g-", filler kept
+    assert len(word_cuts(toks, cut_fillers=True)) == 3
+    for c in word_cuts(toks, cut_fillers=True):  # every edge is a word boundary
+        assert all(not (t["s"] < c["start"] < t["e"] or t["s"] < c["end"] < t["e"]) for t in toks)
+    quiet = np.zeros((200, 4))  # the model hears nothing: a transcript repeat alone is not cut
+    assert word_cuts(toks, quiet) == []

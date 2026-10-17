@@ -45,6 +45,37 @@ def label_tokens(words: list) -> list:
     return toks
 
 
+def word_cuts(toks: list, probs=None, cut_fillers: bool = False, confirm: float = 0.3,
+              frame_s: float = 0.02) -> list:
+    """Cuts placed on word boundaries from a verbatim transcript, for recordings (not live).
+
+    Removes repeated and cut-off words (and fillers if asked), each from its start to the start of
+    the next word, so no real word is ever sliced: model frame edges are about 100 ms off, a whole
+    syllable, and a word that loses its first or last sound is what a listener hears as a jerk.
+    With teacher probabilities, a candidate is cut only if the model also hears a stutter there
+    (so a deliberate "very very" survives).
+    """
+    kinds = {"repeat", "cutoff"} | ({"filler"} if cut_fillers else set())
+    cuts = []
+    for i, t in enumerate(toks):
+        if t["label"] not in kinds:
+            continue
+        if probs is not None:
+            a = max(0, int((t["s"] - 0.1) / frame_s))
+            b = min(len(probs), int((t["e"] + 0.1) / frame_s) + 1)
+            if b <= a or float(probs[a:b].max()) < confirm:
+                continue
+        end = t["e"]
+        if i + 1 < len(toks) and 0 <= toks[i + 1]["s"] - end <= 0.3:
+            end = toks[i + 1]["s"]
+        kind = {"repeat": "word_rep", "cutoff": "sound_rep", "filler": "interjection"}[t["label"]]
+        if cuts and t["s"] - cuts[-1]["end"] <= 0.02:
+            cuts[-1]["end"] = end
+        else:
+            cuts.append({"kind": kind, "start": round(t["s"], 3), "end": round(end, 3)})
+    return cuts
+
+
 def _overlap(s, e, cuts) -> float:
     return sum(max(0.0, min(e, c["end"]) - max(s, c["start"])) for c in cuts) / max(1e-3, e - s)
 

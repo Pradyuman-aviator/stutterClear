@@ -216,12 +216,20 @@ class JoinConfig:
     # Insert the pause only where speech meets speech. There two different sounds would be glued
     # together and the listener hears a jump; next to silence there is nothing to hide.
     pause_speech_only: bool = False
-    speech_db: float = -42.0
+    # "Speech" = louder than the recording's own background by this much, over the 80 ms either
+    # side of the join. Relative, because recordings and mics differ by 20 dB or more.
+    speech_above_floor_db: float = 12.0
 
 
 # The smoothest joins measured (scripts/join_quality.py on 7 held-out speakers): a 60 ms pause of
 # the speaker's own room tone at speech-to-speech joins, aligned crossfades everywhere else.
 SMOOTH_JOIN = JoinConfig(xfade_ms=10.0, align_ms=10.0, pause_ms=60.0, level_match=True, pause_speech_only=True)
+
+# Natural cuts remove a stutter in one piece, so the voice's pitch before and after rarely lines up:
+# at voiced joins it jumps a median 2.3 semitones (natural speech moves 0.2 in 30 ms, rarely over
+# 1.2). That jump is the 'jerk'. A slightly longer pause there lets the pitch reset the way it does
+# after any short pause in speech.
+NATURAL_JOIN = JoinConfig(xfade_ms=8.0, align_ms=10.0, pause_ms=90.0, level_match=True, pause_speech_only=True)
 
 
 def room_tone(x: np.ndarray) -> np.ndarray:
@@ -266,11 +274,15 @@ def render_edited(x: np.ndarray, cuts: list, cfg: JoinConfig = JoinConfig()) -> 
 
     y = x[out[0][1]:out[0][2]].copy()
     ramp = np.linspace(0.0, 1.0, xf, dtype=np.float32)
-    speech = lambda seg: len(seg) > 0 and 10 * np.log10(np.mean(seg.astype(np.float64) ** 2) + 1e-12) > cfg.speech_db
+    level = lambda seg: 10 * np.log10(np.mean(seg.astype(np.float64) ** 2) + 1e-12)
+    n10 = len(x) // 160
+    floor_db = float(np.percentile(10 * np.log10(np.mean(x[: n10 * 160].astype(np.float64).reshape(n10, 160) ** 2, axis=1)
+                                                 + 1e-12), 20)) if n10 else -90.0
+    speech = lambda seg: len(seg) > 0 and level(seg) > floor_db + cfg.speech_above_floor_db
     for _, s, e in out[1:]:
         if e <= s:
             continue
-        pause_here = cfg.pause_ms > 0 and (not cfg.pause_speech_only or (speech(y[-480:]) and speech(x[s:s + 480])))
+        pause_here = cfg.pause_ms > 0 and (not cfg.pause_speech_only or (speech(y[-1280:]) and speech(x[s:s + 1280])))
         if pause_here:
             n = int(cfg.pause_ms * SR / 1000)
             start = int(rng.integers(0, max(1, len(tone) - n)))

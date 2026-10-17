@@ -139,7 +139,7 @@ class Splicer:
                 return n - i
             self.stats.removed += cut.end - pos
             self.stats.removed_spans.append((pos, cut.end, cut.kind))
-            if self._speech(pos - 480, pos) and self._speech(cut.end, min(cut.end + 480, self.write_pos)):
+            if self._speech(pos - 1280, pos) and self._speech(cut.end, min(cut.end + 1280, self.write_pos)):
                 self.pause_left = self.join_pause
             self.read_pos = self.fade_in_start = cut.end
             self._drop_finished_cuts()
@@ -217,7 +217,7 @@ class Splicer:
         if b - a < 160:
             return False
         x = self._slice(a, b - a)
-        return float(np.sqrt(np.mean(x * x))) > max(8.0 * self.noise_floor, 0.008)
+        return float(np.sqrt(np.mean(x * x))) > 4.0 * self.noise_floor  # 12 dB above the background
 
     def _cut_at(self, pos: int) -> Cut | None:
         for c in self.cuts.values():

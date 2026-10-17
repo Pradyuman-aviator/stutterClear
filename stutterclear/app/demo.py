@@ -1,11 +1,13 @@
 """'Try a real recording': short excerpts of UCLASS recordings from adult speakers, cleaned by one of
 three engines, served as a timeline the page replays in sync with the audio (no mic needed).
 
-- natural: the offline teacher model, cutting the way that sounds best by ear (fillers kept, edges
-  in quiet moments, stutters removed in one piece)
-- thorough: the offline teacher with the balanced settings (removes more, including fillers, but
-  makes more joins inside speech)
+- natural: the offline teacher finds the stutters, the verbatim transcript (CrisperWhisper) places
+  every cut on word boundaries, so no real word is ever sliced; fillers are kept
+- thorough: the same, and fillers (um, uh) are removed too
 - live: the real-time pipeline exactly as a call gets it (delay buffer, online detector, splicer)
+
+Model-edge cutting sliced real words in 30-43% of cuts (a word that loses its first or last sound is
+what a listener hears as a jerk); word-aligned cutting slices none (scripts/check notes in commit).
 
 The audio is read from the local UCLASS download (data/external) and never committed: UCLASS is
 free for research and teaching with credit (CREDIT below), not for redistribution as a product.
@@ -19,7 +21,8 @@ import numpy as np
 from ..audio import load_wav
 from ..config import HOP, SAMPLE_RATE as SR
 from ..pipeline import stream
-from ..segments import BALANCED_CUTS, NATURAL_CUTS, SMOOTH_JOIN, JoinConfig, cut_segments, render_edited, smooth_cuts
+from ..segments import NATURAL_JOIN, render_edited
+from ..silver import label_tokens, word_cuts
 
 DATA = Path(__file__).resolve().parents[2] / "data" / "external"
 SAMPLES = {s["id"]: s for s in json.loads(Path(__file__).with_name("demo_samples.json").read_text())}
@@ -34,8 +37,17 @@ def _wav(sample: dict) -> Path:
 
 
 def engines(sample: dict) -> list:
-    out = ["natural", "thorough"] if _wav(sample).with_suffix(".teacher.npy").exists() else []
-    return out + ["live"]
+    w = _wav(sample)
+    offline = w.with_suffix(".teacher.npy").exists() and w.with_suffix(".crisper.json").exists()
+    return (["natural", "thorough"] if offline else []) + ["live"]
+
+
+def _tokens(sample: dict) -> list:
+    """The excerpt's verbatim words, with times relative to the excerpt."""
+    words = json.loads(_wav(sample).with_suffix(".crisper.json").read_text())
+    a, b = sample["start"], sample["end"]
+    inside = [dict(w, s=w["s"] - a, e=w["e"] - a) for w in words if w["s"] >= a and w["e"] <= b]
+    return label_tokens(inside)
 
 
 def available() -> list:
@@ -72,16 +84,11 @@ def render(sid: str, engine: str) -> dict:
         probs = np.load(_wav(s).with_suffix(".teacher.npy"))
         f0 = int(round(s["start"] * SR / TEACHER_FRAME))
         probs = probs[f0: f0 + len(x) // TEACHER_FRAME]
-        if engine == "natural":
-            cuts = cut_segments(probs, NATURAL_CUTS, x)
-            join, label = JoinConfig(xfade_ms=5.0), "Natural · offline model"
-        else:
-            # Merge cuts split by a sliver of audio and put a short pause where speech meets
-            # speech: the measured fix for the jumps balanced cuts make (scripts/join_quality.py).
-            cuts = smooth_cuts(cut_segments(probs, BALANCED_CUTS, x), x, merge_ms=150.0, snap_ms=0.0)
-            join, label = SMOOTH_JOIN, "Thorough · offline model"
-        cuts = [{"kind": c["kind"], "start": c["start"], "end": c["end"]} for c in cuts]
-        y = render_edited(x, cuts, join)
+        stutter = probs[:, [0, 1, 2, 4]]  # sound_rep, word_rep, prolongation, interjection
+        thorough = engine == "thorough"
+        cuts = word_cuts(_tokens(s), stutter, cut_fillers=thorough)
+        label = f"{'Thorough' if thorough else 'Natural'} · offline model, cuts on word boundaries"
+        y = render_edited(x, cuts, NATURAL_JOIN)
         events, meta = [], {"detector": "teacher", "label": label, "lag_ms": 0, "detect_ms": 0.0}
     elif engine == "live":
         detector, name = _live_detector()
