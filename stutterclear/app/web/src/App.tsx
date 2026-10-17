@@ -27,6 +27,7 @@ import {
 } from "@/lib/api"
 import { EASE_OUT, SPRING } from "@/lib/motion"
 import { useStore, type Store } from "@/lib/store"
+import { BrowserMic } from "@/lib/browser-mic"
 import { cn } from "@/lib/utils"
 
 const MODES: SegmentOption<Mode>[] = [
@@ -49,6 +50,7 @@ const DETECTOR_NOTE: Record<DetectorKind, string> = {
   heuristic: "Light rules: safe, but removes little.",
 }
 const NO_OUTPUT = "none"
+const BROWSER_MIC = "__browser__" // live from this browser's mic, streamed to the server
 
 // Entrances animate opacity and position only: blurring big panels while they move costs frames.
 const page: Variants = { hidden: {}, show: { transition: { staggerChildren: 0.07, delayChildren: 0.05 } } }
@@ -109,10 +111,11 @@ export default function App() {
     getDevices()
       .then((d) => {
         setDevices(d)
-        const fallback = d.inputs.find((x) => x.index === d.default_input)?.name ?? d.inputs[0]?.name ?? ""
+        // No mic on the server (a hosted demo): live audio comes from the browser.
+        const fallback = d.inputs.find((x) => x.index === d.default_input)?.name ?? d.inputs[0]?.name ?? BROWSER_MIC
         setInDev((cur) => {
           const want = cur || stored("sc.in.name", "")
-          return d.inputs.some((x) => x.name === want) ? want : fallback
+          return want === BROWSER_MIC || d.inputs.some((x) => x.name === want) ? want : fallback
         })
         setOutDev((o) => (o === NO_OUTPUT || d.outputs.some((x) => x.name === o) ? o : NO_OUTPUT))
       })
@@ -145,6 +148,8 @@ export default function App() {
   }, [serverRunning])
 
   // Start and stop are optimistic: the UI flips on the click, the server catches up behind it.
+  const browserMic = useRef<BrowserMic | null>(null)
+
   const start = useCallback(
     async (over: Partial<StartBody> = {}) => {
       busy.current = true
@@ -153,6 +158,27 @@ export default function App() {
       setPlayback(null) // the server drops the previous recording when a session starts
       reset()
       try {
+        if (browserMic.current) {
+          await browserMic.current.stop() // restarting with new settings
+          browserMic.current = null
+        }
+        if ((over.in_name ?? inDev) === BROWSER_MIC) {
+          // The server lets one live session run at a time; give the previous one a moment to end.
+          for (let attempt = 0; ; attempt++) {
+            const mic = new BrowserMic()
+            try {
+              const r = await mic.start({ mode: over.mode ?? mode, detector: over.detector ?? detector })
+              browserMic.current = mic
+              setDetName(r.detector)
+              break
+            } catch (e) {
+              await mic.stop()
+              if (attempt >= 4 || !/already running/i.test((e as Error).message)) throw e
+              await new Promise((r) => setTimeout(r, 400))
+            }
+          }
+          return
+        }
         const r = await startSession({
           mode, detector, save,
           in_device: null,
@@ -178,7 +204,9 @@ export default function App() {
     busy.current = true
     setRunning(false)
     try {
-      const r = await stopSession()
+      const mic = browserMic.current
+      browserMic.current = null
+      const r = mic ? ((await mic.stop()) ?? { summary: null }) : await stopSession()
       if (r.summary) setToast({ kind: "summary", summary: r.summary, id: Date.now() })
       if (r.playback?.available) {
         setPlayback(r.playback)
@@ -265,7 +293,10 @@ export default function App() {
     setHl(layer)
   }
 
-  const inItems = (devices?.inputs ?? []).map((d) => ({ value: d.name, label: d.name }))
+  const inItems = [
+    ...(devices?.inputs ?? []).map((d) => ({ value: d.name, label: d.name })),
+    { value: BROWSER_MIC, label: "This browser's mic" },
+  ]
   const outItems = [
     { value: NO_OUTPUT, label: "Nowhere (preview only)" },
     ...(devices?.outputs ?? []).map((d) => ({
@@ -463,18 +494,24 @@ export default function App() {
                     }}
                   />
                 </Field>
-                <Field label="Send the cleaned voice to">
-                  <DeviceSelect
-                    items={outItems}
-                    value={outDev}
-                    onOpen={loadDevices}
-                    onChange={(v) => {
-                      setOutDev(v)
-                      store("sc.out.name", v)
-                      if (running && !busy.current) start({ out_name: v === NO_OUTPUT ? null : v })
-                    }}
-                  />
-                </Field>
+                {inDev === BROWSER_MIC ? (
+                  <div className="text-xs leading-relaxed text-white/45">
+                    Your browser streams the mic to StutterClear. Listen back with the play buttons after you stop.
+                  </div>
+                ) : (
+                  <Field label="Send the cleaned voice to">
+                    <DeviceSelect
+                      items={outItems}
+                      value={outDev}
+                      onOpen={loadDevices}
+                      onChange={(v) => {
+                        setOutDev(v)
+                        store("sc.out.name", v)
+                        if (running && !busy.current) start({ out_name: v === NO_OUTPUT ? null : v })
+                      }}
+                    />
+                  </Field>
+                )}
                 <Field label="Detector">
                   <Segmented
                     label="Detector"

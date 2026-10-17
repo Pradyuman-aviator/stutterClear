@@ -11,6 +11,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
+import numpy as np
 from pydantic import BaseModel
 
 from ..audio import wav_bytes
@@ -166,6 +167,44 @@ def playback(which: str):
     if which not in ("original", "clean") or not last:
         raise HTTPException(404, "Nothing to play yet: record a session first.")
     return Response(wav_bytes(last[which]), media_type="audio/wav", headers={"Cache-Control": "no-store"})
+
+
+@app.websocket("/ws/mic")
+async def browser_mic(socket: WebSocket):
+    """Live from the browser's mic: the first message is the settings (JSON), then 16 kHz mono
+    float32 audio as binary messages, then the text "stop" (or just closing). The session shows up
+    on /ws like any other; at the end the server replies with the summary and keeps the recording
+    for the play buttons. One live session at a time."""
+    await socket.accept()
+    if state["session"] is not None:
+        await socket.close(code=4409, reason="A live session is already running here.")
+        return
+    cfg = await socket.receive_json()
+    s = LiveSession(cfg.get("mode", "gentle"), detector=cfg.get("detector", "heuristic"), source="browser")
+    s.start()
+    state["session"], state["last"] = s, None
+    await socket.send_json({"ok": True, "detector": s.detector_name})
+    loop = asyncio.get_running_loop()
+    try:
+        while True:
+            msg = await socket.receive()
+            if msg["type"] == "websocket.disconnect" or msg.get("text") == "stop":
+                break
+            if msg.get("bytes"):
+                await loop.run_in_executor(None, s.feed, np.frombuffer(msg["bytes"], np.float32))
+    except WebSocketDisconnect:
+        pass
+    finally:
+        summary = None
+        if state["session"] is s:
+            state["session"] = None
+            summary = await loop.run_in_executor(None, s.stop)
+            state["last"] = s.recording()
+        try:  # the page may already be gone
+            await socket.send_json({"summary": summary, "playback": playback_info()})
+            await socket.close()
+        except Exception:
+            pass
 
 
 @app.websocket("/ws")

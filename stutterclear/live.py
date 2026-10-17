@@ -14,7 +14,11 @@ from datetime import datetime
 from pathlib import Path
 
 import numpy as np
-import sounddevice as sd
+
+try:  # a server without audio hardware (a cloud VM) still runs browser-mic sessions
+    import sounddevice as sd
+except (ImportError, OSError):
+    sd = None
 
 from .audio import save_wav
 from .config import HOP, SAMPLE_RATE as SR, preset
@@ -115,6 +119,8 @@ def wasapi_index() -> int:
 
 
 def devices() -> dict:
+    if sd is None:
+        return {"inputs": [], "outputs": [], "default_input": None}
     idx = wasapi_index()
     out = {"inputs": [], "outputs": [], "default_input": sd.query_hostapis(idx)["default_input_device"]}
     for i, d in enumerate(sd.query_devices()):
@@ -143,13 +149,19 @@ def make_detector(kind: str, mode: str, student_path=None):
 
 
 class LiveSession:
+    """source="device": this computer's mic and speakers (sounddevice). source="browser": audio
+    arrives through feed() from a browser mic over a WebSocket, and the input clock drives output."""
+
     def __init__(self, mode="gentle", in_device=None, out_device=None, detector="student", student_path=None,
-                 save=False):
+                 save=False, source="device"):
         self.mode = mode
+        self.source = source
         preset_name, _, _ = MODES[mode]
         det, self.detector_name = make_detector(detector, mode, student_path)
         self.pipe = Pipeline(preset(preset_name, **delay_overrides(self.detector_name, mode)), detector=det)
-        self.in_device = in_device if in_device is not None else devices()["default_input"]
+        if source == "browser":
+            in_device = out_device = None
+        self.in_device = in_device if in_device is not None or source == "browser" else devices()["default_input"]
         self.out_device = out_device
         self.save = save
         self.q: queue.Queue = queue.Queue()
@@ -167,6 +179,12 @@ class LiveSession:
         self.cap_q: queue.Queue = queue.Queue()
 
     # ---- audio callbacks and worker -------------------------------------------------------
+
+    def feed(self, x: np.ndarray):
+        """Audio from a browser mic (16 kHz mono float32), in any block size."""
+        x = np.asarray(x, np.float32)
+        for i in range(0, len(x), HOP):
+            self._on_input(x[i:i + HOP, None], 0, None, None)
 
     def _on_input(self, indata, frames, t, status):
         x = indata[:, 0].copy()
@@ -213,16 +231,19 @@ class LiveSession:
     # ---- control ----------------------------------------------------------------------------
 
     def start(self):
-        if sys.platform == "win32":
-            # WASAPI streams fail to open from a thread without COM (web servers call us from
-            # worker threads). The result is ignored: S_FALSE / changed-mode mean COM is already up.
-            ctypes.windll.ole32.CoInitializeEx(None, 0)
-        settings = sd.WasapiSettings(auto_convert=True)
         self.running, self.started = True, time.time()
         self.thread = threading.Thread(target=self._worker, daemon=True)
         self.thread.start()
         if self.captioner is not None:
             threading.Thread(target=self._caption_worker, daemon=True).start()
+        if self.source == "browser":
+            self.streams = []
+            return
+        if sys.platform == "win32":
+            # WASAPI streams fail to open from a thread without COM (web servers call us from
+            # worker threads). The result is ignored: S_FALSE / changed-mode mean COM is already up.
+            ctypes.windll.ole32.CoInitializeEx(None, 0)
+        settings = sd.WasapiSettings(auto_convert=True)
         self.streams = [sd.InputStream(device=self.in_device, samplerate=SR, channels=1, blocksize=HOP,
                                        dtype="float32", latency="low", extra_settings=settings,
                                        callback=self._on_input)]
