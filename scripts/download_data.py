@@ -21,13 +21,15 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--small", action="store_true")
     ap.add_argument("--root", help="download folder (default: <repo>/data)")
+    ap.add_argument("--sep-only", action="store_true")
     args = ap.parse_args()
     ROOT = Path(args.root) if args.root else ROOT
 
-    libri = ["data/dev_clean-*.parquet"] + ([] if args.small else ["data/train_clean_100-*.parquet"])
-    snapshot_download("gilkeyio/librispeech-alignments", repo_type="dataset", allow_patterns=libri,
-                      local_dir=ROOT / "librispeech-alignments")
-    print("librispeech-alignments done", flush=True)
+    if not args.sep_only:
+        libri = ["data/dev_clean-*.parquet"] + ([] if args.small else ["data/train_clean_100-*.parquet"])
+        snapshot_download("gilkeyio/librispeech-alignments", repo_type="dataset", allow_patterns=libri,
+                          local_dir=ROOT / "librispeech-alignments")
+        print("librispeech-alignments done", flush=True)
     if not args.small:
         snapshot_download("saeedzou/sep28k-fluencybank-stutter-dataset", repo_type="dataset",
                           allow_patterns=["data/*.parquet", "README.md"], local_dir=ROOT / "sep28k-fluencybank")
