@@ -40,9 +40,6 @@ const DETECTORS: SegmentOption<DetectorKind>[] = [
   { value: "heuristic", label: "Rule-based" },
 ]
 const NO_OUTPUT = "none"
-// Bluetooth headset mics switch the earbuds into call mode: narrowband audio, and Windows can
-// take seconds to switch. The laptop's own mic is the better default.
-const isHeadsetMic = (name: string) => /headset|hands-?free|bluetooth/i.test(name)
 
 // Entrances animate opacity and position only: blurring big panels while they move costs frames.
 const page: Variants = { hidden: {}, show: { transition: { staggerChildren: 0.07, delayChildren: 0.05 } } }
@@ -91,10 +88,7 @@ export default function App() {
     getDevices()
       .then((d) => {
         setDevices(d)
-        const sysDefault = d.inputs.find((x) => x.index === d.default_input)?.name ?? d.inputs[0]?.name ?? ""
-        const fallback = isHeadsetMic(sysDefault)
-          ? (d.inputs.find((x) => !isHeadsetMic(x.name))?.name ?? sysDefault)
-          : sysDefault
+        const fallback = d.inputs.find((x) => x.index === d.default_input)?.name ?? d.inputs[0]?.name ?? ""
         setInDev((cur) => {
           const want = cur || stored("sc.in.name", "")
           return d.inputs.some((x) => x.name === want) ? want : fallback
@@ -356,19 +350,6 @@ export default function App() {
                       if (running && !busy.current) start({ in_name: v })
                     }}
                   />
-                  <AnimatePresence initial={false}>
-                    {isHeadsetMic(inDev) && (
-                      <motion.div
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: "auto" }}
-                        exit={{ opacity: 0, height: 0 }}
-                        className="overflow-hidden text-xs text-amber-200/80"
-                      >
-                        Headset mics put earbuds into call mode: lower quality, slower to start. The
-                        laptop mic usually works better.
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
                 </Field>
                 <Field label="Send the cleaned voice to">
                   <DeviceSelect
@@ -523,8 +504,8 @@ function StatusLine({
       if (!connected) next = { text: everConnected.current ? "Reconnecting to the engine…" : "Connecting…", tone: "warn" }
       else if (!running) next = { text: "Tap the orb to start", tone: "idle" }
       else if (starting) next = { text: "Opening the microphone…", tone: "idle" }
-      else if (performance.now() - data.current.lastSoundAt > 3000)
-        next = { text: "No sound from the mic. Try another in Setup.", tone: "warn" }
+      else if (!data.current.heardSound && performance.now() - data.current.lastSoundAt > 4000)
+        next = { text: "Waiting for your voice… (nothing from the mic yet)", tone: "warn" }
       else if (s.cut > 0.2) {
         const kind = (KIND_LABEL[data.current.lastCutKind] ?? "stutter").toLowerCase()
         next = { text: `Removed a ${kind}`, tone: "cut" }

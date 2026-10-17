@@ -22,6 +22,7 @@ export interface LiveData {
   lastCutKind: string
   lastBlockAt: number
   lastSoundAt: number // performance.now() when the mic last carried anything above -80 dB
+  heardSound: boolean // anything at all this session (some mics send pure zeros until you speak)
   cutCount: number
 }
 
@@ -35,7 +36,7 @@ export interface Stats {
 
 const fresh = (): LiveData => ({
   envIn: [], envOut: [], inOffset: 0, outOffset: 0, cuts: [], events: [], receivedAt: 0, clockOffset: null,
-  level: 0, outLevel: 0, lastCutAt: -Infinity, lastCutKind: "", lastBlockAt: -Infinity, lastSoundAt: performance.now(), cutCount: 0,
+  level: 0, outLevel: 0, lastCutAt: -Infinity, lastCutKind: "", lastBlockAt: -Infinity, lastSoundAt: performance.now(), heardSound: false, cutCount: 0,
 })
 
 // Peak (0..1 linear) to a 0..1 loudness that moves nicely: -60 dB is silent, -6 dB is full.
@@ -122,7 +123,10 @@ export function useLive() {
         if (d.cuts.length > 200) d.cuts = d.cuts.filter((c) => c.end > horizon)
         if (d.events.length > 200) d.events = d.events.filter((c) => c.end > horizon)
         const peak = Math.max(0, ...tick.env_in)
-        if (peak > 1e-4) d.lastSoundAt = now
+        if (peak > 1e-4) {
+          d.lastSoundAt = now
+          d.heardSound = true
+        }
         d.level = loudness(peak)
         d.outLevel = loudness(Math.max(0, ...tick.env_out))
         d.receivedAt = now
