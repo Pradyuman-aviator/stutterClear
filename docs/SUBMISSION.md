@@ -82,7 +82,7 @@ can tell "I I I want" from "that that is true".
 ### What's next
 
 User testing with people who stutter (and their speech therapists), a smaller live model for
-laptops without a GPU (training now), Zoom/Meet one-click setup, and more languages.
+laptops without a GPU, Zoom/Meet one-click setup, and more languages.
 
 ### Built with
 
@@ -104,7 +104,7 @@ WavLM, PyTorch, CrisperWhisper, FastAPI, React, Vite, Tailwind, three.js, Tavily
 |---|---|---|
 | 0:00-0:15 | Face to camera, or title card | "About 70 million people stutter. On calls, the repeats are what people hear first." |
 | 0:15-0:40 | App home; tap a real recording; play Original, then switch to Clean voice | "This is a real person who stutters. Here's the original... and here's the same recording, his own voice, without the repeats." |
-| 0:40-1:05 | Point at the meaning guard line and the mirror's red cuts | "Every cut was checked by NVIDIA Nemotron on Nebius. It kept this repeat, because it was meant." |
+| 0:40-1:05 | Point at the meaning guard line and the mirror's red cuts | "Every cut was checked by NVIDIA Nemotron on Nebius." Then say what the guard line shows: "It kept this repeat, because it was meant", or "It confirmed every one was a real stutter." |
 | 1:05-1:40 | Live: Start, speak a sentence with a stutter; captions appear; Stop; play Clean voice | "Live, it runs half a second behind me, on the GPU. Captions are NVIDIA FastConformer." |
 | 1:40-2:05 | Word rescue: get stuck, chips appear | "When I get stuck, Nemotron suggests the word I mean. I choose; it never speaks for me." |
 | 2:05-2:25 | Context agent: type a situation, Prepare | "Before an interview, it prepares the names and terms I'll need." |
@@ -119,5 +119,5 @@ Use headphones while recording the live part (laptop speakers feed back into the
 2. No mic needed: under Start, pick a real recording, play it, switch Original / Clean voice and
    Natural / Thorough / Live; click "Insights · Nemotron".
 3. Live: Setup shows "This browser's mic"; press Start, speak for 20 seconds, press Stop, then play
-   the Clean voice. Turn on Word rescue on the Context card first to see suggestions.
+   the Clean voice. One person can be live at a time, for up to 5 minutes. Turn on Word rescue on the Context card first to see suggestions.
 4. Voice note: "Clean a voice note" on the right; record or upload, then play it back.
