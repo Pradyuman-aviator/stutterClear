@@ -9,6 +9,8 @@
   "enable_internet": true,
   "dataset_sources": [],
   "competition_sources": [],
-  "kernel_sources": ["pradyumansharmaaa/stutterclear-teacher-v2"],
-  "machine_shape": "NvidiaTeslaT4"
+  "kernel_sources": [
+    "pradyumansharmaaa/stutterclear-teacher-v2"
+  ],
+  "machine_shape": "NvidiaTeslaP100"
 }

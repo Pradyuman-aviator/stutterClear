@@ -12,5 +12,5 @@
   "kernel_sources": [
     "pradyumansharmaaa/stutterclear-silver-labels"
   ],
-  "machine_shape": "NvidiaTeslaT4"
+  "machine_shape": "NvidiaTeslaP100"
 }

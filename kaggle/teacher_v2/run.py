@@ -1,4 +1,4 @@
-"""Kaggle job: teacher v2 on both T4s (DDP).
+"""Kaggle job: teacher v2 on whatever GPUs Kaggle gives (one P100, or two T4s with DDP).
 
 Trained from the pretrained WavLM-Large, not from teacher v1: v1 used a different split and saw
 speakers of the official SEP-28k-E test set, which would leak into v2's test score. Adds
@@ -42,5 +42,5 @@ sh(
     " --backbone microsoft/wavlm-large --grad-ckpt"
     " --steps 10000 --batch 6 --sep-batch 6 --uclass-batch 6"
     " --freeze-steps 500 --warmup 500"
-    " --workers 3 --eval-every 1000 --val-n 300 --max-hours 10.5 --out /kaggle/working/teacher_v2"
+    " --workers 3 --eval-every 1000 --val-n 300 --max-hours 11.0 --out /kaggle/working/teacher_v2"
 )
