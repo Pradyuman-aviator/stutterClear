@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObjec
 import { AnimatePresence, MotionConfig, motion, type Variants } from "motion/react"
 import { AudioLines, Check, Cpu, Headphones, Lock, Mic, Square } from "lucide-react"
 
+import { CaptionStrip } from "@/components/caption-strip"
 import { DelayMatrix } from "@/components/delay-matrix"
 import { DemoBar, DemoPicker } from "@/components/demo-player"
 import { GlassCard } from "@/components/glass-card"
@@ -72,7 +73,7 @@ function store(key: string, value: string) {
 }
 
 export default function App() {
-  const { data, stats, connected, serverRunning, reset } = useLive()
+  const { data, stats, caption, connected, serverRunning, reset } = useLive()
   const [running, setRunning] = useState(false)
   const [starting, setStarting] = useState(false)
   const busy = useRef(false)
@@ -87,13 +88,14 @@ export default function App() {
   const [detectorList, setDetectorList] = useState<DetectorInfo[]>([])
   const [recommendedDet, setRecommendedDet] = useState<DetectorKind>("heuristic")
   const [notesOn, setNotesOn] = useState(false)
+  const [captionsOn, setCaptionsOn] = useState(false)
   const [noteSamples, setNoteSamples] = useState<DemoSample[]>([])
   const [toast, setToast] = useState<ToastData | null>(null)
   const [playback, setPlayback] = useState<PlaybackInfo | null>(null)
   const [playbackVersion, setPlaybackVersion] = useState(0)
   const highlight = useRef<Layer | null>(null)
   const [hl, setHl] = useState<Layer | null>(null)
-  const demo = useDemo(data, stats, reset)
+  const demo = useDemo(data, stats, reset, caption)
   const [demos, setDemos] = useState<{ samples: DemoSample[]; credit: string }>({ samples: [], credit: "" })
   const demoOn = demo.state !== null
   const demoPlaying = !!demo.state?.playing
@@ -119,6 +121,7 @@ export default function App() {
     getInfo()
       .then((i) => {
         setNotesOn(i.notes)
+        setCaptionsOn(i.captions)
         setDetectorList(i.detectors)
         setRecommendedDet(i.recommended)
         // Use the best measured detector unless one was picked before (and is still available here).
@@ -495,6 +498,12 @@ export default function App() {
                   highlight={highlight}
                   className="mt-4 min-h-48 w-full flex-1 touch-pan-y sm:min-h-56"
                 />
+                {captionsOn && (
+                  <CaptionStrip
+                    caption={caption}
+                    label={demoOn ? `Captions · ${demo.state?.hear === "original" ? "original" : "clean voice"}` : "Live captions · what the listener hears"}
+                  />
+                )}
                 <StatsRow stats={stats} running={active} />
               </GlassCard>
             </motion.div>

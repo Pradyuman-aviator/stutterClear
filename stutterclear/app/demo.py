@@ -87,6 +87,14 @@ def _source(sid: str):
     return x, probs[f0: f0 + len(x) // TEACHER_FRAME], _tokens(s)
 
 
+def _captions(x: np.ndarray, y: np.ndarray) -> dict | None:
+    """Word-timed captions of both tracks (NVIDIA streaming FastConformer), if the model is here."""
+    from .. import captions
+    if not captions.available():
+        return None
+    return {"original": captions.caption_audio(x), "clean": captions.caption_audio(y)}
+
+
 @lru_cache(maxsize=16)
 def render(sid: str, engine: str) -> dict:
     """Timeline for the page plus the original and cleaned audio of one sample or voice note."""
@@ -118,5 +126,6 @@ def render(sid: str, engine: str) -> dict:
         "original_s": round(len(x) / SR, 2), "clean_s": round(len(y) / SR, 2),
         "removed_s": round(sum(c["end"] - c["start"] for c in cuts), 2),
         "env_in": _envelope(x), "env_out": _envelope(y), "cuts": cuts, "events": events,
+        "captions": _captions(x, y),
     }
     return {"timeline": timeline, "original": x, "clean": y}

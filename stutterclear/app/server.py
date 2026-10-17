@@ -86,8 +86,9 @@ def list_devices():
 def info():
     # The AI detector needs its downloaded checkpoint; its measured quality (if evaluated) lets the
     # page recommend it only when it is actually better.
+    from .. import captions
     return {"student": DEFAULT_STUDENT.exists(), "student_eval": student_eval(), "notes": notes.available(),
-            "detectors": detectors(), "recommended": recommended()}
+            "captions": captions.available(), "detectors": detectors(), "recommended": recommended()}
 
 
 @app.post("/api/start")

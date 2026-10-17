@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react"
 import { demoAudioUrl, getDemo, type DemoEngine, type DemoTimeline } from "@/lib/api"
 import type { Store } from "@/lib/store"
-import { loudness, PLAYBACK_DELAY_S, STEP_S, type LiveData, type Stats } from "./use-live"
+import { loudness, PLAYBACK_DELAY_S, STEP_S, type Caption, type LiveData, type Stats } from "./use-live"
 
 export type Hear = "clean" | "original"
 
@@ -17,7 +17,26 @@ export interface DemoState {
 
 // Plays a sample and feeds the same LiveData the mic would, frame by frame from the audio clock,
 // so the Fluency Mirror, orb, status and stats all behave exactly as in a live session.
-export function useDemo(data: RefObject<LiveData>, stats: Store<Stats | null>, reset: () => void) {
+// Captions up to time t, grouped into lines at pauses (as the live captioner does at endpoints).
+function captionAt(words: { w: string; t: number }[], t: number): Caption {
+  const lines: string[][] = [[]]
+  let last = -1
+  for (const w of words) {
+    if (w.t > t) break
+    if ((last >= 0 && w.t - last > 0.9) || lines[lines.length - 1].length >= 12) lines.push([])
+    lines[lines.length - 1].push(w.w)
+    last = w.t
+  }
+  const text = lines.map((l) => l.join(" ")).filter(Boolean)
+  return { lines: text.slice(0, -1), partial: text[text.length - 1] ?? "" }
+}
+
+export function useDemo(
+  data: RefObject<LiveData>,
+  stats: Store<Stats | null>,
+  reset: () => void,
+  caption?: Store<Caption | null>
+) {
   const [state, setState] = useState<DemoState | null>(null)
   const audio = useRef<Record<Hear, HTMLAudioElement> | null>(null)
   const timeline = useRef<DemoTimeline | null>(null)
@@ -167,13 +186,15 @@ export function useDemo(data: RefObject<LiveData>, stats: Store<Stats | null>, r
         if (Math.abs(t - lastT) >= 0.25 || (a.ended && t !== lastT)) {
           lastT = t
           setState((s) => s && { ...s, t })
+          const words = tl.captions?.[hear.current]
+          if (caption && words) caption.set(captionAt(words, t))
         }
       }
       raf = requestAnimationFrame(frame)
     }
     raf = requestAnimationFrame(frame)
     return () => cancelAnimationFrame(raf)
-  }, [active, data, stats])
+  }, [active, data, stats, caption])
 
   // Leaving the page or unmounting: stop the audio.
   useEffect(() => () => {

@@ -161,6 +161,10 @@ class LiveSession:
         self.running = False
         self.started = None
         self._sent = {"env_in": 0, "env_out": 0, "cuts": 0, "events": 0}
+        # Captions of what the listener hears, on their own thread (the model runs on the CPU).
+        from . import captions
+        self.captioner = captions.Captioner() if captions.available() else None
+        self.cap_q: queue.Queue = queue.Queue()
 
     # ---- audio callbacks and worker -------------------------------------------------------
 
@@ -173,7 +177,21 @@ class LiveSession:
 
     def _emit(self, y):
         self.env_out.append(float(np.abs(y).max()) if len(y) else 0.0)
-        self.out.add(y.copy())
+        y = y.copy()
+        self.out.add(y)
+        if self.captioner is not None:
+            self.cap_q.put(y)
+
+    def _caption_worker(self):
+        pending = []
+        while self.running or not self.cap_q.empty():
+            try:
+                pending.append(self.cap_q.get(timeout=0.2))
+            except queue.Empty:
+                continue
+            if sum(len(p) for p in pending) >= SR // 10:  # feed 100 ms at a time
+                self.captioner.feed(np.concatenate(pending))
+                pending = []
 
     def _on_output(self, outdata, frames, t, status):
         y = self.pipe.read(frames)
@@ -203,6 +221,8 @@ class LiveSession:
         self.running, self.started = True, time.time()
         self.thread = threading.Thread(target=self._worker, daemon=True)
         self.thread.start()
+        if self.captioner is not None:
+            threading.Thread(target=self._caption_worker, daemon=True).start()
         self.streams = [sd.InputStream(device=self.in_device, samplerate=SR, channels=1, blocksize=HOP,
                                        dtype="float32", latency="low", extra_settings=settings,
                                        callback=self._on_input)]
@@ -254,6 +274,8 @@ class LiveSession:
             "cuts": [{"start": s / SR, "end": e / SR, "kind": k} for s, e, k in spans[self._sent["cuts"]:]],
             "events": [{"kind": ev.kind, "start": ev.start / SR, "end": ev.end / SR}
                        for ev in events[self._sent["events"]:] if ev.kind in ("block", "pause")],
+            "caption": ({"lines": self.captioner.lines[-2:], "partial": self.captioner.partial}
+                        if self.captioner is not None else None),
         }
         self._sent = {"env_in": self._sent["env_in"] + len(msg["env_in"]),
                       "env_out": self._sent["env_out"] + len(msg["env_out"]),

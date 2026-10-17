@@ -26,6 +26,11 @@ export interface LiveData {
   cutCount: number
 }
 
+export interface Caption {
+  lines: string[] // finished lines, oldest first
+  partial: string // the line being spoken
+}
+
 export interface Stats {
   lag_ms: number
   n_cuts: number
@@ -61,6 +66,7 @@ export function liveClock(d: LiveData, now: number) {
 export function useLive() {
   const data = useRef<LiveData>(fresh())
   const [stats] = useState(() => createStore<Stats | null>(null))
+  const [caption] = useState(() => createStore<Caption | null>(null))
   const [connected, setConnected] = useState(false)
   const [serverRunning, setServerRunning] = useState(false)
 
@@ -133,6 +139,11 @@ export function useLive() {
         const est = (d.inOffset + d.envIn.length) * STEP_S - now / 1000
         if (d.clockOffset === null || Math.abs(est - d.clockOffset) > 0.3) d.clockOffset = est
         else d.clockOffset += (est - d.clockOffset) * 0.05
+        const cap = tick.caption
+        if (cap) {
+          const cur = caption.get()
+          if (!cur || cur.partial !== cap.partial || cur.lines.join("|") !== cap.lines.join("|")) caption.set(cap)
+        }
         if (now - lastStats > 100) {
           lastStats = now
           stats.set({ lag_ms: tick.lag_ms, n_cuts: tick.n_cuts, removed_s: tick.removed_s,
@@ -146,12 +157,13 @@ export function useLive() {
       window.clearTimeout(retry)
       ws?.close()
     }
-  }, [stats])
+  }, [stats, caption])
 
   const reset = () => {
     data.current = fresh()
     stats.set(null)
+    caption.set(null)
   }
 
-  return { data, stats, connected, serverRunning, reset }
+  return { data, stats, caption, connected, serverRunning, reset }
 }

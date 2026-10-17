@@ -36,6 +36,12 @@ export interface Tick {
   env_out: number[]
   cuts: Span[]
   events: Span[] // blocks and pauses, never cut
+  caption?: { lines: string[]; partial: string } | null // what the listener hears, as text
+}
+
+export interface CaptionWord {
+  w: string
+  t: number // start, seconds
 }
 
 export interface StartBody {
@@ -94,6 +100,7 @@ export const getInfo = () =>
     student: boolean
     student_eval: StudentEval | null
     notes: boolean
+    captions: boolean
     detectors: DetectorInfo[]
     recommended: DetectorKind
   }>(fetch("/api/info"))
@@ -138,6 +145,7 @@ export interface DemoTimeline {
   env_out: number[] // 10 ms peaks of the cleaned audio
   cuts: Span[]
   events: Span[]
+  captions?: { original: CaptionWord[]; clean: CaptionWord[] } | null
 }
 
 export const getDemos = () => json<{ samples: DemoSample[]; credit: string }>(fetch("/api/demo"))
