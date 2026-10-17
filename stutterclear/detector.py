@@ -57,7 +57,13 @@ def dtw_cost(a: np.ndarray, b: np.ndarray) -> float:
 class HeuristicDetector:
     SPEECH_MARGIN_DB = 12.0
     MIN_SPEECH_DB = -60.0
+    DIGITAL_SILENCE_DB = -90.0  # OS noise gates output exact zeros; never learn the floor from them
     UNIT_END_SILENCE = 3  # frames of silence that end a speech unit
+    # Connected speech has no silence between syllables: split a unit at an energy dip
+    # this deep below the preceding peak once the level has risen again.
+    DIP_DB = 9.0
+    DIP_RISE_DB = 5.0
+    MIN_SPLIT_UNIT = 6
 
     # repetition
     REP_COMPARE = 12  # frames compared at the start of each unit (120 ms)
@@ -88,6 +94,7 @@ class HeuristicDetector:
         self.frame = 0
         self.noise_db = None
         self.silence_run = 0
+        self.peak_db, self.dip = -200.0, None
         self.units: list[_Unit] = []
         self.n_speech = 0
         self.mu = None
@@ -117,14 +124,15 @@ class HeuristicDetector:
     # ---- per-frame logic ----------------------------------------------------
 
     def _frame(self, e: float, logmel: np.ndarray, mfcc: np.ndarray, updates: list) -> None:
-        if self.noise_db is None:
+        if self.noise_db is None and e > self.DIGITAL_SILENCE_DB:
             self.noise_db = e
-        speech = e > max(self.noise_db + self.SPEECH_MARGIN_DB, self.MIN_SPEECH_DB)
-        if not speech:
+        floor = self.noise_db if self.noise_db is not None else self.MIN_SPEECH_DB
+        speech = e > max(floor + self.SPEECH_MARGIN_DB, self.MIN_SPEECH_DB)
+        if not speech and e > self.DIGITAL_SILENCE_DB and self.noise_db is not None:
             self.noise_db = 0.8 * self.noise_db + 0.2 * e if e < self.noise_db else self.noise_db + 0.01
 
         if speech:
-            self._on_speech(self._normalise(mfcc), updates)
+            self._on_speech(self._normalise(mfcc), e, updates)
         else:
             self._on_silence(updates)
 
@@ -145,7 +153,7 @@ class HeuristicDetector:
             return mfcc[1:] * np.nan
         return ((mfcc - self.mu) / np.sqrt(self.var))[1:]
 
-    def _on_speech(self, feat: np.ndarray, updates: list) -> None:
+    def _on_speech(self, feat: np.ndarray, e: float, updates: list) -> None:
         if self.pause_start is not None:
             self._log("pause", self.pause_start, self.frame, {})
             self.pause_start = None
@@ -155,8 +163,31 @@ class HeuristicDetector:
             unit = _Unit(self.frame)
             self.units.append(unit)
             self.units = self.units[-8:]
+            self.peak_db, self.dip = e, None
         unit.feats.append(feat)
+        self._split_at_dip(unit, e, updates)
         self._repetition(updates)
+
+    def _split_at_dip(self, unit: _Unit, e: float, updates: list) -> None:
+        if self.dip is None:
+            if e > self.peak_db:
+                self.peak_db = e
+            elif e < self.peak_db - self.DIP_DB:
+                self.dip = (e, self.frame)
+            return
+        if e < self.dip[0]:
+            self.dip = (e, self.frame)
+        elif e > self.dip[0] + self.DIP_RISE_DB:
+            cut = self.dip[1]
+            if cut - unit.start >= self.MIN_SPLIT_UNIT and self.frame - cut >= 2:
+                unit.end = cut
+                tail = unit.feats[cut - unit.start:]
+                del unit.feats[cut - unit.start:]
+                self._repetition(updates)  # the finished unit may complete a pending check
+                new = _Unit(cut, feats=tail)
+                self.units.append(new)
+                self.units = self.units[-8:]
+            self.peak_db, self.dip = e, None
 
     def _on_silence(self, updates: list) -> None:
         self.silence_run += 1
@@ -183,7 +214,7 @@ class HeuristicDetector:
             n_prev = prev.length(self.frame)
             k = min(n_prev, self.REP_COMPARE)
             gap = cur.start - prev.end
-            ready = n_cur == k or (cur.end is not None and n_cur >= 0.6 * k and n_cur < k)
+            ready = n_cur >= k or (cur.end is not None and n_cur >= 0.6 * k)
             if (not ready or cur.start == getattr(self, "_checked", None) or n_prev < self.REP_MIN_UNIT
                     or n_prev > self.REP_MAX_FRAGMENT or gap > self.REP_MAX_GAP):
                 return

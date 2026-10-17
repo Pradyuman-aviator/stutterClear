@@ -40,11 +40,23 @@ def list_devices():
             print(f"{i:3d}  in={d['max_input_channels']} out={d['max_output_channels']}  {d['name']}")
 
 
+def find_device(spec: str | None, kind: str) -> int | None:
+    """Device by WASAPI index or by name substring; indices shift when Bluetooth devices connect."""
+    if spec is None or spec.isdigit():
+        return None if spec is None else int(spec)
+    idx, _ = wasapi()
+    channels = "max_input_channels" if kind == "input" else "max_output_channels"
+    for i, d in enumerate(sd.query_devices()):
+        if d["hostapi"] == idx and d[channels] > 0 and spec.lower() in d["name"].lower():
+            return i
+    raise SystemExit(f"No WASAPI {kind} device matching '{spec}'. Try --list-devices.")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--mode", choices=list(PRESETS), default="clean")
-    ap.add_argument("--in-device", type=int)
-    ap.add_argument("--out-device", type=int, help="omit to record only (no playback)")
+    ap.add_argument("--in-device", help='index or name, e.g. "Microphone Array" (default: Windows default mic)')
+    ap.add_argument("--out-device", help="index or name; omit to record only (no playback)")
     ap.add_argument("--seconds", type=float, help="stop automatically after this long")
     ap.add_argument("--list-devices", action="store_true")
     args = ap.parse_args()
@@ -52,7 +64,9 @@ def main():
         return list_devices()
 
     _, host = wasapi()
-    in_dev = args.in_device if args.in_device is not None else host["default_input_device"]
+    in_dev = find_device(args.in_device, "input")
+    in_dev = in_dev if in_dev is not None else host["default_input_device"]
+    args.out_device = find_device(args.out_device, "output")
     settings = sd.WasapiSettings(auto_convert=True)
     pipe = Pipeline(preset(args.mode))
     raw, out, detect_ms = [], [], []
