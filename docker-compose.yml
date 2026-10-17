@@ -1,0 +1,37 @@
+# The hosted demo: the app on the GPU, behind Caddy for automatic HTTPS (browsers only allow the
+# microphone on HTTPS pages). Keys and the domain come from .env (see .env.example).
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ./runs:/app/runs:ro                     # teacher checkpoint, measured quality
+      - ./data/external:/app/data/external:ro   # demo recordings and their caches
+      - ./models:/app/models:ro                 # captions model
+      - hf-cache:/root/.cache/huggingface       # WavLM and CrisperWhisper weights, downloaded once
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  caddy:
+    image: caddy:2.8
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+    depends_on:
+      - app
+
+volumes:
+  hf-cache:
+  caddy-data:

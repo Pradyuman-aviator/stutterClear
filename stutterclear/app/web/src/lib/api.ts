@@ -106,6 +106,7 @@ export const getInfo = () =>
     nemotron: boolean
     search: boolean
     model: string
+    hosted: boolean
     detectors: DetectorInfo[]
     recommended: DetectorKind
   }>(fetch("/api/info"))

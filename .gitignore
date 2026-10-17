@@ -12,3 +12,5 @@ runs/
 # front-end build tooling
 stutterclear/app/web/node_modules/
 stutterclear/app/web/dist/
+.env
+stutterclear_assets.tar

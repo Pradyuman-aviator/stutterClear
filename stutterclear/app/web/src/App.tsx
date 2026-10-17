@@ -95,6 +95,7 @@ export default function App() {
   const [captionsOn, setCaptionsOn] = useState(false)
   const [rescueAvailable, setRescueAvailable] = useState(false)
   const [searchOn, setSearchOn] = useState(false)
+  const [hosted, setHosted] = useState(false)
   const [rescueOn, setRescueOn] = useState(() => stored("sc.rescue", "") === "on")
   const [rescue, setRescue] = useState<{ loading: boolean; words: string[]; error?: string }>({ loading: false, words: [] })
   const [noteSamples, setNoteSamples] = useState<DemoSample[]>([])
@@ -133,6 +134,7 @@ export default function App() {
         setCaptionsOn(i.captions)
         setRescueAvailable(i.nemotron)
         setSearchOn(i.search)
+        setHosted(i.hosted)
         setDetectorList(i.detectors)
         setRecommendedDet(i.recommended)
         // Use the best measured detector unless one was picked before (and is still available here).
@@ -553,7 +555,12 @@ export default function App() {
                   />
                   <DetectorNote info={detectorList.find((d) => d.kind === detector)} recommended={recommendedDet} />
                 </Field>
-                <div className="mt-auto flex items-center justify-between gap-4 rounded-2xl border border-white/6 bg-white/[0.03] p-3.5">
+                <div
+                  className={cn(
+                    "mt-auto flex items-center justify-between gap-4 rounded-2xl border border-white/6 bg-white/[0.03] p-3.5",
+                    hosted && "hidden" // a public server never stores recordings
+                  )}
+                >
                   <div className="text-sm">
                     <div className="font-medium">Save this session</div>
                     <div className="text-xs text-white/45">Off by default. Stays on this laptop.</div>
@@ -646,7 +653,9 @@ export default function App() {
             className="mt-8 flex items-start justify-center gap-2 px-2 text-center text-xs text-white/35 sm:items-center"
           >
             <Lock className="mt-0.5 size-3.5 shrink-0 sm:mt-0" />
-            Audio is processed on this laptop. Nothing is recorded unless you switch saving on.
+            {hosted
+              ? "Audio is processed on StutterClear's server on Nebius and is not stored. Recordings you clean are kept in memory for an hour, then forgotten."
+              : "Audio is processed on this laptop. Nothing is recorded unless you switch saving on."}
           </motion.footer>
         </motion.div>
 
@@ -999,7 +1008,7 @@ function ContextCard({
         placeholder="My name is Sam. Talking to Dr. Mehta about my project, StutterClear."
         className="w-full resize-none rounded-2xl border border-white/8 bg-white/[0.03] p-3.5 text-base leading-relaxed text-white/90 transition-[border-color,background-color,box-shadow] duration-500 outline-none placeholder:text-white/30 hover:border-white/15 hover:duration-150 focus:border-sky-300/40 focus:bg-white/[0.05] focus:shadow-[0_0_0_4px_rgb(125_211_252/0.12)] focus:duration-200 sm:text-sm"
       />
-      <div className="text-xs text-white/40">Names and topics you might say. Stays on this laptop.</div>
+      <div className="text-xs text-white/40">Names and topics you might say. Stays in this browser.</div>
       <div className="flex items-center justify-between gap-4 rounded-2xl border border-white/6 bg-white/[0.03] p-3.5">
         <div className="text-sm">
           <div className="font-medium">Word rescue · Nemotron</div>

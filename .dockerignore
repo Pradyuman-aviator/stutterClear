@@ -1,0 +1,15 @@
+.git
+.env
+data
+runs
+models
+sessions
+demo
+docs
+reports
+research_notes
+kaggle
+tests
+**/node_modules
+**/__pycache__
+stutterclear/app/web

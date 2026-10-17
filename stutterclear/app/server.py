@@ -5,6 +5,7 @@
 The UI is a Vite + React build in static/ (source in web/: `npm run build` there refreshes it).
 """
 import asyncio
+import os
 import threading
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
@@ -20,6 +21,9 @@ from ..live import DEFAULT_STUDENT, LiveSession, detectors, devices, recommended
 from . import demo, notes
 
 STATIC = Path(__file__).parent / "static"
+# A public deployment: visitors bring their own mic through the browser; the server never opens its
+# own audio devices and never writes recordings to disk.
+HOSTED = os.environ.get("STUTTERCLEAR_HOSTED") == "1"
 UPDATE_S = 0.03  # ~30 updates a second: the orb reacts within a frame or two
 # "last" holds the finished session's audio, in memory only, for the play buttons. Starting a new
 # session drops it.
@@ -107,7 +111,7 @@ def info():
     from .. import captions, context_agent, nemotron
     return {"student": DEFAULT_STUDENT.exists(), "student_eval": student_eval(), "notes": notes.available(),
             "captions": captions.available(), "rescue": nemotron.available(), "nemotron": nemotron.available(),
-            "search": context_agent.search_available(), "model": nemotron.MODEL,
+            "search": context_agent.search_available(), "model": nemotron.MODEL, "hosted": HOSTED,
             "detectors": detectors(), "recommended": recommended()}
 
 
@@ -168,6 +172,8 @@ def word_rescue(req: RescueRequest):
 
 @app.post("/api/start")
 def start(req: StartRequest):
+    if HOSTED:
+        raise HTTPException(403, "On the hosted demo, live mode uses your browser's microphone.")
     if state["session"] is not None:
         state["session"].stop()
         state["session"] = None
