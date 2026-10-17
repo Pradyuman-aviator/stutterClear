@@ -185,6 +185,35 @@ def load_silver(paths) -> dict:
 HELD_OUT_SPEAKERS = {"uclass/M_0065": "test"}  # the speaker we listen to stays unseen
 
 
+def uclass_speaker(name: str) -> str:
+    return "uclass/" + "_".join(Path(name).stem.split("_")[:2])  # M_0065_20y1m_1 -> uclass/M_0065
+
+
+class UclassCrops(IterableDataset):
+    """Unlabelled random crops of UCLASS recordings from one split, for distillation: the teacher
+    supplies the targets, so real stuttered speech needs no labels at all."""
+
+    def __init__(self, wav_root, split: str = "train", crop_s: float = 6.0, seed: int = 0, augment_p: float = 0.5):
+        self.paths = sorted(p for p in Path(wav_root).rglob("*.wav") if uclass_split(uclass_speaker(p.name)) == split)
+        self.n = int(crop_s * SR) // FRAME * FRAME
+        self.seed, self.augment_p = seed, augment_p
+
+    def __iter__(self):
+        info = get_worker_info()
+        wid, nw = (info.id, info.num_workers) if info else (0, 1)
+        rng = np.random.default_rng(self.seed + 7919 * wid)
+        paths = self.paths[wid::nw] or self.paths
+        while True:
+            for k in rng.permutation(len(paths)):
+                x = load_wav(paths[k])
+                for _ in range(max(1, len(x) // self.n)):  # roughly one pass over each recording
+                    s = int(rng.integers(0, max(1, len(x) - self.n)))
+                    y = np.pad(x[s:s + self.n], (0, max(0, self.n - len(x[s:s + self.n])))).astype(np.float32)
+                    if rng.random() < self.augment_p:
+                        y = augment(y, rng)
+                    yield {"wave": torch.from_numpy(y)}
+
+
 def uclass_split(speaker: str) -> str:
     return HELD_OUT_SPEAKERS.get(speaker) or split_of(speaker)
 

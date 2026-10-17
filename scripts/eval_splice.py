@@ -46,8 +46,24 @@ def recordings(root: Path) -> list:
     return sorted(p for p in root.rglob("*.wav") if "_edited" not in p.parts)
 
 
-def prepare(root: Path, ckpt: str):
+@torch.no_grad()
+def student_probs(student_ckpt: str, wavs: list):
+    from stutterclear.student_runtime import load_student
+    model = load_student(student_ckpt)
+    for w in wavs:
+        x = load_wav(w)
+        for la, logits in zip(model.lookaheads, model(torch.from_numpy(x)[None])):
+            p = torch.sigmoid(logits[0]).numpy()
+            aligned = np.zeros_like(p)
+            aligned[:len(p) - la] = p[la:]  # head row j describes frame j - lookahead
+            np.save(w.with_suffix(f".student_{la * 20}ms.npy"), aligned)
+        print("student:", w.name, flush=True)
+
+
+def prepare(root: Path, ckpt: str, student: str = None):
     wavs = recordings(root)
+    if student:
+        student_probs(student, wavs)
     todo = [w for w in wavs if not w.with_suffix(".teacher.npy").exists()]
     if todo:
         sys.path.insert(0, str(Path(__file__).parent))
@@ -73,10 +89,10 @@ def prepare(root: Path, ckpt: str):
             print("crisper:", w.name, flush=True)
 
 
-def load_set(root: Path) -> list:
+def load_set(root: Path, probs: str = "teacher") -> list:
     out = []
     for w in recordings(root):
-        out.append({"wav": w, "x": load_wav(w), "probs": np.load(w.with_suffix(".teacher.npy")),
+        out.append({"wav": w, "x": load_wav(w), "probs": np.load(w.with_suffix(f".{probs}.npy")),
                     "toks": label_tokens(json.loads(w.with_suffix(".crisper.json").read_text()))})
     return out
 
@@ -93,8 +109,8 @@ def pooled(rows: list, cfg: CutConfig) -> dict:
             "lost": round(100 * tot["n_lost"] / max(1, tot["n_fluent"]), 2), "per": per}
 
 
-def grid(root: Path):
-    rows = load_set(root)
+def grid(root: Path, probs: str = "teacher"):
+    rows = load_set(root, probs)
     for name, cfg in CUTS.items():
         p = pooled(rows, cfg)
         print(f"{name:8s} removed {p['removed']:5.1f}%  words lost {p['lost']:5.2f}%")
@@ -122,7 +138,7 @@ def grid(root: Path):
             front.append((removed, lost, cfg))
             print(f"  removed {removed:5.1f}%  lost {lost:5.2f}%  thr={cfg.thresholds} off={cfg.off_ratio} "
                   f"merge={cfg.merge_gap} snap={cfg.snap} last={cfg.keep_last_copy} max={cfg.max_cut_s}")
-    (root / "_grid.json").write_text(json.dumps(
+    (root / f"_grid_{probs}.json").write_text(json.dumps(
         [{"removed": r, "lost": l, "cfg": c.__dict__} for r, l, c in front], indent=1, default=list))
 
 
@@ -153,11 +169,26 @@ def wer(ref: list, hyp: list) -> float:
     return d[len(hyp)] / max(1, len(ref))
 
 
-def render(root: Path, cut_name: str, join_name: str, full: bool):
-    cfg = CUTS[cut_name] if cut_name in CUTS else CutConfig(**json.loads(cut_name))
+def oracle_cuts(toks: list) -> list:
+    """Cuts taken from the verbatim transcript itself: a stand-in for a near-perfect detector,
+    to show how far better detection could take the output."""
+    cuts = []
+    for i, t in enumerate(toks):
+        if t["label"] == "fluent":
+            continue
+        end = t["e"]
+        if i + 1 < len(toks) and 0 <= toks[i + 1]["s"] - end <= 0.3:
+            end = toks[i + 1]["s"]
+        cuts.append({"kind": t["label"], "start": t["s"], "end": end})
+    return cuts
+
+
+def render(root: Path, cut_name: str, join_name: str, full: bool, probs: str = "teacher"):
+    cfg = None if cut_name == "oracle" else CUTS[cut_name] if cut_name in CUTS else CutConfig(**json.loads(cut_name))
     jcfg = JOINS[join_name]
-    out_dir = root / "_edited" / f"{cut_name if cut_name in CUTS else 'custom'}+{join_name}"
-    rows = load_set(root)
+    tag = cut_name if cut_name in CUTS or cut_name == "oracle" else "balanced" if '"refine_long_s":0.8' in cut_name else "custom"
+    out_dir = root / "_edited" / f"{probs}+{tag}+{join_name}"
+    rows = load_set(root, probs)
     mos = utmos_model().to("cuda" if torch.cuda.is_available() else "cpu")
     dev = next(mos.parameters()).device
     cw = None
@@ -166,7 +197,7 @@ def render(root: Path, cut_name: str, join_name: str, full: bool):
         cw = CrisperWhisperModel("large", backend="transformers")
     table = []
     for r in rows:
-        cuts = cut_segments(r["probs"], cfg, r["x"])
+        cuts = oracle_cuts(r["toks"]) if cfg is None else cut_segments(r["probs"], cfg, r["x"])
         y = render_edited(r["x"], cuts, jcfg)
         dest = out_dir / r["wav"].relative_to(root)
         save_wav(dest, y)
@@ -203,14 +234,16 @@ def main():
     ap.add_argument("--cut", default="v3+last", help=f"{list(CUTS)} or a CutConfig JSON")
     ap.add_argument("--join", default="aligned", choices=list(JOINS))
     ap.add_argument("--full", action="store_true")
+    ap.add_argument("--student", help="student checkpoint: prepare also caches its per-lookahead probabilities")
+    ap.add_argument("--probs", default="teacher", help='"teacher" or e.g. "student_500ms"')
     args = ap.parse_args()
     root = Path(args.dir)
     if args.cmd == "prepare":
-        prepare(root, args.ckpt)
+        prepare(root, args.ckpt, args.student)
     elif args.cmd == "grid":
-        grid(root)
+        grid(root, args.probs)
     else:
-        render(root, args.cut, args.join, args.full)
+        render(root, args.cut, args.join, args.full, args.probs)
 
 
 if __name__ == "__main__":

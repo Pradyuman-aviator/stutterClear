@@ -1,0 +1,14 @@
+{
+  "id": "pradyumansharmaaa/stutterclear-student-v2",
+  "title": "stutterclear-student-v2",
+  "code_file": "run.py",
+  "language": "python",
+  "kernel_type": "script",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_internet": true,
+  "dataset_sources": [],
+  "competition_sources": [],
+  "kernel_sources": ["pradyumansharmaaa/stutterclear-teacher-v2"],
+  "machine_shape": "NvidiaTeslaT4"
+}

@@ -23,7 +23,7 @@ from eval_teacher import load_teacher  # noqa: E402
 from stutterclear.evaluation import clip_scores, predict_clips, report, tune_thresholds  # noqa: E402
 from stutterclear.student import CausalStudent, distill_loss, shifted  # noqa: E402
 from stutterclear.synth import CLASSES  # noqa: E402
-from stutterclear.train_data import Sep28kClips, SynthStutterStream, fixed_synth_set  # noqa: E402
+from stutterclear.train_data import Sep28kClips, SynthStutterStream, UclassCrops, fixed_synth_set  # noqa: E402
 from train_teacher import cycle  # noqa: E402
 
 
@@ -55,6 +55,8 @@ def main():
     ap.add_argument("--libri-train", required=True)
     ap.add_argument("--libri-val", required=True)
     ap.add_argument("--sep-dir")
+    ap.add_argument("--uclass-dir", help="unlabelled UCLASS recordings: distilled from the teacher (train speakers only)")
+    ap.add_argument("--uclass-batch", type=int, default=16)
     ap.add_argument("--steps", type=int, default=15000)
     ap.add_argument("--batch", type=int, default=16)
     ap.add_argument("--sep-batch", type=int, default=16)
@@ -91,6 +93,10 @@ def main():
                                 num_workers=args.workers, persistent_workers=args.workers > 0))
     val_synth = fixed_synth_set(val_files, args.val_n, args.crop_s)
     sep_it = val_sep = test_sep = None
+    uc_it = None
+    if args.uclass_dir:
+        uc_it = cycle(DataLoader(UclassCrops(args.uclass_dir, "train", args.crop_s, seed=2), batch_size=args.uclass_batch,
+                                 num_workers=args.workers, persistent_workers=args.workers > 0))
     if args.sep_dir:
         files = sorted(glob.glob(str(Path(args.sep_dir) / "**" / "*.parquet"), recursive=True))
         sep_it = cycle(DataLoader(Sep28kClips(files, "train"), batch_size=args.sep_batch, shuffle=True,
@@ -113,6 +119,9 @@ def main():
             loss = loss + args.clip_weight * sum(
                 torch.nn.functional.binary_cross_entropy(clip_scores(o).clamp(1e-6, 1 - 1e-6), clip_y)
                 for o in outs) / len(outs)
+        if uc_it is not None:  # real stuttered speech, labelled only by the teacher
+            wave = next(uc_it)["wave"].to(dev)
+            loss = loss + distill_loss(student(wave), student.lookaheads, teach(wave))
         loss.backward()
         torch.nn.utils.clip_grad_norm_(student.parameters(), 1.0)
         opt.step()
