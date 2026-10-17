@@ -33,7 +33,7 @@ export function SessionToast({ toast, onClose }: { toast: ToastData | null; onCl
             transition={{ type: "spring", stiffness: 320, damping: 24 }}
             onPointerEnter={() => window.clearTimeout(timer.current)}
             onPointerLeave={arm}
-            className="glass pointer-events-auto flex max-w-xl items-start gap-3 rounded-2xl py-3.5 pr-3 pl-4"
+            className="glass glass-blur pointer-events-auto flex max-w-xl items-start gap-3 rounded-2xl py-3.5 pr-3 pl-4"
           >
             {toast.kind === "summary" ? (
               <>

@@ -1,5 +1,5 @@
 import { useEffect, useRef, type RefObject } from "react"
-import { loudness, STEP_S, type LiveData } from "@/hooks/use-live"
+import { liveClock, loudness, STEP_S, type LiveData } from "@/hooks/use-live"
 import type { Signals } from "@/hooks/use-signals"
 import { KIND_LABEL, type Span } from "@/lib/api"
 
@@ -12,7 +12,6 @@ export const COLORS: Record<Layer, string> = {
   heard: "#5eead4",
 }
 
-const WINDOW_S = 10
 const PITCH = 3.5 // px per bar (bar + gap)
 const LABEL_H = 20
 const GAP_H = 30
@@ -30,7 +29,8 @@ function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
 const inside = (t: number, spans: Span[]) => spans.find((s) => t >= s.start && t <= s.end)
 
 // Two lanes on one clock: what you said (removed stutters in red, kept pauses in violet) and
-// what the listener hears a moment later. Scrolls at display rate, not message rate.
+// what the listener hears a moment later. Scrolls on a steady clock at the display's refresh
+// rate (60, 120, 144 Hz...), not at message rate. Shows 5 s on a phone up to 10 s on a desktop.
 // Hover anywhere for a time cursor.
 export function MirrorWaveform({
   data,
@@ -50,8 +50,9 @@ export function MirrorWaveform({
     const ctx = canvas.getContext("2d")!
     let w = 0
     let h = 0
+    let dpr = 1
     const fit = () => {
-      const dpr = window.devicePixelRatio || 1
+      dpr = window.devicePixelRatio || 1
       w = canvas.clientWidth
       h = canvas.clientHeight
       canvas.width = Math.round(w * dpr)
@@ -62,24 +63,31 @@ export function MirrorWaveform({
     const ro = new ResizeObserver(fit)
     ro.observe(canvas)
 
-    let hoverX: number | null = null
-    const onMove = (e: PointerEvent) => (hoverX = e.clientX - canvas.getBoundingClientRect().left)
-    const onLeave = () => (hoverX = null)
+    let hoverClientX: number | null = null // measured against the canvas once per frame
+    const onMove = (e: PointerEvent) => (hoverClientX = e.clientX)
+    const onLeave = () => (hoverClientX = null)
     canvas.addEventListener("pointermove", onMove)
     canvas.addEventListener("pointerleave", onLeave)
 
     const firstSeen = new WeakMap<Span, number>()
-    let clock = 0
+    const alphas: Record<Layer, number> = { you: 1, cut: 1, block: 1, heard: 1 }
+    let idleMix = 1
     let last = performance.now()
     let raf = 0
 
     const frame = (now: number) => {
       const dt = Math.min(0.05, (now - last) / 1000)
       last = now
+      if ((window.devicePixelRatio || 1) !== dpr) fit() // moved to another screen
       const d = data.current
       const sig = signals.current
       const hl = highlight.current
-      const alpha = (layer: Layer) => (!hl || hl === layer ? 1 : 0.18)
+      for (const layer of Object.keys(alphas) as Layer[]) {
+        const target = !hl || hl === layer ? 1 : 0.15
+        alphas[layer] += (target - alphas[layer]) * (1 - Math.exp(-dt * 12))
+      }
+      const alpha = (layer: Layer) => alphas[layer]
+      const hoverX = hoverClientX === null ? null : hoverClientX - canvas.getBoundingClientRect().left
 
       ctx.clearRect(0, 0, w, h)
       const laneH = (h - LABEL_H - GAP_H - 6) / 2
@@ -115,8 +123,11 @@ export function MirrorWaveform({
       ctx.lineCap = "round"
       ctx.lineWidth = 2.2
 
-      if (d.envIn.length === 0) {
-        // Waiting: a calm, breathing line instead of a dead box.
+      // Waiting: a calm, breathing line instead of a dead box. It fades out as live data arrives.
+      const hasData = d.envIn.length > 0 && d.clockOffset !== null
+      idleMix += ((hasData ? 0 : 1) - idleMix) * (1 - Math.exp(-dt * 5))
+      if (idleMix > 0.01) {
+        ctx.globalAlpha = idleMix
         const t = now / 1000
         for (const [c, color, ph] of [[c1, COLORS.you, 0], [c2, COLORS.heard, 1.7]] as const) {
           ctx.strokeStyle = rgba(color, 0.35)
@@ -134,19 +145,18 @@ export function MirrorWaveform({
         ctx.textAlign = "center"
         ctx.fillText("Your voice will appear here", w / 2, top2 - GAP_H / 2 + 4)
         ctx.textAlign = "left"
+        ctx.globalAlpha = 1
+      }
+      if (!hasData) {
         finish()
         raf = requestAnimationFrame(frame)
         return
       }
 
-      // Display clock: runs at frame rate and is gently pulled toward the newest data.
-      const target = latest + Math.min((now - d.receivedAt) / 1000, 0.1)
-      clock += dt
-      if (Math.abs(target - clock) > 0.4) clock = target
-      else clock += (target - clock) * (1 - Math.exp(-dt * 4))
-
-      const pxPerS = w / WINDOW_S
-      const t0 = clock - WINDOW_S
+      const clock = Math.min(liveClock(d, now), latest)
+      const windowS = Math.min(10, Math.max(5, w / 90))
+      const pxPerS = w / windowS
+      const t0 = clock - windowS
       const X = (t: number) => (t - t0) * pxPerS
       const sPerBar = PITCH / pxPerS
       const cuts = d.cuts.filter((c) => c.end > t0)

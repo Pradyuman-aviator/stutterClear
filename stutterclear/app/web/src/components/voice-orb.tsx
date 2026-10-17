@@ -1,8 +1,11 @@
-import { useEffect, useRef, type RefObject } from "react"
+import { lazy, Suspense, useEffect, useRef, type RefObject } from "react"
 import { motion, useReducedMotion, useSpring } from "motion/react"
-import { Orb } from "@/components/ui/orb"
 import type { Signals } from "@/hooks/use-signals"
+import { FOLLOW, rafThrottle, SPRING, useFinePointer } from "@/lib/motion"
 import { cn } from "@/lib/utils"
+
+// three.js is most of the bundle: load it after the page is up, the orb fades in when ready.
+const Orb = lazy(() => import("@/components/ui/orb").then((m) => ({ default: m.Orb })))
 
 const IDLE: [string, string] = ["#CADCFC", "#A0B9D1"]
 const LIVE: [string, string] = ["#A5C8FF", "#7FE3D6"]
@@ -32,10 +35,10 @@ export function VoiceOrb({
   const hover = useRef(0)
   const hoverTarget = useRef(0)
   const runningRef = useRef(running)
-  const spring = { stiffness: 120, damping: 14, mass: 0.8 }
-  const x = useSpring(0, spring)
-  const y = useSpring(0, spring)
-  const rot = useSpring(0, spring)
+  const fine = useFinePointer()
+  const x = useSpring(0, FOLLOW.parallax)
+  const y = useSpring(0, FOLLOW.parallax)
+  const rot = useSpring(0, FOLLOW.parallax)
 
   useEffect(() => {
     runningRef.current = running
@@ -77,8 +80,8 @@ export function VoiceOrb({
   }, [signals])
 
   useEffect(() => {
-    if (reduced) return
-    const onMove = (e: PointerEvent) => {
+    if (reduced || !fine) return
+    const onMove = rafThrottle((e: PointerEvent) => {
       const r = home.current?.getBoundingClientRect()
       if (!r) return
       const dx = (e.clientX - (r.left + r.width / 2)) / innerWidth
@@ -86,10 +89,13 @@ export function VoiceOrb({
       x.set(dx * 36)
       y.set(dy * 36)
       rot.set(dx * 8)
-    }
+    })
     addEventListener("pointermove", onMove)
-    return () => removeEventListener("pointermove", onMove)
-  }, [reduced, x, y, rot])
+    return () => {
+      onMove.cancel()
+      removeEventListener("pointermove", onMove)
+    }
+  }, [reduced, fine, x, y, rot])
 
   return (
     <div ref={home} className={cn("relative aspect-square", className)}>
@@ -105,20 +111,24 @@ export function VoiceOrb({
         onPointerEnter={() => (hoverTarget.current = 1)}
         onPointerLeave={() => (hoverTarget.current = 0)}
         style={{ x, y, rotate: rot }}
-        whileHover={{ scale: 1.04 }}
-        whileTap={{ scale: 0.95 }}
-        transition={{ type: "spring", stiffness: 300, damping: 14 }}
+        whileHover={{ scale: 1.035 }}
+        whileTap={{ scale: 0.96 }}
+        transition={SPRING.press}
         className="relative block size-full cursor-pointer rounded-full outline-none focus-visible:ring-2 focus-visible:ring-sky-300/70"
       >
         <span className="absolute inset-0 rounded-full bg-[radial-gradient(circle_at_30%_25%,rgb(255_255_255/0.08),transparent_60%)] shadow-[inset_0_0_0_1px_rgb(255_255_255/0.08),0_30px_80px_-20px_rgb(0_0_0/0.8)]" />
-        <Orb
-          className="pointer-events-none size-full"
-          luminous
-          colorsRef={colorsRef}
-          volumeMode="manual"
-          inputVolumeRef={inRef}
-          outputVolumeRef={outRef}
-        />
+        <Suspense
+          fallback={<span className="absolute inset-[6%] animate-pulse rounded-full bg-[radial-gradient(circle_at_40%_35%,rgb(202_220_252/0.35),rgb(160_185_209/0.08)_70%)]" />}
+        >
+          <Orb
+            className="pointer-events-none size-full"
+            luminous
+            colorsRef={colorsRef}
+            volumeMode="manual"
+            inputVolumeRef={inRef}
+            outputVolumeRef={outRef}
+          />
+        </Suspense>
       </motion.button>
     </div>
   )

@@ -46,7 +46,7 @@ export function LiquidSwitch({
         aria-hidden
         className="relative h-6 rounded-full bg-white shadow-[0_2px_8px_rgb(0_0_0/0.35)]"
         animate={{ width: pressed ? 30 : 24 }}
-        transition={{ type: "spring", stiffness: 600, damping: 30 }}
+        transition={{ type: "spring", stiffness: 520, damping: 34 }}
       />
     </button>
   )

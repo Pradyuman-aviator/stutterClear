@@ -3,7 +3,8 @@ import type { Signals } from "@/hooks/use-signals"
 
 // Full-screen liquid gradient: domain-warped simplex noise. The surface bulges under the cursor
 // (more when it moves fast), every click sends a ripple, and the flow speeds up and brightens
-// with your voice. Rendered at half resolution: it is soft by design, and that keeps it cheap.
+// with your voice. Rendered at half resolution (it is soft by design), and lower still if the
+// GPU cannot keep up, so the page never stutters for the sake of the background.
 
 const VERT = `#version 300 es
 in vec2 p;
@@ -114,7 +115,6 @@ void main() {
   outColor = vec4(col, 1.0);
 }`
 
-const SCALE = 0.5
 
 function compile(gl: WebGL2RenderingContext, type: number, src: string) {
   const s = gl.createShader(type)!
@@ -172,9 +172,10 @@ export function LiquidBackground({ signals }: { signals: RefObject<Signals> }) {
     addEventListener("pointerdown", onDown)
     document.documentElement.addEventListener("pointerleave", onLeave)
 
+    let scale = 0.5
     const resize = () => {
-      canvas.width = Math.max(1, Math.round(innerWidth * SCALE))
-      canvas.height = Math.max(1, Math.round(innerHeight * SCALE))
+      canvas.width = Math.max(1, Math.round(innerWidth * scale))
+      canvas.height = Math.max(1, Math.round(innerHeight * scale))
       gl.viewport(0, 0, canvas.width, canvas.height)
     }
     resize()
@@ -182,9 +183,20 @@ export function LiquidBackground({ signals }: { signals: RefObject<Signals> }) {
 
     let raf = 0
     let last = performance.now()
+    let slow = 0 // smoothed frame time, s
+    let checkAt = performance.now() + 3000
     const frame = (now: number) => {
-      const dt = Math.min(0.05, (now - last) / 1000)
+      const raw = (now - last) / 1000
+      const dt = Math.min(0.05, raw)
       last = now
+      if (raw < 0.25) slow += (raw - slow) * 0.05 // ignore tab switches
+      if (now > checkAt) {
+        checkAt = now + 2000
+        if (slow > 1 / 45 && scale > 0.26) {
+          scale *= 0.75
+          resize()
+        }
+      }
       // The bulge glides after the cursor; the gap between them is how fast it is moving.
       const k = 1 - Math.exp(-dt * 5)
       mouse.x += (target.x - mouse.x) * k

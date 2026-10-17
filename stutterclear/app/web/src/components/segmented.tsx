@@ -1,5 +1,6 @@
 import { useId, useState, type ReactNode } from "react"
 import { motion } from "motion/react"
+import { SPRING } from "@/lib/motion"
 import { cn } from "@/lib/utils"
 
 export interface SegmentOption<T extends string> {
@@ -7,7 +8,7 @@ export interface SegmentOption<T extends string> {
   label: ReactNode
 }
 
-// Pill switcher: the selected pill slides (and wobbles) between options on a spring, and a
+// Pill switcher: the selected pill glides between options on a spring, and a
 // softer hover pill glides after the cursor.
 export function Segmented<T extends string>({
   value,
@@ -47,10 +48,10 @@ export function Segmented<T extends string>({
             aria-checked={on}
             onPointerEnter={() => setHover(o.value)}
             onClick={() => onChange(o.value)}
-            whileTap={{ scale: 0.92 }}
-            transition={{ type: "spring", stiffness: 500, damping: 18 }}
+            whileTap={{ scale: 0.95 }}
+            transition={SPRING.press}
             className={cn(
-              "relative flex-1 cursor-pointer rounded-full px-4 py-1.5 text-sm font-medium whitespace-nowrap transition-colors duration-300",
+              "relative flex-1 cursor-pointer rounded-full px-4 py-1.5 text-sm font-medium whitespace-nowrap transition-colors duration-300 hover:duration-100",
               "outline-none focus-visible:ring-2 focus-visible:ring-sky-300/60",
               on ? "text-white" : "text-white/55 hover:text-white/85"
             )}
@@ -59,14 +60,14 @@ export function Segmented<T extends string>({
               <motion.span
                 layoutId={`${id}-hover`}
                 className="absolute inset-0 rounded-full bg-white/[0.06]"
-                transition={{ type: "spring", stiffness: 450, damping: 38 }}
+                transition={SPRING.glide}
               />
             )}
             {on && (
               <motion.span
                 layoutId={`${id}-pill`}
                 className={cn("absolute inset-0 rounded-full", pillClassName)}
-                transition={{ type: "spring", stiffness: 380, damping: 24, mass: 0.8 }}
+                transition={SPRING.glide}
               />
             )}
             <span className="relative">{o.label}</span>

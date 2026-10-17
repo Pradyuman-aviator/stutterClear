@@ -30,6 +30,8 @@ export interface Tick {
   n_cuts: number
   detector: string
   detect_ms: number
+  in_start: number // index of env_in[0] since the session started
+  out_start: number
   env_in: number[] // 10 ms peak envelopes
   env_out: number[]
   cuts: Span[]
@@ -41,6 +43,8 @@ export interface StartBody {
   detector: DetectorKind
   in_device: number | null
   out_device: number | null
+  in_name: string | null // the server matches names, since Windows renumbers devices
+  out_name: string | null
   save: boolean
 }
 
@@ -56,7 +60,10 @@ export interface Summary {
 
 async function json<T>(r: Promise<Response>): Promise<T> {
   const res = await r
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
+  if (!res.ok) {
+    const detail = await res.json().then((b) => b?.detail).catch(() => null)
+    throw new Error(typeof detail === "string" ? detail : `${res.status} ${res.statusText}`)
+  }
   return res.json() as Promise<T>
 }
 

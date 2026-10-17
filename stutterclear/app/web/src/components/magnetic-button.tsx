@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type PointerEvent, type ReactNode } from "react"
 import { AnimatePresence, motion, useReducedMotion, useSpring } from "motion/react"
+import { EASE_OUT, FOLLOW, rafThrottle, SPRING, useFinePointer } from "@/lib/motion"
 import { cn } from "@/lib/utils"
 
 interface Ripple {
@@ -35,11 +36,11 @@ export function MagneticButton({
 }) {
   const btn = useRef<HTMLButtonElement>(null)
   const reduced = useReducedMotion()
-  const spring = { stiffness: 260, damping: 16, mass: 0.5 }
-  const x = useSpring(0, spring)
-  const y = useSpring(0, spring)
-  const ix = useSpring(0, spring)
-  const iy = useSpring(0, spring)
+  const fine = useFinePointer()
+  const x = useSpring(0, FOLLOW.magnet)
+  const y = useSpring(0, FOLLOW.magnet)
+  const ix = useSpring(0, FOLLOW.magnet)
+  const iy = useSpring(0, FOLLOW.magnet)
   const [fill, setFill] = useState({ x: 0, y: 0, on: false })
   const [ripples, setRipples] = useState<Ripple[]>([])
 
@@ -52,9 +53,9 @@ export function MagneticButton({
   // nothing overlaps neighbouring controls.
   const home = useRef<HTMLSpanElement>(null)
   useEffect(() => {
-    if (disabled || reduced) return
+    if (disabled || reduced || !fine) return
     let pulled = false
-    const onMove = (e: globalThis.PointerEvent) => {
+    const onMove = rafThrottle((e: globalThis.PointerEvent) => {
       const r = home.current?.getBoundingClientRect()
       if (!r) return
       const inside =
@@ -75,10 +76,13 @@ export function MagneticButton({
         iy.set(0)
         pulled = false
       }
-    }
+    })
     addEventListener("pointermove", onMove)
-    return () => removeEventListener("pointermove", onMove)
-  }, [disabled, reduced, reach, strength, x, y, ix, iy])
+    return () => {
+      onMove.cancel()
+      removeEventListener("pointermove", onMove)
+    }
+  }, [disabled, reduced, fine, reach, strength, x, y, ix, iy])
 
   return (
     <span ref={home} className="inline-flex">
@@ -89,9 +93,9 @@ export function MagneticButton({
         onClick={onClick}
         {...aria}
         style={{ x, y }}
-        whileHover={disabled ? undefined : { scale: 1.035 }}
-        whileTap={disabled ? undefined : { scale: 0.93 }}
-        transition={{ type: "spring", stiffness: 420, damping: 14 }}
+        whileHover={disabled ? undefined : { scale: 1.03 }}
+        whileTap={disabled ? undefined : { scale: 0.95 }}
+        transition={SPRING.press}
         onPointerEnter={(e) => {
           if (!disabled) setFill({ ...local(e), on: true })
         }}
@@ -120,7 +124,7 @@ export function MagneticButton({
             marginLeft: -300,
             marginTop: -300,
             transform: `scale(${fill.on ? 1 : 0})`,
-            transition: "transform 650ms cubic-bezier(0.22, 1, 0.36, 1)",
+            transition: `transform ${fill.on ? 550 : 750}ms cubic-bezier(0.22, 1, 0.36, 1)`,
           }}
         />
         <AnimatePresence>
@@ -132,7 +136,7 @@ export function MagneticButton({
               style={{ left: r.x - r.size / 2, top: r.y - r.size / 2, width: r.size, height: r.size }}
               initial={{ scale: 0, opacity: 0.55 }}
               animate={{ scale: 1, opacity: 0 }}
-              transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
+              transition={{ duration: 0.8, ease: EASE_OUT }}
               onAnimationComplete={() => setRipples((rs) => rs.filter((q) => q.id !== r.id))}
             />
           ))}

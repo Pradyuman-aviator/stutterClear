@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react"
 import type { Span, Tick } from "@/lib/api"
+import { createStore } from "@/lib/store"
 
 export const STEP_S = 0.01 // one envelope point per 10 ms
 const KEEP = 3000 // points kept per lane (30 s)
@@ -14,6 +15,7 @@ export interface LiveData {
   cuts: Span[]
   events: Span[]
   receivedAt: number // performance.now() of the last message
+  clockOffset: number | null // data time minus performance.now(), in s, smoothed over messages
   level: number // mic peak of the last message, 0..1 on a perceptual scale
   outLevel: number
   lastCutAt: number // performance.now() of the newest cut, -Infinity if none
@@ -31,7 +33,7 @@ export interface Stats {
 }
 
 const fresh = (): LiveData => ({
-  envIn: [], envOut: [], inOffset: 0, outOffset: 0, cuts: [], events: [], receivedAt: 0,
+  envIn: [], envOut: [], inOffset: 0, outOffset: 0, cuts: [], events: [], receivedAt: 0, clockOffset: null,
   level: 0, outLevel: 0, lastCutAt: -Infinity, lastCutKind: "", lastBlockAt: -Infinity, cutCount: 0,
 })
 
@@ -47,9 +49,16 @@ function trim(env: number[], offset: number): [number[], number] {
   return [env.slice(drop), offset + drop]
 }
 
+// Data time to draw at `now`: a steady clock a little behind the newest data, so the waveform
+// scrolls at exactly real time and never waits for the next message.
+export const PLAYBACK_DELAY_S = 0.15
+export function liveClock(d: LiveData, now: number) {
+  return d.clockOffset === null ? 0 : now / 1000 + d.clockOffset - PLAYBACK_DELAY_S
+}
+
 export function useLive() {
   const data = useRef<LiveData>(fresh())
-  const [stats, setStats] = useState<Stats | null>(null)
+  const [stats] = useState(() => createStore<Stats | null>(null))
   const [connected, setConnected] = useState(false)
   const [serverRunning, setServerRunning] = useState(false)
 
@@ -84,6 +93,16 @@ export function useLive() {
         const d = data.current
         const tick = msg as Tick
         const now = performance.now()
+        // Joined mid-session, or missed messages: restart the lane at the server's index so the
+        // waveform and the cut times stay on the same clock.
+        if (tick.in_start !== d.inOffset + d.envIn.length) {
+          d.envIn = []
+          d.inOffset = tick.in_start
+        }
+        if (tick.out_start !== d.outOffset + d.envOut.length) {
+          d.envOut = []
+          d.outOffset = tick.out_start
+        }
         d.envIn.push(...tick.env_in)
         d.envOut.push(...tick.env_out)
         ;[d.envIn, d.inOffset] = trim(d.envIn, d.inOffset)
@@ -104,9 +123,12 @@ export function useLive() {
         d.level = loudness(Math.max(0, ...tick.env_in))
         d.outLevel = loudness(Math.max(0, ...tick.env_out))
         d.receivedAt = now
+        const est = (d.inOffset + d.envIn.length) * STEP_S - now / 1000
+        if (d.clockOffset === null || Math.abs(est - d.clockOffset) > 0.3) d.clockOffset = est
+        else d.clockOffset += (est - d.clockOffset) * 0.05
         if (now - lastStats > 100) {
           lastStats = now
-          setStats({ lag_ms: tick.lag_ms, n_cuts: tick.n_cuts, removed_s: tick.removed_s,
+          stats.set({ lag_ms: tick.lag_ms, n_cuts: tick.n_cuts, removed_s: tick.removed_s,
                      detect_ms: tick.detect_ms, detector: tick.detector })
         }
       }
@@ -117,11 +139,11 @@ export function useLive() {
       window.clearTimeout(retry)
       ws?.close()
     }
-  }, [])
+  }, [stats])
 
   const reset = () => {
     data.current = fresh()
-    setStats(null)
+    stats.set(null)
   }
 
   return { data, stats, connected, serverRunning, reset }

@@ -10,7 +10,7 @@ function Digit({ d }: { d: number }) {
         className="flex flex-col"
         initial={false}
         animate={{ y: `${-d * 10}%` }}
-        transition={{ type: "spring", stiffness: 170, damping: 20, mass: 0.7 }}
+        transition={{ type: "spring", stiffness: 140, damping: 24, mass: 0.9 }}
       >
         {DIGITS.map((n) => (
           <span key={n} className="block h-[1em] leading-none">
