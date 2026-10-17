@@ -11,9 +11,13 @@
 import argparse
 from pathlib import Path
 
+import urllib.request
+
 from huggingface_hub import snapshot_download
 
 ROOT = Path(__file__).resolve().parents[1] / "data"
+SEP_E_URL = ("https://raw.githubusercontent.com/th-nuernberg/ml-stuttering-events-dataset-extended/"
+             "main/SEP-28k-Extended_clips.csv")
 
 
 def main():
@@ -33,7 +37,9 @@ def main():
     if not args.small:
         snapshot_download("saeedzou/sep28k-fluencybank-stutter-dataset", repo_type="dataset",
                           allow_patterns=["data/*.parquet", "README.md"], local_dir=ROOT / "sep28k-fluencybank")
-        print("sep28k-fluencybank done", flush=True)
+        # Official speaker-exclusive SEP-28k-E partition (Bayerl et al. 2022, CC BY-NC 4.0).
+        urllib.request.urlretrieve(SEP_E_URL, ROOT / "sep28k-fluencybank" / "SEP-28k-Extended_clips.csv")
+        print("sep28k-fluencybank done (with SEP-28k-E partition)", flush=True)
 
 
 if __name__ == "__main__":

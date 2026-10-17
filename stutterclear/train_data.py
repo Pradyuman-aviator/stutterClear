@@ -92,12 +92,40 @@ def split_of(group: str) -> str:
     return "val" if h < 15 else "test" if h < 30 else "train"
 
 
+SEP_E_FILE = "SEP-28k-Extended_clips.csv"  # Bayerl et al. 2022, speaker-exclusive SEP-28k partition
+
+
+def load_sep28k_e(folder) -> dict:
+    """{(show, ep, clip): train|val|test} from the official SEP-28k-E partition, if present.
+    Published results use this split, so SEP-28k numbers stay comparable."""
+    hits = sorted(Path(folder).rglob(SEP_E_FILE))
+    if not hits:
+        return {}
+    import csv
+    names = {"train": "train", "dev": "val", "test": "test"}
+    with open(hits[0], encoding="utf-8") as f:
+        return {(r["Show"], int(r["EpId"]), int(r["ClipId"])): names[r["SEP28k-E"]] for r in csv.DictReader(f)}
+
+
 class Sep28kClips(Dataset):
     """Real 3 s clips with clip labels; clips that have verbatim word timings (`silver`, keyed
     "<parquet name>:<row>") also get frame labels for the classes a transcript can mark."""
 
     def __init__(self, files, split: str = "train", augment_p: float = 0.5, seed: int = 0, silver=None):
-        cols = ["audio", "Show", "EpId", *SEP_COLUMNS, "PoorAudioQuality", "Music", "NoSpeech"]
+        cols = ["audio", "Show", "EpId", "ClipId", *SEP_COLUMNS, "PoorAudioQuality", "Music", "NoSpeech"]
+        # SEP-28k clips follow the official SEP-28k-E partition when its CSV sits next to the data;
+        # FluencyBank (no official partition) and anything unmatched are split by speaker group.
+        official = load_sep28k_e(Path(files[0]).parent.parent) if files else {}
+        self.split_source = "SEP-28k-E" if official else "speaker hash"
+
+        def split_for(d, i):
+            show = d["Show"][i]
+            if show != "FluencyBank":
+                part = official.get((show, d["EpId"][i], d["ClipId"][i]))
+                if part:
+                    return part
+            return split_of(speaker_group(show, d["EpId"][i]))
+
         # Audio stays as one Arrow array per file (not Python objects, so forked DataLoader workers
         # share it; not one merged array, because the full column exceeds Arrow's 2 GB offset limit).
         self.audio, self.index, labels, groups, self.silver_words = [], [], [], set(), []
@@ -106,7 +134,7 @@ class Sep28kClips(Dataset):
             d = t.drop_columns(["audio"]).to_pydict()
             keep = [i for i in range(t.num_rows)
                     if d["PoorAudioQuality"][i] < 2 and d["Music"][i] < 2 and d["NoSpeech"][i] < 2
-                    and split_of(speaker_group(d["Show"][i], d["EpId"][i])) == split]
+                    and split_for(d, i) == split]
             if not keep:  # this file has no speakers in this split
                 continue
             self.audio.append(t.column("audio").take(pa.array(keep, pa.int64())).combine_chunks())

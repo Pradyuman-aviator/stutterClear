@@ -9,6 +9,8 @@
   "enable_internet": true,
   "dataset_sources": [],
   "competition_sources": [],
-  "kernel_sources": ["pradyumansharmaaa/stutterclear-teacher", "pradyumansharmaaa/stutterclear-silver-labels"],
+  "kernel_sources": [
+    "pradyumansharmaaa/stutterclear-silver-labels"
+  ],
   "machine_shape": "NvidiaTeslaT4"
 }

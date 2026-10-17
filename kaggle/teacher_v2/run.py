@@ -1,9 +1,11 @@
 """Kaggle job: teacher v2 on both T4s (DDP).
 
-Starts from teacher v1 and adds generator v2 (rapid repeats, phrase repeats, fillers, clusters),
-UCLASS recordings and SEP-28k clips with CrisperWhisper silver frame labels. Checkpoints are
-chosen on real speech only. Inputs (kernel_sources): stutterclear-teacher (best.pt) and
-stutterclear-silver-labels (words_*.jsonl).
+Trained from the pretrained WavLM-Large, not from teacher v1: v1 used a different split and saw
+speakers of the official SEP-28k-E test set, which would leak into v2's test score. Adds
+generator v2 (rapid repeats, phrase repeats, fillers, clusters), UCLASS recordings and SEP-28k
+clips with CrisperWhisper silver frame labels; SEP-28k is split by the official SEP-28k-E
+partition. Checkpoints are chosen on real speech only.
+Input (kernel_sources): stutterclear-silver-labels (words_*.jsonl).
 Pushed with:  kaggle kernels push -p kaggle/teacher_v2
 """
 import glob
@@ -18,11 +20,9 @@ def sh(cmd):
     subprocess.run(cmd, shell=True, check=True)
 
 
-init = [p for p in glob.glob("/kaggle/input/**/best.pt", recursive=True) if "teacher" in p]
 silver = sorted(glob.glob("/kaggle/input/**/words_*.jsonl", recursive=True))
-assert init, "teacher v1 checkpoint not found under /kaggle/input"
 assert silver, "silver labels not found under /kaggle/input"
-print("init:", init[0], "| silver:", silver, flush=True)
+print("silver:", silver, flush=True)
 
 tmp = "/kaggle/tmp" if os.path.isdir("/kaggle/tmp") else "/tmp"
 code, data = f"{tmp}/stutterClear", f"{tmp}/data"
@@ -38,9 +38,9 @@ sh(
     f" --libri-train '{data}/librispeech-alignments/data/train_clean_100-*.parquet'"
     f" --libri-val '{data}/librispeech-alignments/data/dev_clean-*.parquet'"
     f" --sep-dir {data}/sep28k-fluencybank --uclass-dir {data}/uclass_all"
-    f" --silver {' '.join(silver)} --init-ckpt {init[0]}"
+    f" --silver {' '.join(silver)}"
     " --backbone microsoft/wavlm-large --grad-ckpt"
-    " --steps 6000 --batch 6 --sep-batch 6 --uclass-batch 6"
-    " --freeze-steps 0 --warmup 300 --lr-backbone 2e-5 --lr-head 3e-4"
-    " --workers 3 --eval-every 750 --val-n 300 --max-hours 10.5 --out /kaggle/working/teacher_v2"
+    " --steps 10000 --batch 6 --sep-batch 6 --uclass-batch 6"
+    " --freeze-steps 500 --warmup 500"
+    " --workers 3 --eval-every 1000 --val-n 300 --max-hours 10.5 --out /kaggle/working/teacher_v2"
 )
