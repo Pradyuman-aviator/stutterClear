@@ -198,7 +198,7 @@ class UclassSilver(Dataset):
 
     def __init__(self, records: dict, wav_root, split: str, crop_s: float = 6.0, augment_p: float = 0.5,
                  seed: int = 0, fixed: bool = False):
-        paths = {p.name: p for p in Path(wav_root).rglob("*.wav")}
+        paths = {p.relative_to(wav_root).as_posix(): p for p in Path(wav_root).rglob("*.wav")}
         recs = [r for r in records.values() if r["source"] == "uclass" and r["file"] in paths
                 and uclass_split(r["speaker"]) == split]
         self.n = int(crop_s * SR) // FRAME * FRAME

@@ -28,6 +28,12 @@ def uclass_speaker(name: str) -> str:
     return "uclass/" + "_".join(Path(name).stem.split("_")[:2])  # e.g. M_0065_20y1m_1 -> M_0065
 
 
+def record_name(source: str, file: str, args) -> str:
+    """UCLASS: path under the UCLASS root ("monologue/M_0065_20y1m_1.wav"), because the same file
+    name can be a different recording in another task folder. SEP: the parquet file name."""
+    return Path(file).relative_to(args.uclass).as_posix() if source == "uclass" else Path(file).name
+
+
 def tasks(args) -> list:
     out = []
     if args.uclass:
@@ -66,7 +72,7 @@ def main():
     path = out / f"words_{args.shard}.jsonl"
     done = {json.loads(line)["id"] for line in open(path)} if path.exists() else set()
     mine = tasks(args)[args.shard::args.nshard][: args.limit]
-    todo = [t for t in mine if f"{Path(t[1]).name}:{t[2]}" not in done]
+    todo = [t for t in mine if f"{record_name(t[0], t[1], args)}:{t[2]}" not in done]
     print(f"shard {args.shard}/{args.nshard}: {len(mine)} items, {len(todo)} to do", flush=True)
 
     tables, t0, audio_s = {}, time.time(), 0.0
@@ -87,7 +93,8 @@ def main():
             except Exception as e:  # one bad clip must not stop a multi-hour job
                 print(f"failed {file}:{row}: {e}", flush=True)
                 continue
-            f.write(json.dumps({"id": f"{Path(file).name}:{row}", "source": source, "file": Path(file).name,
+            name = record_name(source, file, args)
+            f.write(json.dumps({"id": f"{name}:{row}", "source": source, "file": name,
                                 "row": row, "speaker": speaker, "duration": round(len(x) / 16000, 2),
                                 "words": words}) + "\n")
             f.flush()

@@ -4,7 +4,8 @@
     python scripts/download_uclass.py --root data/external --limit 3
 
 Free for research and teaching; acknowledge UCLASS and the Wellcome Trust (Howell, Davis &
-Bartrip 2009, JSLHR 52, 556-569). Recordings that appear in both releases are fetched once.
+Bartrip 2009, JSLHR 52, 556-569). Files are saved as <task>/<name>: the same file name can be a
+different recording in another task folder (e.g. a monologue and a reading).
 """
 import argparse
 import re
@@ -13,7 +14,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 BASE = "https://www.uclass.psychol.ucl.ac.uk/"
-FOLDERS = {  # later entries win when a file name repeats
+FOLDERS = {
     "release1": "Audio/wav/",
     "conversation": "Release2/Conversation/AudioOnly/wav/",
     "reading": "Release2/Reading/AudioOnly/wav/",
@@ -36,11 +37,11 @@ def main():
     jobs = {}
     for task, folder in FOLDERS.items():
         for name in listing(folder):
-            jobs[name] = (task, BASE + folder + name)
+            jobs[(task, name)] = BASE + folder + name
     items = sorted(jobs.items())[: args.limit] if args.limit else sorted(jobs.items())
 
     def fetch(item):
-        name, (task, url) = item
+        (task, name), url = item
         dest = out / task / name
         if dest.exists() and dest.stat().st_size > 0:
             return 0
