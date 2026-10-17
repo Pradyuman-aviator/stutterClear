@@ -15,6 +15,7 @@ from fastapi.staticfiles import StaticFiles
 import numpy as np
 from pydantic import BaseModel
 
+from .. import nemotron
 from ..audio import wav_bytes
 from ..config import SAMPLE_RATE as SR
 from ..live import DEFAULT_STUDENT, LiveSession, detectors, devices, recommended, student_eval
@@ -114,7 +115,7 @@ def list_devices():
 def info():
     # The AI detector needs its downloaded checkpoint; its measured quality (if evaluated) lets the
     # page recommend it only when it is actually better.
-    from .. import captions, context_agent, nemotron
+    from .. import captions, context_agent
     return {"student": DEFAULT_STUDENT.exists(), "student_eval": student_eval(), "notes": notes.available(),
             "captions": captions.available(), "rescue": nemotron.available(), "nemotron": nemotron.available(),
             "search": context_agent.search_available(), "model": nemotron.MODEL, "hosted": HOSTED,
@@ -129,7 +130,7 @@ class ContextRequest(BaseModel):
 @app.post("/api/context")
 def prepare_context(req: ContextRequest):
     """Nemotron (with Tavily search when a key is set) writes a context card for the situation."""
-    from .. import context_agent, nemotron
+    from .. import context_agent
     if not nemotron.available():
         raise HTTPException(503, "The context agent needs NEBIUS_API_KEY set where the app runs.")
     try:
@@ -149,7 +150,7 @@ class InsightsRequest(BaseModel):
 @app.post("/api/insights")
 def session_insights(req: InsightsRequest):
     """Three short, supportive points about a session or voice note, from Nemotron (text only)."""
-    from .. import insights, nemotron
+    from .. import insights
     if not nemotron.available():
         raise HTTPException(503, "Insights need NEBIUS_API_KEY set where the app runs.")
     try:
