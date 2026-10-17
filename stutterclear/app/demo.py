@@ -1,7 +1,10 @@
 """'Try a real recording': short excerpts of UCLASS recordings from adult speakers, cleaned by one of
-two engines, served as a timeline the page replays in sync with the audio (no mic needed).
+three engines, served as a timeline the page replays in sync with the audio (no mic needed).
 
-- best: the offline teacher model with the balanced cut settings, as for recorded voice notes
+- natural: the offline teacher model, cutting the way that sounds best by ear (fillers kept, edges
+  in quiet moments, stutters removed in one piece)
+- thorough: the offline teacher with the balanced settings (removes more, including fillers, but
+  makes more joins inside speech)
 - live: the real-time pipeline exactly as a call gets it (delay buffer, online detector, splicer)
 
 The audio is read from the local UCLASS download (data/external) and never committed: UCLASS is
@@ -16,7 +19,7 @@ import numpy as np
 from ..audio import load_wav
 from ..config import HOP, SAMPLE_RATE as SR
 from ..pipeline import stream
-from ..segments import BALANCED_CUTS, JoinConfig, cut_segments, render_edited
+from ..segments import BALANCED_CUTS, NATURAL_CUTS, SMOOTH_JOIN, JoinConfig, cut_segments, render_edited, smooth_cuts
 
 DATA = Path(__file__).resolve().parents[2] / "data" / "external"
 SAMPLES = {s["id"]: s for s in json.loads(Path(__file__).with_name("demo_samples.json").read_text())}
@@ -31,7 +34,7 @@ def _wav(sample: dict) -> Path:
 
 
 def engines(sample: dict) -> list:
-    out = ["best"] if _wav(sample).with_suffix(".teacher.npy").exists() else []
+    out = ["natural", "thorough"] if _wav(sample).with_suffix(".teacher.npy").exists() else []
     return out + ["live"]
 
 
@@ -65,13 +68,21 @@ def render(sid: str, engine: str) -> dict:
     """Timeline for the page plus the original and cleaned audio of one sample."""
     s = SAMPLES[sid]
     x = _excerpt(sid)
-    if engine == "best":
+    if engine in ("natural", "thorough"):
         probs = np.load(_wav(s).with_suffix(".teacher.npy"))
         f0 = int(round(s["start"] * SR / TEACHER_FRAME))
         probs = probs[f0: f0 + len(x) // TEACHER_FRAME]
-        cuts = [{"kind": c["kind"], "start": c["start"], "end": c["end"]} for c in cut_segments(probs, BALANCED_CUTS, x)]
-        y = render_edited(x, cuts, JoinConfig(xfade_ms=10.0))
-        events, meta = [], {"detector": "teacher", "label": "Best quality · offline model", "lag_ms": 0, "detect_ms": 0.0}
+        if engine == "natural":
+            cuts = cut_segments(probs, NATURAL_CUTS, x)
+            join, label = JoinConfig(xfade_ms=5.0), "Natural · offline model"
+        else:
+            # Merge cuts split by a sliver of audio and put a short pause where speech meets
+            # speech: the measured fix for the jumps balanced cuts make (scripts/join_quality.py).
+            cuts = smooth_cuts(cut_segments(probs, BALANCED_CUTS, x), x, merge_ms=150.0, snap_ms=0.0)
+            join, label = SMOOTH_JOIN, "Thorough · offline model"
+        cuts = [{"kind": c["kind"], "start": c["start"], "end": c["end"]} for c in cuts]
+        y = render_edited(x, cuts, join)
+        events, meta = [], {"detector": "teacher", "label": label, "lag_ms": 0, "detect_ms": 0.0}
     elif engine == "live":
         detector, name = _live_detector()
         pipe, y = stream(x, "trim", detector)  # Gentle mode's preset

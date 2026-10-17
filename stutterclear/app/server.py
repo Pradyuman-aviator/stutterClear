@@ -161,12 +161,12 @@ def _demo(sid: str, engine: str) -> dict:
 
 
 @app.get("/api/demo/{sid}")
-def demo_timeline(sid: str, engine: str = "best"):
+def demo_timeline(sid: str, engine: str = "natural"):
     return _demo(sid, engine)["timeline"]
 
 
 @app.get("/api/demo/{sid}/{which}.wav")
-def demo_audio(sid: str, which: str, engine: str = "best"):
+def demo_audio(sid: str, which: str, engine: str = "natural"):
     if which not in ("original", "clean"):
         raise HTTPException(404, "No such track.")
     return Response(wav_bytes(_demo(sid, engine)[which]), media_type="audio/wav",

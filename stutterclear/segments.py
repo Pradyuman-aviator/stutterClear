@@ -47,6 +47,12 @@ MIN_FRAMES = CutConfig.min_frames
 # about 6% of words lost. Used live by the student detector and offline for recordings.
 BALANCED_CUTS = CutConfig(thresholds=(0.4, 0.35, 0.5, 0.5, 0.4), off_ratio=0.35, merge_gap=5, snap=0,
                           refine_long_s=0.8, prolong_keep_ms=100.0, prolong_tail_ms=40.0)
+
+# What the first teacher edits used, and what sounds best by ear: fillers are left alone, cut edges
+# snap to the nearest quiet moment, stretched sounds and long stutters go in one piece. Every
+# balanced refinement adds a join inside speech, and joins inside speech are what jerk.
+NATURAL_CUTS = CutConfig(thresholds=(0.4, 0.35, 0.5, 0.5, 0.4), kinds=("sound_rep", "word_rep", "prolongation"),
+                         off_ratio=0.5, merge_gap=10, snap=8, refine_long_s=1e9, prolong_keep_ms=0.0)
 REPEATS = ("sound_rep", "word_rep")
 
 
@@ -166,12 +172,56 @@ def cut_segments(probs, thresholds_or_cfg, x, kinds=None) -> list:
 
 # ---- offline rendering -------------------------------------------------------------------------
 
+def smooth_cuts(cuts: list, x: np.ndarray, merge_ms: float = 150.0, snap_ms: float = 50.0) -> list:
+    """Tidy cut edges so joins land in quiet: merge cuts separated by a sliver of audio (on its own
+    it plays as a blip), then move each edge to the quietest 10 ms within snap_ms, which is
+    usually the gap between two sounds rather than the middle of one."""
+    out = [dict(c) for c in sorted(cuts, key=lambda c: c["start"])]
+
+    def merge(cs):
+        merged = []
+        for c in cs:
+            if merged and c["start"] - merged[-1]["end"] < merge_ms / 1000:
+                merged[-1]["end"] = max(merged[-1]["end"], c["end"])
+            else:
+                merged.append(c)
+        return merged
+
+    if merge_ms:
+        out = merge(out)
+    if snap_ms and out:
+        hop = 160
+        n = len(x) // hop
+        e = 10 * np.log10(np.mean(x[: n * hop].astype(np.float64).reshape(n, hop) ** 2, axis=1) + 1e-12)
+        w = int(snap_ms / 10)
+        for c in out:
+            for key in ("start", "end"):
+                f = int(round(c[key] * SR / hop))
+                lo, hi = max(0, f - w), min(n, f + w + 1)
+                if hi > lo:
+                    f = lo + int(np.argmin(e[lo:hi]))
+                c[key] = round(f * hop / SR, 3)
+        out = [c for c in out if c["end"] - c["start"] >= 0.04]
+        if merge_ms:
+            out = merge(out)
+    return out
+
+
 @dataclass(frozen=True)
 class JoinConfig:
     xfade_ms: float = 10.0
     align_ms: float = 0.0  # WSOLA-style search for the best-matching join point (0 = off)
     pause_ms: float = 0.0  # room tone inserted where a stutter was removed
     level_match: bool = False
+    # Insert the pause only where speech meets speech. There two different sounds would be glued
+    # together and the listener hears a jump; next to silence there is nothing to hide.
+    pause_speech_only: bool = False
+    speech_db: float = -42.0
+
+
+# The smoothest joins measured (scripts/join_quality.py on 7 held-out speakers): a 60 ms pause of
+# the speaker's own room tone at speech-to-speech joins, aligned crossfades everywhere else.
+SMOOTH_JOIN = JoinConfig(xfade_ms=10.0, align_ms=10.0, pause_ms=60.0, level_match=True, pause_speech_only=True)
 
 
 def room_tone(x: np.ndarray) -> np.ndarray:
@@ -216,10 +266,12 @@ def render_edited(x: np.ndarray, cuts: list, cfg: JoinConfig = JoinConfig()) -> 
 
     y = x[out[0][1]:out[0][2]].copy()
     ramp = np.linspace(0.0, 1.0, xf, dtype=np.float32)
+    speech = lambda seg: len(seg) > 0 and 10 * np.log10(np.mean(seg.astype(np.float64) ** 2) + 1e-12) > cfg.speech_db
     for _, s, e in out[1:]:
         if e <= s:
             continue
-        if cfg.pause_ms > 0:
+        pause_here = cfg.pause_ms > 0 and (not cfg.pause_speech_only or (speech(y[-480:]) and speech(x[s:s + 480])))
+        if pause_here:
             n = int(cfg.pause_ms * SR / 1000)
             start = int(rng.integers(0, max(1, len(tone) - n)))
             pause = np.resize(tone[start:], n).astype(np.float32)

@@ -14,7 +14,8 @@ const HEAR = [
   { value: "clean" as Hear, label: "Clean voice" },
 ]
 const ENGINES: { value: DemoEngine; label: string }[] = [
-  { value: "best", label: "Best quality" },
+  { value: "natural", label: "Natural" },
+  { value: "thorough", label: "Thorough" },
   { value: "live", label: "Live" },
 ]
 

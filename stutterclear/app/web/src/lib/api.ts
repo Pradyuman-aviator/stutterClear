@@ -97,8 +97,9 @@ export const startSession = (body: StartBody) =>
 export const stopSession = () =>
   json<{ ok: boolean; summary: Summary | null; playback?: PlaybackInfo }>(fetch("/api/stop", { method: "POST" }))
 
-// "Try a real recording" (UCLASS excerpts): "best" is the offline model, "live" the real-time pipeline.
-export type DemoEngine = "best" | "live"
+// "Try a real recording" (UCLASS excerpts): "natural" and "thorough" are the offline model with two
+// cutting styles, "live" the real-time pipeline.
+export type DemoEngine = "natural" | "thorough" | "live"
 
 export interface DemoSample {
   id: string

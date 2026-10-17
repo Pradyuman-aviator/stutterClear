@@ -20,6 +20,9 @@ class SpliceConfig:
     # A cut still open after this long is dropped and the held audio is played: a stuck
     # detector must never silence the user.
     max_open_cut_ms: float = 2500.0
+    # Where speech meets speech across a cut, a short pause of the room's own background replaces
+    # the fade-out/fade-in dip, which otherwise sounds like a jerk (scripts/join_quality.py).
+    join_pause_ms: float = 60.0
 
 
 PRESETS = {

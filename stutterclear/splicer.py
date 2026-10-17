@@ -5,6 +5,10 @@ as stutter are skipped before they reach the output, so the listener hears the
 user's own voice with the stutter removed. Lag lost to a cut is rebuilt by
 stretching the next natural pause, and excess lag is shed by shortening pauses.
 
+Whenever nothing real is played (a hold, a pause at a join), the output carries the room's own
+background noise, recorded from recent quiet moments, never digital silence: a background that
+switches off and on is heard as pumping.
+
 All positions are absolute sample indices since the stream started.
 """
 import threading
@@ -50,6 +54,12 @@ class Splicer:
         self.fade_in_start = 0
         self.cuts: dict[int, Cut] = {}
         self.noise_floor = 1e-3
+        self.join_pause = ms(cfg.join_pause_ms)
+        self.pause_left = 0  # room tone still to play at the current join
+        self.tone = np.zeros(int(0.3 * sr), np.float32)  # recent quiet audio, as a loop
+        self.tone_fill = 0
+        self.tone_write = 0
+        self.tone_read = 0
         self.stats = SpliceStats()
         self.lock = threading.Lock()
 
@@ -109,6 +119,13 @@ class Splicer:
         # Lag this call will leave behind if everything from here on is played.
         projected = self.write_pos - pos - (n - i)
 
+        if self.pause_left > 0:  # the pause at a speech-to-speech join
+            k = min(n - i, self.pause_left)
+            self._fill_tone(out, i, k)
+            self.pause_left -= k
+            self.stats.held += k
+            return k
+
         cut = self._cut_at(pos)
         if cut is not None and cut.end is None and self.write_pos - cut.start > self.max_open:
             self.cuts = {k: c for k, c in self.cuts.items() if c is not cut}
@@ -117,10 +134,13 @@ class Splicer:
             return 0
         if cut is not None:
             if cut.end is None or cut.end > self.write_pos:
-                self.stats.held += n - i  # stutter still going: hold silence
+                self._fill_tone(out, i, n - i)  # stutter still going: hold
+                self.stats.held += n - i
                 return n - i
             self.stats.removed += cut.end - pos
             self.stats.removed_spans.append((pos, cut.end, cut.kind))
+            if self._speech(pos - 480, pos) and self._speech(cut.end, min(cut.end + 480, self.write_pos)):
+                self.pause_left = self.join_pause
             self.read_pos = self.fade_in_start = cut.end
             self._drop_finished_cuts()
             return 0
@@ -134,6 +154,7 @@ class Splicer:
 
         if projected < self.target and self._quiet(pos):
             k = min(n - i, self.target - projected)
+            self._fill_tone(out, i, k)
             self.stats.held += k
             self.fade_in_start = pos
             return k
@@ -144,6 +165,7 @@ class Splicer:
             stop = min(stop, next_cut)
         run = min(n - i, stop - pos)
         if run <= 0:  # not enough lookahead yet
+            self._fill_tone(out, i, n - i)
             self.stats.held += n - i
             self.fade_in_start = pos
             return n - i
@@ -171,11 +193,31 @@ class Splicer:
 
     def _track_noise_floor(self, x: np.ndarray) -> None:
         for j in range(0, len(x) - 159, 160):
-            rms = float(np.sqrt(np.mean(x[j:j + 160] ** 2))) + 1e-7
+            frame = x[j:j + 160]
+            rms = float(np.sqrt(np.mean(frame ** 2))) + 1e-7
             if rms < self.noise_floor:
                 self.noise_floor = 0.7 * self.noise_floor + 0.3 * rms
             else:
                 self.noise_floor *= 1.002
+            if rms < 2.0 * self.noise_floor:  # a quiet moment: remember it as room tone
+                w = self.tone_write
+                self.tone[w:w + 160] = frame
+                self.tone_write = (w + 160) % len(self.tone)
+                self.tone_fill = min(len(self.tone), self.tone_fill + 160)
+
+    def _fill_tone(self, out: np.ndarray, i: int, k: int) -> None:
+        if self.tone_fill < 1600 or k <= 0:  # under 100 ms recorded yet: stay silent
+            return
+        idx = (self.tone_read + np.arange(k)) % self.tone_fill
+        out[i:i + k] = self.tone[idx]
+        self.tone_read = int((self.tone_read + k) % self.tone_fill)
+
+    def _speech(self, a: int, b: int) -> bool:
+        a = max(a, self.write_pos - self.cap + 1, 0)
+        if b - a < 160:
+            return False
+        x = self._slice(a, b - a)
+        return float(np.sqrt(np.mean(x * x))) > max(8.0 * self.noise_floor, 0.008)
 
     def _cut_at(self, pos: int) -> Cut | None:
         for c in self.cuts.values():
