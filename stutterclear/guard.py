@@ -13,8 +13,9 @@ from .silver import label_tokens, word_cuts
 SYSTEM = (
     "You are a careful speech editor helping a person who stutters. You get a verbatim transcript "
     "of their speech. Words marked like [12:word] are candidates for deletion because they look "
-    "like stuttering: a repeated word, a broken-off start of a word (ending in '-'), or a filler "
-    "such as [UH] or [UM]. For each candidate decide:\n"
+    "like stuttering: a repeated word or short phrase (each word of the phrase is marked), a "
+    "broken-off start of a word (ending in '-'), or a filler such as [UH] or [UM]. For each "
+    "candidate decide:\n"
     "- DELETE when it is stuttering: an involuntary repetition, a false start or a filler, so the "
     "sentence says what the person meant without it.\n"
     "- KEEP when the person said it on purpose: grammar that needs the repeated word ('that that', "
