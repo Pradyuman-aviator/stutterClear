@@ -99,6 +99,11 @@ A repeated phrase ("when he was, when he was younger") is cut or kept as a whole
 half-cut. The words come from the same transcript as the labels, so these numbers cannot show
 whether a repeat was meant: the teacher's acoustic check and Nemotron's meaning guard decide that.
 
+**Listening check** (`scripts/check_audio.py --demo`, the three demo clips, re-transcribed): the
+intended reading of every cleaned clip matches the original's to a word error rate of 0.07-0.15,
+part of which is transcription noise where a clip starts or ends mid-word; no dropouts or clicks
+are added. Live output starts with about a second of silence while the delay buffer fills.
+
 **Causal student, v1** (0.3M parameters): too small. SEP-28k macro F1 0.38 vs the teacher's 0.65,
 and live it removes 19.8% of stutters while losing 8.4% of words, so the app does not use it. A
 5.2M-parameter student v2 is training. The app recommends whichever detector measures best
