@@ -10,7 +10,6 @@ import threading
 import time
 import uuid
 from math import gcd
-from pathlib import Path
 
 import numpy as np
 import soundfile as sf
@@ -18,12 +17,12 @@ from scipy.signal import resample_poly
 
 from ..config import SAMPLE_RATE as SR
 from ..silver import label_tokens
+from ..teacher_runtime import TEACHER_CKPT as TEACHER  # one checkpoint for live and notes
 
 MAX_S = 180  # longest note accepted
 KEEP_S = 3600  # notes are forgotten after an hour
 MAX_WAITING = 4  # notes waiting for or on the GPU; more are turned away for a minute
 MAX_KEPT = 40  # finished notes held in memory; the oldest are forgotten first
-TEACHER = Path(__file__).resolve().parents[2] / "runs" / "kaggle_teacher" / "teacher" / "best.pt"
 FRAME = 320
 
 _notes: dict = {}

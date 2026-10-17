@@ -6,6 +6,7 @@ UCLASS speakers (scripts/teacher_lookahead.py): with 200 ms of lookahead it keep
 offline quality (53.8% of stutters removed, 4.6% of words lost, vs 58.4% / 5.8% offline; the rule-
 based detector removes 7.4%), and one 5 s window takes 60 ms on a laptop RTX 4050. Needs a GPU.
 """
+import os
 import threading
 from pathlib import Path
 
@@ -16,7 +17,9 @@ from .detector import DetectorEvent
 from .segments import BALANCED_CUTS, CutConfig
 from .student_runtime import CLASSES, REMOVABLE, StudentDetector
 
-TEACHER_CKPT = Path(__file__).resolve().parents[1] / "runs" / "kaggle_teacher" / "teacher" / "best.pt"
+# STUTTERCLEAR_TEACHER points at another checkpoint (to evaluate or switch to a new teacher).
+TEACHER_CKPT = Path(os.environ.get("STUTTERCLEAR_TEACHER")
+                    or Path(__file__).resolve().parents[1] / "runs" / "kaggle_teacher" / "teacher" / "best.pt")
 FRAME = 320
 CONTEXT_S = 4.0
 HOP_MS = 160
