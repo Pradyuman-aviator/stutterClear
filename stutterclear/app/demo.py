@@ -29,7 +29,6 @@ SAMPLES = {s["id"]: s for s in json.loads(Path(__file__).with_name("demo_samples
 CREDIT = ("Recordings: UCLASS, University College London (Howell, Davis & Bartrip, 2009). "
           "Data collection was supported by the Wellcome Trust.")
 TEACHER_FRAME = 320  # 20 ms frames in the cached teacher probabilities
-MAX_WORDS_LOST_PCT = 3.0  # same bar as the page uses to recommend the AI detector
 
 
 def _wav(sample: dict) -> Path:
@@ -68,37 +67,49 @@ def _excerpt(sid: str) -> np.ndarray:
 
 
 def _live_detector():
-    """The detector the page would recommend: the AI model only if it is measured to lose few words."""
-    from ..live import make_detector, student_eval
-    q = student_eval()
-    kind = "student" if q and q["words_lost_pct"] <= MAX_WORDS_LOST_PCT else "heuristic"
-    return make_detector(kind, "gentle")
+    """The detector the page recommends (best measured quality this machine can run)."""
+    from ..live import make_detector, recommended
+    return make_detector(recommended(), "gentle")
+
+
+def _source(sid: str):
+    """Audio, teacher probabilities and labelled words of a demo sample or a cleaned voice note."""
+    if sid.startswith("note-"):
+        from . import notes
+        note = notes.ready(sid)
+        if note is None:
+            raise KeyError(sid)
+        return note["x"], note["probs"], note["toks"]
+    s = SAMPLES[sid]
+    x = _excerpt(sid)
+    probs = np.load(_wav(s).with_suffix(".teacher.npy"))
+    f0 = int(round(s["start"] * SR / TEACHER_FRAME))
+    return x, probs[f0: f0 + len(x) // TEACHER_FRAME], _tokens(s)
 
 
 @lru_cache(maxsize=16)
 def render(sid: str, engine: str) -> dict:
-    """Timeline for the page plus the original and cleaned audio of one sample."""
-    s = SAMPLES[sid]
-    x = _excerpt(sid)
+    """Timeline for the page plus the original and cleaned audio of one sample or voice note."""
     if engine in ("natural", "thorough"):
-        probs = np.load(_wav(s).with_suffix(".teacher.npy"))
-        f0 = int(round(s["start"] * SR / TEACHER_FRAME))
-        probs = probs[f0: f0 + len(x) // TEACHER_FRAME]
+        x, probs, toks = _source(sid)
         stutter = probs[:, [0, 1, 2, 4]]  # sound_rep, word_rep, prolongation, interjection
         thorough = engine == "thorough"
-        cuts = word_cuts(_tokens(s), stutter, cut_fillers=thorough)
+        cuts = word_cuts(toks, stutter, cut_fillers=thorough)
         label = f"{'Thorough' if thorough else 'Natural'} · offline model, cuts on word boundaries"
         y = render_edited(x, cuts, NATURAL_JOIN)
         events, meta = [], {"detector": "teacher", "label": label, "lag_ms": 0, "detect_ms": 0.0}
     elif engine == "live":
+        x = _source(sid)[0] if sid.startswith("note-") else _excerpt(sid)
+        from ..live import delay_overrides
         detector, name = _live_detector()
-        pipe, y = stream(x, "trim", detector)  # Gentle mode's preset
+        pipe, y = stream(x, "trim", detector, **delay_overrides(name, "gentle"))  # Gentle mode's preset
         cuts = [{"kind": k, "start": round(a / SR, 3), "end": round(b / SR, 3)}
                 for a, b, k in pipe.splicer.stats.removed_spans]
         events = [{"kind": e.kind, "start": round(e.start / SR, 3), "end": round(e.end / SR, 3)}
                   for e in getattr(pipe.detector, "events", []) if e.kind in ("block", "pause")]
         summary = pipe.summary()
-        meta = {"detector": name, "label": f"Live · {'AI model' if name == 'student' else 'rule-based'}, Gentle",
+        from ..live import LABELS
+        meta = {"detector": name, "label": f"Live · {LABELS.get(name, 'rule-based')}, Gentle",
                 "lag_ms": summary["lag_ms"]["p50"], "detect_ms": 0.0}
     else:
         raise KeyError(engine)

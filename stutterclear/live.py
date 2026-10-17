@@ -49,16 +49,62 @@ class Recorder:
         return np.concatenate(blocks) if blocks else np.zeros(0, np.float32)
 
 
+QUALITY = Path(__file__).resolve().parents[1] / "runs" / "eval" / "live_quality.json"
+LABELS = {"teacher": "Best (GPU)", "student": "AI model", "heuristic": "Rule-based"}
+# The teacher decides each frame once it has this much audio after it; its decisions then need
+# lookahead + hop (160 ms) + about 60 ms of GPU time + margin before that audio may be played.
+TEACHER_LOOKAHEAD_MS = {"gentle": 200, "strong": 500}
+
+
+def quality() -> dict:
+    """Measured quality per detector (scripts/eval_live.py --out runs/eval/live_quality.json):
+    stutters removed and words lost in Gentle mode on held-out speakers. A student result only
+    counts for the checkpoint it was measured on."""
+    if not QUALITY.exists():
+        return {}
+    data = json.loads(QUALITY.read_text())
+    out = {}
+    for r in data.get("results", []):
+        if r["mode"] != "gentle":
+            continue
+        kind = {"rule-based": "heuristic"}.get(r["detector"], r["detector"])
+        if kind == "student" and data.get("student_mtime") != (DEFAULT_STUDENT.stat().st_mtime if DEFAULT_STUDENT.exists() else None):
+            continue
+        out[kind] = {"removed_pct": r["stutter_removed_pct"], "words_lost_pct": r["words_lost_pct"]}
+    return out
+
+
 def student_eval(path: Path = DEFAULT_STUDENT) -> dict | None:
-    """Measured quality of a student checkpoint, from scripts/eval_live.py saved next to it as
-    live_eval.json: stutters removed and words lost in Gentle mode on held-out speakers."""
-    p = Path(path).with_name("live_eval.json")
-    if not p.exists():
-        return None
-    for r in json.loads(p.read_text()):
-        if r["detector"] == "student" and r["mode"] == "gentle":
-            return {"removed_pct": r["stutter_removed_pct"], "words_lost_pct": r["words_lost_pct"]}
-    return None
+    return quality().get("student")
+
+
+def detectors() -> list:
+    """Detectors this machine can run, with their measured quality."""
+    from .teacher_runtime import live_capable
+    q = quality()
+    can = {"teacher": live_capable(), "student": DEFAULT_STUDENT.exists(), "heuristic": True}
+    return [{"kind": k, "label": LABELS[k], "available": can[k], "quality": q.get(k)} for k in LABELS]
+
+
+def recommended() -> str:
+    """The best measured detector this machine can run: stutters removed minus 3x words lost (a
+    lost word costs more than a stutter left in). Rule-based if nothing better is measured."""
+    best, score = "heuristic", float("-inf")
+    for d in detectors():
+        if d["available"] and d["quality"]:
+            s = d["quality"]["removed_pct"] - 3 * d["quality"]["words_lost_pct"]
+            if s > score:
+                best, score = d["kind"], s
+    return best
+
+
+def delay_overrides(kind: str, mode: str) -> dict:
+    """Delay a detector needs so no cut decision arrives after its audio was already played."""
+    if kind == "teacher" and mode in TEACHER_LOOKAHEAD_MS:
+        from .teacher_runtime import HOP_MS
+        need = TEACHER_LOOKAHEAD_MS[mode] + HOP_MS + 100
+        return {"min_delay_ms": need, "target_delay_ms": need + 80}
+    return {}
 
 
 def wasapi_index() -> int:
@@ -84,6 +130,11 @@ def devices() -> dict:
 def make_detector(kind: str, mode: str, student_path=None):
     preset_name, cuts, lookahead_ms = MODES[mode]
     path = Path(student_path) if student_path else DEFAULT_STUDENT
+    if kind == "teacher" and cuts:
+        from .teacher_runtime import TeacherDetector, live_capable
+        if live_capable():
+            from .segments import BALANCED_CUTS
+            return TeacherDetector(TEACHER_LOOKAHEAD_MS[mode], cut_cfg=BALANCED_CUTS if cuts == "gentle" else STRONG_CUTS), "teacher"
     if kind == "student" and path.exists() and cuts:
         from .student_runtime import LIVE_CUTS, StudentDetector
         return StudentDetector(path, lookahead_ms, path.with_name("student_test_report.json"),
@@ -97,7 +148,7 @@ class LiveSession:
         self.mode = mode
         preset_name, _, _ = MODES[mode]
         det, self.detector_name = make_detector(detector, mode, student_path)
-        self.pipe = Pipeline(preset(preset_name), detector=det)
+        self.pipe = Pipeline(preset(preset_name, **delay_overrides(self.detector_name, mode)), detector=det)
         self.in_device = in_device if in_device is not None else devices()["default_input"]
         self.out_device = out_device
         self.save = save

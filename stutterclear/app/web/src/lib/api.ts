@@ -1,7 +1,7 @@
 // Talks to the Python app server (stutterclear/app/server.py).
 
 export type Mode = "off" | "gentle" | "strong"
-export type DetectorKind = "student" | "heuristic"
+export type DetectorKind = "teacher" | "student" | "heuristic"
 
 export interface Device {
   index: number
@@ -81,7 +81,22 @@ export interface StudentEval {
   words_lost_pct: number
 }
 
-export const getInfo = () => json<{ student: boolean; student_eval: StudentEval | null }>(fetch("/api/info"))
+// A detector this machine may run, with its measured quality on held-out speakers (Gentle mode).
+export interface DetectorInfo {
+  kind: DetectorKind
+  label: string
+  available: boolean
+  quality: StudentEval | null
+}
+
+export const getInfo = () =>
+  json<{
+    student: boolean
+    student_eval: StudentEval | null
+    notes: boolean
+    detectors: DetectorInfo[]
+    recommended: DetectorKind
+  }>(fetch("/api/info"))
 
 export const getPlayback = () => json<PlaybackInfo>(fetch("/api/playback"))
 
@@ -129,6 +144,19 @@ export const getDemos = () => json<{ samples: DemoSample[]; credit: string }>(fe
 export const getDemo = (id: string, engine: DemoEngine) => json<DemoTimeline>(fetch(`/api/demo/${id}?engine=${engine}`))
 export const demoAudioUrl = (id: string, which: "original" | "clean", engine: DemoEngine) =>
   `/api/demo/${id}/${which}.wav?engine=${engine}`
+
+// "Clean a voice note": the page uploads WAV, the server cleans it with the offline engines and the
+// result plays through the demo player under its note id.
+export interface NoteStatus {
+  id: string
+  status: "queued" | "listening" | "transcribing" | "done" | "error"
+  error: string | null
+  duration_s: number
+}
+
+export const createNote = (wav: Blob) =>
+  json<{ id: string }>(fetch("/api/notes", { method: "POST", headers: { "Content-Type": "audio/wav" }, body: wav }))
+export const getNote = (id: string) => json<NoteStatus>(fetch(`/api/notes/${id}`))
 
 export const KIND_LABEL: Record<string, string> = {
   sound_rep: "Sound repeat",

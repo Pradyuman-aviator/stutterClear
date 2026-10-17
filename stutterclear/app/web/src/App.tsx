@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from "react"
 import { AnimatePresence, MotionConfig, motion, type Variants } from "motion/react"
-import { AudioLines, Captions, Check, Cpu, Headphones, Lock, Mic, Square, WandSparkles } from "lucide-react"
+import { AudioLines, Check, Cpu, Headphones, Lock, Mic, Square } from "lucide-react"
 
 import { DelayMatrix } from "@/components/delay-matrix"
 import { DemoBar, DemoPicker } from "@/components/demo-player"
@@ -15,13 +15,14 @@ import { Segmented, type SegmentOption } from "@/components/segmented"
 import { SessionToast, type ToastData } from "@/components/session-toast"
 import { ShimmeringText } from "@/components/ui/shimmering-text"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { VoiceNoteCard } from "@/components/voice-note"
 import { VoiceOrb } from "@/components/voice-orb"
 import { useDemo } from "@/hooks/use-demo"
 import { useLive, type LiveData, type Stats } from "@/hooks/use-live"
 import { useSignals, type Signals } from "@/hooks/use-signals"
 import {
   getDemos, getDevices, getInfo, getPlayback, KIND_LABEL, startSession, stopSession,
-  type DemoSample, type DetectorKind, type Devices, type Mode, type PlaybackInfo, type StartBody, type StudentEval,
+  type DemoSample, type DetectorInfo, type DetectorKind, type Devices, type Mode, type PlaybackInfo, type StartBody,
 } from "@/lib/api"
 import { EASE_OUT, SPRING } from "@/lib/motion"
 import { useStore, type Store } from "@/lib/store"
@@ -32,18 +33,21 @@ const MODES: SegmentOption<Mode>[] = [
   { value: "gentle", label: "Gentle" },
   { value: "strong", label: "Strong" },
 ]
-const MODE_HINT: Record<Mode, string> = {
-  off: "Mirror only: nothing is cut, so you can watch your speech as it is.",
-  gentle: "Removes clear repeats and fillers. About 250 ms behind you.",
-  strong: "Removes the most stutters; may clip a word now and then. About 600 ms behind you.",
+// How far behind you the listener hears you depends on the detector: the big model needs to hear
+// a little after each moment before deciding (see stutterclear/live.py delay_overrides).
+function modeHint(mode: Mode, detector: DetectorKind) {
+  if (mode === "off") return "Mirror only: nothing is cut, so you can watch your speech as it is."
+  const behind = detector === "teacher" ? (mode === "gentle" ? "0.5 s" : "0.85 s") : mode === "gentle" ? "250 ms" : "600 ms"
+  return mode === "gentle"
+    ? `Removes clear repeats. About ${behind} behind you.`
+    : `Removes the most stutters; may clip a word now and then. About ${behind} behind you.`
 }
-const DETECTORS: SegmentOption<DetectorKind>[] = [
-  { value: "student", label: "AI model" },
-  { value: "heuristic", label: "Rule-based" },
-]
+const DETECTOR_NOTE: Record<DetectorKind, string> = {
+  teacher: "The big model, run live on your GPU.",
+  student: "A small model that runs on any computer.",
+  heuristic: "Light rules: safe, but removes little.",
+}
 const NO_OUTPUT = "none"
-// The AI detector is the default only once it is measured to lose few real words.
-const MAX_WORDS_LOST_PCT = 3
 
 // Entrances animate opacity and position only: blurring big panels while they move costs frames.
 const page: Variants = { hidden: {}, show: { transition: { staggerChildren: 0.07, delayChildren: 0.05 } } }
@@ -80,8 +84,10 @@ export default function App() {
   const [detector, setDetector] = useState<DetectorKind>(() => (stored("sc.det", "") || "heuristic") as DetectorKind)
   const [save, setSave] = useState(false) // never remembered: recording is opt-in every time
   const [detName, setDetName] = useState("")
-  const [hasStudent, setHasStudent] = useState(true)
-  const [studentEval, setStudentEval] = useState<StudentEval | null>(null)
+  const [detectorList, setDetectorList] = useState<DetectorInfo[]>([])
+  const [recommendedDet, setRecommendedDet] = useState<DetectorKind>("heuristic")
+  const [notesOn, setNotesOn] = useState(false)
+  const [noteSamples, setNoteSamples] = useState<DemoSample[]>([])
   const [toast, setToast] = useState<ToastData | null>(null)
   const [playback, setPlayback] = useState<PlaybackInfo | null>(null)
   const [playbackVersion, setPlaybackVersion] = useState(0)
@@ -112,13 +118,13 @@ export default function App() {
     if (!connected) return
     getInfo()
       .then((i) => {
-        setHasStudent(i.student)
-        setStudentEval(i.student_eval)
-        // No choice made yet: pick whichever detector the measurements say is better.
-        if (!stored("sc.det", "")) {
-          const good = i.student && i.student_eval !== null && i.student_eval.words_lost_pct <= MAX_WORDS_LOST_PCT
-          setDetector(good ? "student" : "heuristic")
-        }
+        setNotesOn(i.notes)
+        setDetectorList(i.detectors)
+        setRecommendedDet(i.recommended)
+        // Use the best measured detector unless one was picked before (and is still available here).
+        const kept = stored("sc.det", "") as DetectorKind
+        const ok = i.detectors.some((d) => d.kind === kept && d.available)
+        setDetector(ok ? kept : i.recommended)
       })
       .catch(() => {})
     getPlayback().then((p) => setPlayback(p.available ? p : null)).catch(() => {})
@@ -263,7 +269,7 @@ export default function App() {
               Phone: one column. */}
           <div className="mt-5 grid grid-flow-row-dense gap-4 sm:mt-6 sm:gap-5 md:grid-cols-2 lg:grid-cols-3">
             {/* Hero: orb, status, start */}
-            <motion.div variants={rise} className="md:col-span-2">
+            <motion.div variants={rise} id="hero" className="scroll-mt-4 md:col-span-2">
               <GlassCard tilt={1.2} className="h-full p-5 sm:p-8">
                 <div className="relative flex flex-col items-center gap-6 sm:flex-row sm:gap-10">
                   <VoiceOrb
@@ -350,8 +356,17 @@ export default function App() {
                           {demo.state ? (
                             <DemoBar
                               state={demo.state}
-                              sample={demos.samples.find((s) => s.id === demo.state?.id)}
-                              credit={demos.credit}
+                              sample={[...demos.samples, ...noteSamples].find((s) => s.id === demo.state?.id)}
+                              credit={
+                                demo.state.id.startsWith("note-")
+                                  ? "Your recording stays on this computer and is forgotten within an hour."
+                                  : demos.credit
+                              }
+                              downloadUrl={
+                                demo.state.id.startsWith("note-")
+                                  ? `/api/demo/${demo.state.id}/clean.wav?engine=${demo.state.engine}`
+                                  : undefined
+                              }
                               progress={demo.progress}
                               onPlay={demo.play}
                               onPause={demo.pause}
@@ -380,7 +395,7 @@ export default function App() {
                             transition={{ duration: 0.35, ease: EASE_OUT }}
                             className="max-w-md text-[13px] text-white/50 [grid-area:1/1]"
                           >
-                            {MODE_HINT[mode]}
+                            {modeHint(mode, detector)}
                           </motion.p>
                         </AnimatePresence>
                       </div>
@@ -424,33 +439,10 @@ export default function App() {
                     label="Detector"
                     className="w-full"
                     value={detector}
-                    options={DETECTORS}
+                    options={detectorOptions(detectorList)}
                     onChange={(v) => change({ detector: v })}
                   />
-                  <AnimatePresence initial={false}>
-                    {detector === "student" && (
-                      <motion.div
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: "auto" }}
-                        exit={{ opacity: 0, height: 0 }}
-                        className={cn(
-                          "overflow-hidden text-xs",
-                          !hasStudent || (studentEval && studentEval.words_lost_pct > MAX_WORDS_LOST_PCT)
-                            ? "text-amber-200/80"
-                            : "text-white/50"
-                        )}
-                      >
-                        {!hasStudent
-                          ? "The AI model is still training, so the rule-based detector is used for now."
-                          : studentEval
-                            ? `Tested on unseen speakers: removes ${studentEval.removed_pct}% of stutters, cuts ${studentEval.words_lost_pct}% of real words.` +
-                              (studentEval.words_lost_pct > MAX_WORDS_LOST_PCT
-                                ? " Rule-based is safer until the bigger model is ready."
-                                : "")
-                            : "Not measured on unseen speakers yet."}
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
+                  <DetectorNote info={detectorList.find((d) => d.kind === detector)} recommended={recommendedDet} />
                 </Field>
                 <div className="mt-auto flex items-center justify-between gap-4 rounded-2xl border border-white/6 bg-white/[0.03] p-3.5">
                   <div className="text-sm">
@@ -507,23 +499,21 @@ export default function App() {
               </GlassCard>
             </motion.div>
 
-            {/* Context + what comes next */}
+            {/* Context + voice notes */}
             <motion.div variants={rise} className="flex flex-col gap-4 sm:gap-5">
               <ContextCard />
-              <GlassCard tilt={2} className="flex flex-1 flex-col gap-4 p-5 sm:p-6">
-                <div className="flex items-center justify-between gap-3">
-                  <CardTitle icon={<WandSparkles className="size-4" />}>Coming next</CardTitle>
-                  <span className="shrink-0 rounded-full border border-sky-300/25 bg-sky-300/10 px-2 py-0.5 text-[11px] text-sky-200">
-                    In progress
-                  </span>
-                </div>
-                <Upcoming icon={<WandSparkles className="size-4" />} title="Blocked-word rescue">
-                  When you get stuck on a word, a few likely words appear here, from your context card. You choose; nothing is said for you.
-                </Upcoming>
-                <Upcoming icon={<Captions className="size-4" />} title="Live captions">
-                  Captions of what the listener hears, as you speak.
-                </Upcoming>
-              </GlassCard>
+              <VoiceNoteCard
+                enabled={notesOn}
+                busy={running}
+                onReady={(id, seconds) => {
+                  setNoteSamples((ns) => [
+                    ...ns,
+                    { id, title: "Your voice note", who: "you", duration_s: seconds, engines: ["natural", "thorough", "live"] },
+                  ])
+                  demo.load(id, "natural")
+                  document.getElementById("hero")?.scrollIntoView({ behavior: "smooth", block: "start" })
+                }}
+              />
             </motion.div>
           </div>
 
@@ -822,14 +812,43 @@ function ContextCard() {
   )
 }
 
-function Upcoming({ icon, title, children }: { icon: ReactNode; title: string; children: ReactNode }) {
+
+function detectorOptions(list: DetectorInfo[]): SegmentOption<DetectorKind>[] {
+  const avail = list.filter((d) => d.available)
+  return (avail.length ? avail : [{ kind: "heuristic", label: "Rule-based" } as DetectorInfo]).map((d) => ({
+    value: d.kind,
+    label: d.label,
+  }))
+}
+
+// What the chosen detector does, and how it measured on speakers it never trained on.
+function DetectorNote({ info, recommended }: { info: DetectorInfo | undefined; recommended: DetectorKind }) {
+  if (!info) return null
+  const q = info.quality
   return (
-    <motion.div whileHover={{ x: 3 }} transition={SPRING.press} className="tile flex gap-3 rounded-2xl p-3.5">
-      <span className="mt-0.5 text-white/50">{icon}</span>
-      <div className="text-sm">
-        <div className="font-medium text-white/85">{title}</div>
-        <div className="mt-0.5 text-xs leading-relaxed text-white/45">{children}</div>
-      </div>
-    </motion.div>
+    <div className="grid">
+      <AnimatePresence initial={false}>
+        <motion.div
+          key={info.kind}
+          initial={{ opacity: 0, y: 4 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -4 }}
+          transition={{ duration: 0.25, ease: EASE_OUT }}
+          className="text-xs leading-relaxed text-white/50 [grid-area:1/1]"
+        >
+          {DETECTOR_NOTE[info.kind]}{" "}
+          {q ? (
+            <>
+              Unseen speakers: removes <span className="text-white/80">{q.removed_pct}%</span> of stutters, loses{" "}
+              <span className={q.words_lost_pct > 3 ? "text-amber-200/90" : "text-white/80"}>{q.words_lost_pct}%</span> of
+              words.
+            </>
+          ) : (
+            "Not measured yet."
+          )}
+          {info.kind === recommended && <span className="ml-1 text-emerald-300/80">Recommended.</span>}
+        </motion.div>
+      </AnimatePresence>
+    </div>
   )
 }

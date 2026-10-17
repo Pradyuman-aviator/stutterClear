@@ -8,14 +8,14 @@ import asyncio
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Response, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from ..audio import wav_bytes
 from ..config import SAMPLE_RATE as SR
-from ..live import DEFAULT_STUDENT, LiveSession, devices, student_eval
-from . import demo
+from ..live import DEFAULT_STUDENT, LiveSession, detectors, devices, recommended, student_eval
+from . import demo, notes
 
 STATIC = Path(__file__).parent / "static"
 UPDATE_S = 0.03  # ~30 updates a second: the orb reacts within a frame or two
@@ -86,7 +86,8 @@ def list_devices():
 def info():
     # The AI detector needs its downloaded checkpoint; its measured quality (if evaluated) lets the
     # page recommend it only when it is actually better.
-    return {"student": DEFAULT_STUDENT.exists(), "student_eval": student_eval()}
+    return {"student": DEFAULT_STUDENT.exists(), "student_eval": student_eval(), "notes": notes.available(),
+            "detectors": detectors(), "recommended": recommended()}
 
 
 @app.post("/api/start")
@@ -154,10 +155,36 @@ def demo_list():
 
 
 def _demo(sid: str, engine: str) -> dict:
+    if sid.startswith("note-"):  # a cleaned voice note plays through the same player
+        if notes.ready(sid) is None or engine not in ("natural", "thorough", "live"):
+            raise HTTPException(404, "No such voice note (they are kept for an hour).")
+        return demo.render(sid, engine)
     s = next((s for s in demo.available() if s["id"] == sid), None)
     if s is None or engine not in s["engines"]:
         raise HTTPException(404, "No such sample.")
     return demo.render(sid, engine)
+
+
+@app.post("/api/notes")
+async def create_note(request: Request):
+    """Body: a WAV file (the page decodes recordings and uploads to WAV in the browser)."""
+    if not notes.available():
+        raise HTTPException(503, "Voice notes need the teacher model, which is not downloaded.")
+    data = await request.body()
+    if len(data) > 40_000_000:
+        raise HTTPException(413, "That file is too large.")
+    try:
+        return {"id": notes.submit(data)}
+    except notes.NoteError as e:
+        raise HTTPException(415, str(e)) from e
+
+
+@app.get("/api/notes/{nid}")
+def note_status(nid: str):
+    s = notes.status(nid)
+    if s is None:
+        raise HTTPException(404, "No such voice note (they are kept for an hour).")
+    return s
 
 
 @app.get("/api/demo/{sid}")

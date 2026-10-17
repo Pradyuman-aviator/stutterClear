@@ -1,6 +1,6 @@
 import { type RefObject } from "react"
 import { AnimatePresence, motion } from "motion/react"
-import { AudioLines, LoaderCircle, Pause, Play, X } from "lucide-react"
+import { AudioLines, Download, LoaderCircle, Pause, Play, X } from "lucide-react"
 import { Segmented } from "@/components/segmented"
 import type { DemoState, Hear } from "@/hooks/use-demo"
 import type { DemoEngine, DemoSample } from "@/lib/api"
@@ -62,6 +62,7 @@ export function DemoBar({
   onHear,
   onEngine,
   onClose,
+  downloadUrl,
 }: {
   state: DemoState
   sample: DemoSample | undefined
@@ -72,6 +73,7 @@ export function DemoBar({
   onHear: (h: Hear) => void
   onEngine: (e: DemoEngine) => void
   onClose: () => void
+  downloadUrl?: string
 }) {
   const tl = state.timeline
   const total = !tl ? sample?.duration_s ?? 0 : state.hear === "clean" ? tl.clean_s : tl.original_s
@@ -159,6 +161,18 @@ export function DemoBar({
         />
         {sample && sample.engines.length > 1 && (
           <Segmented label="Engine" value={state.engine} options={ENGINES.filter((e) => sample.engines.includes(e.value))} onChange={onEngine} />
+        )}
+        {downloadUrl && tl && (
+          <motion.a
+            href={downloadUrl}
+            download="voice-note-clean.wav"
+            whileHover={{ y: -2 }}
+            whileTap={{ scale: 0.95 }}
+            transition={SPRING.press}
+            className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-white/75 transition-colors hover:bg-white/[0.08] hover:text-white"
+          >
+            <Download className="size-3.5" /> Download clean
+          </motion.a>
         )}
       </div>
       {tl && (

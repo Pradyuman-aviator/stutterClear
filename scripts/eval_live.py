@@ -20,7 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from run_file import run  # noqa: E402
 from stutterclear.audio import load_wav  # noqa: E402
 from stutterclear.config import SAMPLE_RATE as SR  # noqa: E402
-from stutterclear.live import DEFAULT_STUDENT, MODES, make_detector  # noqa: E402
+from stutterclear.live import DEFAULT_STUDENT, MODES, delay_overrides, make_detector  # noqa: E402
 from stutterclear.silver import label_tokens, score_cuts  # noqa: E402
 
 KEYS = ("n_stutter", "n_removed", "n_fluent", "n_lost")
@@ -30,7 +30,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--dir", default="data/external/uclass_eval")
     ap.add_argument("--student", default=str(DEFAULT_STUDENT))
-    ap.add_argument("--detectors", default="heuristic,student")
+    ap.add_argument("--detectors", default="heuristic,student,teacher")
     ap.add_argument("--modes", default="gentle,strong")
     ap.add_argument("--out", help="write results as JSON here")
     args = ap.parse_args()
@@ -50,9 +50,9 @@ def main():
             name = None
             for w, x, toks in rows:
                 det, name = make_detector(kind, mode, args.student)
-                if kind == "student" and name != "student":
-                    break  # no checkpoint: make_detector fell back to rule-based
-                pipe, _ = run(x, MODES[mode][0], det)
+                if kind in ("student", "teacher") and name != kind:
+                    break  # no checkpoint (or no GPU): make_detector fell back to rule-based
+                pipe, _ = run(x, MODES[mode][0], det, **delay_overrides(name, mode))
                 spans = pipe.splicer.stats.removed_spans
                 s = score_cuts(toks, [{"start": a / SR, "end": b / SR} for a, b, _ in spans])
                 for k in KEYS:
@@ -74,7 +74,10 @@ def main():
                 continue
             print(f"{kind}: no checkpoint at {args.student}, skipped")
     if args.out:
-        Path(args.out).write_text(json.dumps(results, indent=1))
+        out = {"results": results,
+               "student_mtime": Path(args.student).stat().st_mtime if Path(args.student).exists() else None}
+        Path(args.out).parent.mkdir(parents=True, exist_ok=True)
+        Path(args.out).write_text(json.dumps(out, indent=1))
 
 
 if __name__ == "__main__":
