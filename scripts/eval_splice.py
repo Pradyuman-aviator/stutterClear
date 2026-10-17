@@ -114,9 +114,12 @@ def grid(root: Path, probs: str = "teacher"):
     for name, cfg in CUTS.items():
         p = pooled(rows, cfg)
         print(f"{name:8s} removed {p['removed']:5.1f}%  words lost {p['lost']:5.2f}%")
+    thresholds = [(0.5,) * 5, (0.4, 0.35, 0.5, 0.5, 0.4), (0.35, 0.3, 0.45, 0.5, 0.35),
+                  (0.3, 0.25, 0.4, 0.5, 0.3), (0.45, 0.4, 0.6, 0.5, 0.45)]
+    if probs != "teacher":  # students are less confident: their useful thresholds sit lower
+        thresholds += [(0.25,) * 5, (0.2,) * 5, (0.15,) * 5, (0.1,) * 5]
     space = {
-        "thresholds": [(0.5,) * 5, (0.4, 0.35, 0.5, 0.5, 0.4), (0.35, 0.3, 0.45, 0.5, 0.35),
-                       (0.3, 0.25, 0.4, 0.5, 0.3), (0.45, 0.4, 0.6, 0.5, 0.45)],
+        "thresholds": thresholds,
         "off_ratio": [0.75, 0.5, 0.35],
         "merge_gap": [0, 5, 10],
         "snap": [0, 4],

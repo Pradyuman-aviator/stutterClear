@@ -161,7 +161,7 @@ class StudentDetector:
         elif on:
             self.block[1] = f
         elif self.block is not None:
-            if self.block[1] - self.block[0] + 1 >= self.MIN_FRAMES:
+            if self.block[1] - self.block[0] + 1 >= self.cfg.min_frames:
                 self._log("block", self.block[0] * FRAME, (self.block[1] + 1) * FRAME, {})
             self.block = None
 
