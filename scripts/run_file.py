@@ -11,8 +11,8 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from stutterclear.audio import load_wav, save_wav  # noqa: E402
-from stutterclear.config import HOP, PRESETS, SAMPLE_RATE as SR, preset  # noqa: E402
-from stutterclear.pipeline import Pipeline  # noqa: E402
+from stutterclear.config import PRESETS, SAMPLE_RATE as SR  # noqa: E402
+from stutterclear.pipeline import stream  # noqa: E402
 
 # Student head per mode: detection lookahead must fit inside the mode's delay.
 STUDENT_LOOKAHEAD_MS = {"verbatim": 0, "trim": 200, "clean": 500}
@@ -35,17 +35,7 @@ def add_detector_args(ap):
     ap.add_argument("--lookahead-ms", type=float, help="student head (default: by mode)")
 
 
-def run(x: np.ndarray, mode: str, detector=None, **overrides):
-    pipe = Pipeline(preset(mode, **overrides), detector=detector)
-    out = []
-    tail = np.zeros(int(SR * (pipe.cfg.target_delay_ms / 1000 + 1.0)), np.float32)
-    for src in (x, tail):
-        for i in range(0, len(src), HOP):
-            block = src[i:i + HOP]
-            pipe.write(block)
-            pipe.detect(block)
-            out.append(pipe.read(len(block)))
-    return pipe, np.concatenate(out)
+run = stream  # kept for scripts that import it from here
 
 
 def main():

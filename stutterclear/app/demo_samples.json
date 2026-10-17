@@ -1,0 +1,26 @@
+[
+  {
+    "id": "monologue-20",
+    "title": "Monologue",
+    "who": "man, 20",
+    "file": "uclass_eval/monologue/M_0065_20y1m_1.wav",
+    "start": 42.56,
+    "end": 74.32
+  },
+  {
+    "id": "speaking-35",
+    "title": "Speaking",
+    "who": "man, 35",
+    "file": "uclass_eval/release1/M_1101_35y0m_1.wav",
+    "start": 304.68,
+    "end": 336.34
+  },
+  {
+    "id": "monologue-18",
+    "title": "Monologue",
+    "who": "man, 18",
+    "file": "uclass_eval/monologue/M_0104_18y1m_1.wav",
+    "start": 75.94,
+    "end": 107.48
+  }
+]

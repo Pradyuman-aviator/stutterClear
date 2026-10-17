@@ -42,6 +42,11 @@ OFF_RATIO = CutConfig.off_ratio
 MERGE_GAP = CutConfig.merge_gap
 SNAP = CutConfig.snap
 MIN_FRAMES = CutConfig.min_frames
+
+# "Balanced" on the held-out UCLASS speakers with the teacher: about 58% of stutters removed for
+# about 6% of words lost. Used live by the student detector and offline for recordings.
+BALANCED_CUTS = CutConfig(thresholds=(0.4, 0.35, 0.5, 0.5, 0.4), off_ratio=0.35, merge_gap=5, snap=0,
+                          refine_long_s=0.8, prolong_keep_ms=100.0, prolong_tail_ms=40.0)
 REPEATS = ("sound_rep", "word_rep")
 
 

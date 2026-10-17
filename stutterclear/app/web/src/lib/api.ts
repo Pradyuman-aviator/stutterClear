@@ -97,6 +97,38 @@ export const startSession = (body: StartBody) =>
 export const stopSession = () =>
   json<{ ok: boolean; summary: Summary | null; playback?: PlaybackInfo }>(fetch("/api/stop", { method: "POST" }))
 
+// "Try a real recording" (UCLASS excerpts): "best" is the offline model, "live" the real-time pipeline.
+export type DemoEngine = "best" | "live"
+
+export interface DemoSample {
+  id: string
+  title: string
+  who: string
+  duration_s: number
+  engines: DemoEngine[]
+}
+
+export interface DemoTimeline {
+  id: string
+  engine: DemoEngine
+  detector: string
+  label: string
+  lag_ms: number
+  detect_ms: number
+  original_s: number
+  clean_s: number
+  removed_s: number
+  env_in: number[] // 10 ms peaks of the original
+  env_out: number[] // 10 ms peaks of the cleaned audio
+  cuts: Span[]
+  events: Span[]
+}
+
+export const getDemos = () => json<{ samples: DemoSample[]; credit: string }>(fetch("/api/demo"))
+export const getDemo = (id: string, engine: DemoEngine) => json<DemoTimeline>(fetch(`/api/demo/${id}?engine=${engine}`))
+export const demoAudioUrl = (id: string, which: "original" | "clean", engine: DemoEngine) =>
+  `/api/demo/${id}/${which}.wav?engine=${engine}`
+
 export const KIND_LABEL: Record<string, string> = {
   sound_rep: "Sound repeat",
   word_rep: "Word repeat",

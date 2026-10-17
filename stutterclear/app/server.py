@@ -15,6 +15,7 @@ from pydantic import BaseModel
 from ..audio import wav_bytes
 from ..config import SAMPLE_RATE as SR
 from ..live import DEFAULT_STUDENT, LiveSession, devices, student_eval
+from . import demo
 
 STATIC = Path(__file__).parent / "static"
 UPDATE_S = 0.03  # ~30 updates a second: the orb reacts within a frame or two
@@ -145,6 +146,31 @@ async def ws(socket: WebSocket):
         pass
     finally:
         clients.discard(socket)
+
+
+@app.get("/api/demo")
+def demo_list():
+    return {"samples": demo.available(), "credit": demo.CREDIT}
+
+
+def _demo(sid: str, engine: str) -> dict:
+    s = next((s for s in demo.available() if s["id"] == sid), None)
+    if s is None or engine not in s["engines"]:
+        raise HTTPException(404, "No such sample.")
+    return demo.render(sid, engine)
+
+
+@app.get("/api/demo/{sid}")
+def demo_timeline(sid: str, engine: str = "best"):
+    return _demo(sid, engine)["timeline"]
+
+
+@app.get("/api/demo/{sid}/{which}.wav")
+def demo_audio(sid: str, which: str, engine: str = "best"):
+    if which not in ("original", "clean"):
+        raise HTTPException(404, "No such track.")
+    return Response(wav_bytes(_demo(sid, engine)[which]), media_type="audio/wav",
+                    headers={"Cache-Control": "public, max-age=3600"})
 
 
 # Last, so the API and WebSocket routes above take precedence over the built UI files.

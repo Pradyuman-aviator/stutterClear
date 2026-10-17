@@ -3,6 +3,7 @@ import { AnimatePresence, MotionConfig, motion, type Variants } from "motion/rea
 import { AudioLines, Captions, Check, Cpu, Headphones, Lock, Mic, Square, WandSparkles } from "lucide-react"
 
 import { DelayMatrix } from "@/components/delay-matrix"
+import { DemoBar, DemoPicker } from "@/components/demo-player"
 import { GlassCard } from "@/components/glass-card"
 import { LiquidBackground } from "@/components/liquid-background"
 import { LiquidSwitch } from "@/components/liquid-switch"
@@ -15,11 +16,12 @@ import { SessionToast, type ToastData } from "@/components/session-toast"
 import { ShimmeringText } from "@/components/ui/shimmering-text"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { VoiceOrb } from "@/components/voice-orb"
+import { useDemo } from "@/hooks/use-demo"
 import { useLive, type LiveData, type Stats } from "@/hooks/use-live"
 import { useSignals, type Signals } from "@/hooks/use-signals"
 import {
-  getDevices, getInfo, getPlayback, KIND_LABEL, startSession, stopSession,
-  type DetectorKind, type Devices, type Mode, type PlaybackInfo, type StartBody, type StudentEval,
+  getDemos, getDevices, getInfo, getPlayback, KIND_LABEL, startSession, stopSession,
+  type DemoSample, type DetectorKind, type Devices, type Mode, type PlaybackInfo, type StartBody, type StudentEval,
 } from "@/lib/api"
 import { EASE_OUT, SPRING } from "@/lib/motion"
 import { useStore, type Store } from "@/lib/store"
@@ -85,7 +87,12 @@ export default function App() {
   const [playbackVersion, setPlaybackVersion] = useState(0)
   const highlight = useRef<Layer | null>(null)
   const [hl, setHl] = useState<Layer | null>(null)
-  const signals = useSignals(data, running)
+  const demo = useDemo(data, stats, reset)
+  const [demos, setDemos] = useState<{ samples: DemoSample[]; credit: string }>({ samples: [], credit: "" })
+  const demoOn = demo.state !== null
+  const demoPlaying = !!demo.state?.playing
+  const active = running || demoPlaying // the orb, mirror and stats come alive for either
+  const signals = useSignals(data, active)
 
   const loadDevices = useCallback(() => {
     getDevices()
@@ -115,6 +122,7 @@ export default function App() {
       })
       .catch(() => {})
     getPlayback().then((p) => setPlayback(p.available ? p : null)).catch(() => {})
+    getDemos().then(setDemos).catch(() => {})
     loadDevices()
   }, [connected, loadDevices])
 
@@ -173,8 +181,11 @@ export default function App() {
   const toggle = useCallback(() => {
     if (busy.current) return
     if (running) stop()
-    else start()
-  }, [running, start, stop])
+    else {
+      if (demo.state) demo.close()
+      start()
+    }
+  }, [running, start, stop, demo])
 
   // Space starts and stops, unless you are typing or on another control.
   useEffect(() => {
@@ -245,7 +256,7 @@ export default function App() {
                 <div className="hidden text-xs text-white/45 min-[420px]:block">Your real voice, on your terms</div>
               </div>
             </div>
-            <EnginePill connected={connected} running={running} detector={detName} stats={stats} />
+            <EnginePill connected={connected} running={running} demo={demoOn} detector={detName} stats={stats} />
           </motion.header>
 
           {/* Desktop: 3 columns. Tablet: 2 columns, packed densely so no cell is left empty.
@@ -257,7 +268,7 @@ export default function App() {
                 <div className="relative flex flex-col items-center gap-6 sm:flex-row sm:gap-10">
                   <VoiceOrb
                     signals={signals}
-                    running={running}
+                    running={active}
                     onToggle={toggle}
                     className="w-44 shrink-0 min-[400px]:w-52 sm:w-56 lg:w-60"
                   />
@@ -265,10 +276,11 @@ export default function App() {
                     <StatusLine
                       signals={signals}
                       data={data}
-                      running={running}
+                      running={active}
                       starting={starting}
+                      demo={demoPlaying}
                       connected={connected}
-                      mode={mode}
+                      mode={running ? mode : "gentle"}
                     />
                     <h1 className="text-[28px] leading-[1.1] font-semibold tracking-tight text-balance sm:text-4xl">
                       Say it your way.
@@ -309,7 +321,7 @@ export default function App() {
                       </span>
                     </div>
                     <AnimatePresence initial={false}>
-                      {!running && playback && (
+                      {!running && !demoOn && playback && (
                         <motion.div
                           key="playback"
                           initial={{ opacity: 0, height: 0 }}
@@ -322,6 +334,37 @@ export default function App() {
                             Listen back · kept in memory until your next session
                           </div>
                           <Playback info={playback} version={playbackVersion} />
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                    <AnimatePresence initial={false}>
+                      {!running && (
+                        <motion.div
+                          key={demoOn ? "demo-bar" : "demo-pick"}
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: "auto" }}
+                          exit={{ opacity: 0, height: 0 }}
+                          transition={SPRING.glide}
+                          className="-my-1 w-full overflow-hidden py-1"
+                        >
+                          {demo.state ? (
+                            <DemoBar
+                              state={demo.state}
+                              sample={demos.samples.find((s) => s.id === demo.state?.id)}
+                              credit={demos.credit}
+                              progress={demo.progress}
+                              onPlay={demo.play}
+                              onPause={demo.pause}
+                              onHear={demo.setHear}
+                              onEngine={demo.setEngine}
+                              onClose={demo.close}
+                            />
+                          ) : (
+                            <DemoPicker
+                              samples={demos.samples}
+                              onPick={(id) => demo.load(id, demos.samples.find((s) => s.id === id)?.engines[0] ?? "live")}
+                            />
+                          )}
                         </motion.div>
                       )}
                     </AnimatePresence>
@@ -460,7 +503,7 @@ export default function App() {
                   highlight={highlight}
                   className="mt-4 min-h-48 w-full flex-1 touch-pan-y sm:min-h-56"
                 />
-                <StatsRow stats={stats} running={running} />
+                <StatsRow stats={stats} running={active} />
               </GlassCard>
             </motion.div>
 
@@ -510,12 +553,13 @@ const TONE: Record<Tone, { color: string; shimmer: string }> = {
 
 // Its own component: it re-checks the live signals ten times a second without touching the page.
 function StatusLine({
-  signals, data, running, starting, connected, mode,
+  signals, data, running, starting, demo, connected, mode,
 }: {
   signals: RefObject<Signals>
   data: RefObject<LiveData>
   running: boolean
   starting: boolean
+  demo: boolean
   connected: boolean
   mode: Mode
 }) {
@@ -535,12 +579,13 @@ function StatusLine({
         const kind = (KIND_LABEL[data.current.lastCutKind] ?? "stutter").toLowerCase()
         next = { text: `Removed a ${kind}`, tone: "cut" }
       } else if (s.block > 0.25) next = { text: "Pause kept. Take your time.", tone: "block" }
+      else if (demo) next = { text: "Playing a real recording…", tone: "live" }
       else if (mode === "off") next = { text: "Mirror only. Nothing is cut.", tone: "live" }
       else next = { text: "Listening…", tone: "live" }
       setStatus((cur) => (cur.text === next.text ? cur : next))
     }, 100)
     return () => window.clearInterval(id)
-  }, [signals, data, running, starting, connected, mode])
+  }, [signals, data, running, starting, demo, connected, mode])
 
   return (
     <div className="grid h-6 items-center">
@@ -694,17 +739,24 @@ function Stat({
 }
 
 function EnginePill({
-  connected, running, detector, stats,
+  connected, running, demo, detector, stats,
 }: {
   connected: boolean
   running: boolean
+  demo: boolean
   detector: string
   stats: Store<Stats | null>
 }) {
   const live = useStore(stats, (s) => s?.detector ?? "")
   const det = detector || live
-  const label = !connected ? "Engine offline" : running ? `Live · ${det === "student" ? "AI model" : "Rule-based"}` : "Engine ready"
-  const dot = !connected ? "bg-amber-300" : running ? "bg-rose-400" : "bg-emerald-300"
+  const label = !connected
+    ? "Engine offline"
+    : running
+      ? `Live · ${det === "student" ? "AI model" : "Rule-based"}`
+      : demo
+        ? "Demo · real recording"
+        : "Engine ready"
+  const dot = !connected ? "bg-amber-300" : running ? "bg-rose-400" : demo ? "bg-teal-300" : "bg-emerald-300"
   return (
     <motion.div
       layout

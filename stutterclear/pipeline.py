@@ -1,7 +1,7 @@
 """Wires a detector to the splicer, and summarises a session."""
 import numpy as np
 
-from .config import SAMPLE_RATE, SpliceConfig
+from .config import HOP, SAMPLE_RATE, SpliceConfig, preset
 from .detector import CutUpdate, HeuristicDetector
 from .splicer import Splicer
 
@@ -67,3 +67,18 @@ def score_against_labels(removed_spans, labels: list, sr: int) -> dict:
     total = sum(r1 - r0 for r0, r1, _ in removed_spans)
     correct = sum(overlap(r0, r1, s, e) for r0, r1, _ in removed_spans for s, e in wanted)
     return {"per_label": per_label, "false_cut_ms": round((total - correct) * 1000 / sr)}
+
+
+def stream(x: np.ndarray, mode: str, detector=None, **overrides):
+    """Run a recording through the live pipeline 10 ms at a time, exactly as the app does with a
+    mic, plus enough silence at the end to flush the delay. Returns (pipeline, output audio)."""
+    pipe = Pipeline(preset(mode, **overrides), detector=detector)
+    out = []
+    tail = np.zeros(int(SAMPLE_RATE * (pipe.cfg.target_delay_ms / 1000 + 1.0)), np.float32)
+    for src in (x, tail):
+        for i in range(0, len(src), HOP):
+            block = src[i:i + HOP]
+            pipe.write(block)
+            pipe.detect(block)
+            out.append(pipe.read(len(block)))
+    return pipe, np.concatenate(out)

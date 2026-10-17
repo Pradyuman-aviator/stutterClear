@@ -101,7 +101,7 @@ void main() {
   col = mix(col, blue, smoothstep(0.0, 0.7, q.x) * 0.45);
   col = mix(col, teal, smoothstep(0.05, 0.7, r.x) * (0.25 + 0.3 * uLive));
   col = mix(col, violet, smoothstep(0.15, 0.8, r.y) * (0.3 + 0.4 * uBlock));
-  col = mix(col, rose, uCut * smoothstep(-0.2, 0.6, f) * 0.45);
+  col = mix(col, rose, uCut * smoothstep(-0.2, 0.6, f) * 0.28);
 
   // Soft light under the cursor; the voice lifts the whole field a little.
   col += vec3(0.22, 0.30, 0.62) * pull * 0.2;

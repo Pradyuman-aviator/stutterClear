@@ -15,7 +15,7 @@ import torch.nn.functional as F
 from .config import SAMPLE_RATE
 from .detector import CutUpdate, DetectorEvent
 from .features import FeatureStream
-from .segments import CutConfig
+from .segments import BALANCED_CUTS, CutConfig
 from .student import N_MELS, CausalStudent
 from .synth import CLASSES, FRAME
 
@@ -62,8 +62,7 @@ class StudentStream:
 
 
 # Live cut rules, from the offline search on 7 held-out UCLASS speakers ("balanced" preset).
-LIVE_CUTS = CutConfig(thresholds=(0.4, 0.35, 0.5, 0.5, 0.4), off_ratio=0.35, merge_gap=5, snap=0,
-                      refine_long_s=0.8, prolong_keep_ms=100.0, prolong_tail_ms=40.0)
+LIVE_CUTS = BALANCED_CUTS
 
 
 class StudentDetector:

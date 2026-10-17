@@ -1,5 +1,5 @@
 import { useEffect, useRef, type RefObject } from "react"
-import { liveClock, loudness, STEP_S, type LiveData } from "@/hooks/use-live"
+import { liveClock, STEP_S, type LiveData } from "@/hooks/use-live"
 import type { Signals } from "@/hooks/use-signals"
 import { KIND_LABEL, type Span } from "@/lib/api"
 
@@ -13,6 +13,7 @@ export const COLORS: Record<Layer, string> = {
 }
 
 const PITCH = 3.5 // px per bar (bar + gap)
+const RANGE_DB = 30 // bars show this much below the loudest recent sound
 const LABEL_H = 20
 const GAP_H = 30
 
@@ -72,6 +73,7 @@ export function MirrorWaveform({
     const firstSeen = new WeakMap<Span, number>()
     const alphas: Record<Layer, number> = { you: 1, cut: 1, block: 1, heard: 1 }
     let idleMix = 1
+    let topDb = -30 // auto-gain reference: the loudest recent bar, smoothed
     let last = performance.now()
     let raf = 0
 
@@ -214,7 +216,8 @@ export function MirrorWaveform({
           if (i1 <= i0) continue
           let peak = 0
           for (let i = i0; i < i1; i++) peak = Math.max(peak, env[i])
-          const a = 2 + loudness(peak) * (laneH - 8)
+          const db = 20 * Math.log10(Math.max(peak, 1e-6))
+          const a = 2 + Math.min(1, Math.max(0, (db - topDb + RANGE_DB) / RANGE_DB)) * (laneH - 8)
           const x = X(ta + sPerBar / 2)
           const mid = ta + sPerBar / 2
           const layer: Layer = !classify ? "heard" : inside(mid, cuts) ? "cut" : inside(mid, events) ? "block" : "you"
@@ -232,6 +235,13 @@ export function MirrorWaveform({
         }
         ctx.globalAlpha = 1
       }
+      // Auto-gain: bars are scaled to the loudest recent sound (fast up, slow down), so a loud
+      // recording keeps its shape instead of every bar hitting the ceiling.
+      let visible = 0
+      for (let i = Math.max(0, Math.floor(t0 / STEP_S) - d.inOffset); i < d.envIn.length; i++)
+        visible = Math.max(visible, d.envIn[i])
+      const target = Math.max(-36, 20 * Math.log10(Math.max(visible, 1e-6)))
+      topDb += (target - topDb) * (1 - Math.exp(-dt * (target > topDb ? 8 : 0.8)))
       lane(d.envIn, d.inOffset, c1, true)
       lane(d.envOut, d.outOffset, c2, false)
 
