@@ -56,3 +56,18 @@ def test_playback_and_unknown_ids():
     assert client.get("/api/notes/note-nope").status_code == 404
     assert client.get("/api/demo/note-nope?engine=natural").status_code == 404
     assert client.get("/api/demo/no-such-sample").status_code == 404
+
+
+def test_browser_mic_session_end_to_end():
+    """The hosted live path: settings, audio frames, 'stop' -> summary and listen-back."""
+    rng = np.random.default_rng(0)
+    with client.websocket_connect("/ws/mic") as ws:
+        ws.send_json({"mode": "gentle", "detector": "heuristic"})
+        assert ws.receive_json()["ok"] is True
+        for _ in range(100):  # 2 s of quiet noise in 20 ms frames
+            ws.send_bytes((rng.standard_normal(320) * 0.01).astype(np.float32).tobytes())
+        ws.send_text("stop")
+        end = ws.receive_json()
+    assert end["summary"]["mode_delay_ms"] > 0
+    assert end["playback"]["available"] and end["playback"]["original_s"] > 1.5
+    assert server.state["session"] is None  # one session at a time: the slot is free again
