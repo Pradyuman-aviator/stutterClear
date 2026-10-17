@@ -156,6 +156,10 @@ class LiveSession:
             "n_cuts": len(spans),
             "detector": self.detector_name,
             "detect_ms": round(float(np.mean(self.detect_ms[-50:])), 2) if self.detect_ms else 0.0,
+            # Index of the first envelope point below, so a page that joins mid-session lines up
+            # its waveform with the cut times (both count from the start of the session).
+            "in_start": self._sent["env_in"],
+            "out_start": self._sent["env_out"],
             "env_in": self.env_in[self._sent["env_in"]:],
             "env_out": self.env_out[self._sent["env_out"]:],
             "cuts": [{"start": s / SR, "end": e / SR, "kind": k} for s, e, k in spans[self._sent["cuts"]:]],
