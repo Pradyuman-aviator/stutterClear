@@ -3,3 +3,4 @@
 *.png binary
 *.pt binary
 *.npy binary
+stutterclear/app/static/assets/** -diff linguist-generated

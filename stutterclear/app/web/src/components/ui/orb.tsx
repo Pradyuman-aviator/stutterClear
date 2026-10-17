@@ -10,6 +10,7 @@ type OrbProps = {
   colorsRef?: React.RefObject<[string, string]>
   resizeDebounce?: number
   seed?: number
+  luminous?: boolean // keep the light colour ramp even in dark mode (no black blades)
   agentState?: AgentState
   volumeMode?: "auto" | "manual"
   manualInput?: number
@@ -35,6 +36,7 @@ export function Orb({
   getInputVolume,
   getOutputVolume,
   className,
+  luminous = false,
 }: OrbProps) {
   return (
     <div className={className ?? "relative h-full w-full"}>
@@ -50,6 +52,7 @@ export function Orb({
           colors={colors}
           colorsRef={colorsRef}
           seed={seed}
+          luminous={luminous}
           agentState={agentState}
           volumeMode={volumeMode}
           manualInput={manualInput}
@@ -68,6 +71,7 @@ function Scene({
   colors,
   colorsRef,
   seed,
+  luminous,
   agentState,
   volumeMode,
   manualInput,
@@ -80,6 +84,7 @@ function Scene({
   colors: [string, string]
   colorsRef?: React.RefObject<[string, string]>
   seed?: number
+  luminous: boolean
   agentState: AgentState
   volumeMode: "auto" | "manual"
   manualInput?: number
@@ -145,7 +150,7 @@ function Scene({
   useEffect(() => {
     const apply = () => {
       if (!circleRef.current) return
-      const isDark = document.documentElement.classList.contains("dark")
+      const isDark = !luminous && document.documentElement.classList.contains("dark")
       circleRef.current.material.uniforms.uInverted.value = isDark ? 1 : 0
     }
 
@@ -202,17 +207,19 @@ function Scene({
       }
     }
 
-    curInRef.current += (targetIn - curInRef.current) * 0.2
-    curOutRef.current += (targetOut - curOutRef.current) * 0.2
+    // Easing per 60 Hz frame, rescaled by delta so 144 Hz screens animate at the same speed.
+    const ease = (k: number) => 1 - Math.pow(1 - k, delta * 60)
+    curInRef.current += (targetIn - curInRef.current) * ease(0.2)
+    curOutRef.current += (targetOut - curOutRef.current) * ease(0.2)
 
     const targetSpeed = 0.1 + (1 - Math.pow(curOutRef.current - 1, 2)) * 0.9
-    animSpeedRef.current += (targetSpeed - animSpeedRef.current) * 0.12
+    animSpeedRef.current += (targetSpeed - animSpeedRef.current) * ease(0.12)
 
     u.uAnimation.value += delta * animSpeedRef.current
     u.uInputVolume.value = curInRef.current
     u.uOutputVolume.value = curOutRef.current
-    u.uColor1.value.lerp(targetColor1Ref.current, 0.08)
-    u.uColor2.value.lerp(targetColor2Ref.current, 0.08)
+    u.uColor1.value.lerp(targetColor1Ref.current, ease(0.08))
+    u.uColor2.value.lerp(targetColor2Ref.current, ease(0.08))
   })
 
   useEffect(() => {
@@ -232,6 +239,7 @@ function Scene({
     perlinNoiseTexture.wrapS = THREE.RepeatWrapping
     perlinNoiseTexture.wrapT = THREE.RepeatWrapping
     const isDark =
+      !luminous &&
       typeof document !== "undefined" &&
       document.documentElement.classList.contains("dark")
     return {

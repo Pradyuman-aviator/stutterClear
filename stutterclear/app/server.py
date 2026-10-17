@@ -1,15 +1,17 @@
 """StutterClear app server: the Fluency Mirror UI on http://127.0.0.1:8765.
 
     python scripts/run_app.py
+
+The UI is a Vite + React build in static/ (source in web/: `npm run build` there refreshes it).
 """
 import asyncio
 from pathlib import Path
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from ..live import LiveSession, devices
+from ..live import DEFAULT_STUDENT, LiveSession, devices
 
 STATIC = Path(__file__).parent / "static"
 app = FastAPI(title="StutterClear")
@@ -24,14 +26,14 @@ class StartRequest(BaseModel):
     save: bool = False
 
 
-@app.get("/")
-def index():
-    return FileResponse(STATIC / "index.html")
-
-
 @app.get("/api/devices")
 def list_devices():
     return devices()
+
+
+@app.get("/api/info")
+def info():
+    return {"student": DEFAULT_STUDENT.exists()}  # the AI detector needs its downloaded checkpoint
 
 
 @app.post("/api/start")
@@ -60,3 +62,7 @@ async def ws(socket: WebSocket):
             await asyncio.sleep(0.05)
     except WebSocketDisconnect:
         pass
+
+
+# Last, so the API and WebSocket routes above take precedence over the built UI files.
+app.mount("/", StaticFiles(directory=STATIC, html=True), name="ui")
