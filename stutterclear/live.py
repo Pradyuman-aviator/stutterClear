@@ -25,8 +25,9 @@ from .config import HOP, SAMPLE_RATE as SR, preset
 from .pipeline import Pipeline
 from .segments import CutConfig
 
-# Off: nothing is cut. Gentle: the "balanced" cut rules, 250 ms delay. Strong: lower thresholds
-# (removes the most stutters, risks more words), 600 ms delay.
+# Off: nothing is cut. Gentle: the "balanced" cut rules, 250 ms delay, fillers kept (like the
+# Natural engine for recordings). Strong: lower thresholds, fillers removed too (like Thorough):
+# removes the most stutters, risks more words, 600 ms delay.
 STRONG_CUTS = CutConfig(thresholds=(0.3, 0.25, 0.4, 0.5, 0.3), off_ratio=0.5, merge_gap=5, snap=0,
                         refine_long_s=1e9, prolong_keep_ms=100.0)
 MODES = {"off": ("verbatim", None, 0), "gentle": ("trim", "gentle", 200), "strong": ("clean", "strong", 500)}
@@ -140,10 +141,12 @@ def make_detector(kind: str, mode: str, student_path=None):
         from .teacher_runtime import TeacherDetector, live_capable
         if live_capable():
             from .segments import BALANCED_CUTS
-            return TeacherDetector(TEACHER_LOOKAHEAD_MS[mode], cut_cfg=BALANCED_CUTS if cuts == "gentle" else STRONG_CUTS), "teacher"
+            return TeacherDetector(TEACHER_LOOKAHEAD_MS[mode], cut_cfg=BALANCED_CUTS if cuts == "gentle" else STRONG_CUTS,
+                                   cut_interjections=cuts == "strong"), "teacher"
     if kind == "student" and path.exists() and cuts:
         from .student_runtime import LIVE_CUTS, StudentDetector
         return StudentDetector(path, lookahead_ms, path.with_name("student_test_report.json"),
+                               cut_interjections=cuts == "strong",
                                cut_cfg=LIVE_CUTS if cuts == "gentle" else STRONG_CUTS), "student"
     return None, "rule-based"  # Pipeline falls back to the heuristic detector
 

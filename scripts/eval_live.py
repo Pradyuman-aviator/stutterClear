@@ -33,6 +33,7 @@ def main():
     ap.add_argument("--detectors", default="heuristic,student,teacher")
     ap.add_argument("--modes", default="gentle,strong")
     ap.add_argument("--out", help="write results as JSON here")
+    ap.add_argument("--merge", action="store_true", help="update rows in an existing --out file instead of replacing it")
     args = ap.parse_args()
 
     root = Path(args.dir)
@@ -74,6 +75,10 @@ def main():
                 continue
             print(f"{kind}: no checkpoint at {args.student}, skipped")
     if args.out:
+        if args.merge and Path(args.out).exists():
+            old = json.loads(Path(args.out).read_text())["results"]
+            fresh = {(r["detector"], r["mode"]) for r in results}
+            results = [r for r in old if (r["detector"], r["mode"]) not in fresh] + results
         out = {"results": results,
                "student_mtime": Path(args.student).stat().st_mtime if Path(args.student).exists() else None}
         Path(args.out).parent.mkdir(parents=True, exist_ok=True)

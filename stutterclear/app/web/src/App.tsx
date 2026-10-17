@@ -42,7 +42,7 @@ function modeHint(mode: Mode, detector: DetectorKind) {
   const behind = detector === "teacher" ? (mode === "gentle" ? "0.5 s" : "0.85 s") : mode === "gentle" ? "250 ms" : "600 ms"
   return mode === "gentle"
     ? `Removes clear repeats. About ${behind} behind you.`
-    : `Removes the most stutters; may clip a word now and then. About ${behind} behind you.`
+    : `Removes the most stutters, fillers too; may clip a word now and then. About ${behind} behind you.`
 }
 const DETECTOR_NOTE: Record<DetectorKind, string> = {
   teacher: "The big model, run live on your GPU.",
