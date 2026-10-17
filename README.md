@@ -16,12 +16,30 @@ mic ──► delay buffer (0.25-0.85 s) ──► splicer: skip the stutter, jo
 
 | | What it is | How well it works today (7 speakers it never trained on) |
 |---|---|---|
-| **Live** | Your mic, cleaned in real time, sent to headphones or a virtual mic (Zoom, Meet). | Big model on a laptop GPU: **54% of stutters removed** at about 0.5 s delay. Without a GPU the rule-based detector removes ~7%. |
+| **Live** | Your mic (or your browser's, on the hosted demo), cleaned in real time, sent to headphones or a virtual mic (Zoom, Meet). | Big model on a laptop GPU: **32% of stutters removed in Gentle** (fillers kept, 3.2% of words lost) and **65% in Strong** (fillers too, 5.6% lost), about 0.5-0.85 s behind you. Without a GPU the rule-based detector removes ~8%. |
 | **Clean a voice note** | Record or upload a message in the browser and get it back cleaned. | Cuts land **between words only**: about 49% of stutters removed (75% if fillers go too) with **no real word cut**. |
 | **Try a real recording** | Three real stuttered recordings (UCLASS, adult speakers) with A/B playback. | Same engines as above, side by side. |
 
 The app also shows a **Fluency Mirror**: your voice and what the listener hears, scrolling live,
-with every removed stutter marked and labelled.
+with every removed stutter marked and labelled, and **live captions** of what the listener hears
+(NVIDIA FastConformer, streaming, on the CPU).
+
+### NVIDIA Nemotron on Nebius Token Factory
+
+Nemotron does the parts that need an understanding of language (text only, never audio; each one
+opt-in or shown on demand):
+
+- **Meaning guard.** Before a recording is cleaned, Nemotron reviews every proposed cut in its
+  sentence and keeps repeats the person meant: grammar ("I know that that is true", "she had had
+  enough"), emphasis ("very very good"). Neither the transcript nor the acoustic model can tell.
+- **Word rescue.** Stuck on a word (a block)? Nemotron suggests the few words you most likely mean,
+  from what you have said and your context card. You choose; nothing is said for you.
+- **Context agent.** Say where you will speak; Nemotron (with Tavily web search, if set up) fills
+  the context card with the names and terms you will need.
+- **Insights.** Three short, supportive notes after a session or recording. No diagnosis, no cure
+  claims.
+
+Set `NEBIUS_API_KEY` (and optionally `TAVILY_API_KEY`) in the environment where the app runs.
 
 ## How it works
 
@@ -32,10 +50,11 @@ with every removed stutter marked and labelled.
 2. **Live.** The teacher runs on sliding windows (4 s of past audio plus a short lookahead, a
    decision every 160 ms); a causal student model and a rule-based detector are the fallbacks for
    machines without a GPU. The splicer plays your voice a fraction of a second late, skips what was
-   marked, rebuilds the delay in natural pauses, and fills any gap with your own room tone (never
-   digital silence).
-3. **Recordings.** The teacher finds the stutters and the verbatim transcript places every cut on a
-   word boundary, removing only repeated and broken-off words. Model frame edges are about 100 ms
+   marked, never plays audio the detector has not judged yet, rebuilds the delay in natural pauses,
+   and fills any gap with your own room tone (never digital silence).
+3. **Recordings.** The teacher finds the stutters, the verbatim transcript places every cut on a
+   word boundary, and Nemotron's meaning guard reviews each cut, removing only repeated and
+   broken-off words the person did not mean. Model frame edges are about 100 ms
    off, a whole syllable: cutting on them sliced a real word in 30-43% of cuts, which is exactly
    what sounds like a jerk; word-aligned cutting slices none.
 
@@ -44,7 +63,17 @@ with every removed stutter marked and labelled.
 All on 7 held-out UCLASS speakers (23 min), scored against silver labels from CrisperWhisper.
 "Removed" = stutter tokens removed; "lost" = fluent words cut by more than half.
 
-**Big model, live (sliding windows) vs offline** (`scripts/teacher_lookahead.py`):
+**Live, end to end** (`scripts/eval_live.py`: each recording streamed 10 ms at a time through the
+real pipeline: delay buffer, online detector, splicer):
+
+| detector | Gentle (fillers kept): removed / lost | Strong (fillers removed too): removed / lost |
+|---|---|---|
+| rule-based | 7.6% / 1.25% | 10.2% / 1.45% |
+| causal student v1 | 19.8% / 8.37% | 19.5% / 8.33% |
+| teacher on GPU (sliding windows) | 31.7% / 3.18% | 65.2% / 5.64% |
+
+**How much lookahead the big model needs** (`scripts/teacher_lookahead.py`: probabilities from
+sliding windows, cut with the offline recipe, fillers included):
 
 | lookahead | removed | lost |
 |---|---|---|
@@ -78,6 +107,10 @@ python scripts/run_app.py          # opens http://127.0.0.1:8765 (or the next fr
 python -m pytest -q
 ```
 
+Optional: `python scripts/download_asr.py` for live captions (NVIDIA FastConformer, 106 MB), and
+`NEBIUS_API_KEY` for the Nemotron features. The hosted demo setup (Nebius AI Cloud GPU VM, Docker,
+HTTPS) is in `docs/DEPLOY.md`; the hackathon submission kit is in `docs/SUBMISSION.md`.
+
 Use headphones for live playback (laptop speakers feed back into the mic). For calls, install a
 virtual audio cable (e.g. VB-CABLE), pick "CABLE Input" as the output in Setup, and "CABLE Output"
 as the microphone in Zoom / Meet.
@@ -90,7 +123,9 @@ Model checkpoints are not in the repository; the Kaggle jobs in `kaggle/` train 
 
 - Audio is processed on your computer. Nothing is recorded unless you switch saving on.
 - The last session and voice notes are kept in memory for playback (voice notes for at most an
-  hour) and are never written to disk.
+  hour) and are never written to disk. The hosted demo never stores recordings.
+- Nemotron features send text only (recent captions, the context card, counts), never audio, and
+  only when you use them.
 - The context card stays in your browser.
 
 ## Data and licences
