@@ -46,19 +46,20 @@ def label_tokens(words: list) -> list:
 
 
 def word_cuts(toks: list, probs=None, cut_fillers: bool = False, confirm: float = 0.3,
-              frame_s: float = 0.02) -> list:
+              frame_s: float = 0.02, keep: frozenset = frozenset()) -> list:
     """Cuts placed on word boundaries from a verbatim transcript, for recordings (not live).
 
     Removes repeated and cut-off words (and fillers if asked), each from its start to the start of
     the next word, so no real word is ever sliced: model frame edges are about 100 ms off, a whole
     syllable, and a word that loses its first or last sound is what a listener hears as a jerk.
     With teacher probabilities, a candidate is cut only if the model also hears a stutter there
-    (so a deliberate "very very" survives).
+    (so a deliberate "very very" survives). `keep` lists token indices never to cut (the meaning
+    guard's verdicts). Each cut lists the token indices it removes.
     """
     kinds = {"repeat", "cutoff"} | ({"filler"} if cut_fillers else set())
     cuts = []
     for i, t in enumerate(toks):
-        if t["label"] not in kinds:
+        if t["label"] not in kinds or i in keep:
             continue
         if probs is not None:
             a = max(0, int((t["s"] - 0.1) / frame_s))
@@ -71,8 +72,9 @@ def word_cuts(toks: list, probs=None, cut_fillers: bool = False, confirm: float 
         kind = {"repeat": "word_rep", "cutoff": "sound_rep", "filler": "interjection"}[t["label"]]
         if cuts and t["s"] - cuts[-1]["end"] <= 0.02:
             cuts[-1]["end"] = end
+            cuts[-1]["tokens"].append(i)
         else:
-            cuts.append({"kind": kind, "start": round(t["s"], 3), "end": round(end, 3)})
+            cuts.append({"kind": kind, "start": round(t["s"], 3), "end": round(end, 3), "tokens": [i]})
     return cuts
 
 

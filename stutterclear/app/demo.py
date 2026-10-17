@@ -22,7 +22,8 @@ from ..audio import load_wav
 from ..config import HOP, SAMPLE_RATE as SR
 from ..pipeline import stream
 from ..segments import NATURAL_JOIN, render_edited
-from ..silver import label_tokens, word_cuts
+from ..guard import guarded_cuts
+from ..silver import label_tokens
 
 DATA = Path(__file__).resolve().parents[2] / "data" / "external"
 SAMPLES = {s["id"]: s for s in json.loads(Path(__file__).with_name("demo_samples.json").read_text())}
@@ -102,10 +103,11 @@ def render(sid: str, engine: str) -> dict:
         x, probs, toks = _source(sid)
         stutter = probs[:, [0, 1, 2, 4]]  # sound_rep, word_rep, prolongation, interjection
         thorough = engine == "thorough"
-        cuts = word_cuts(toks, stutter, cut_fillers=thorough)
+        cuts, guard = guarded_cuts(toks, stutter, cut_fillers=thorough)  # Nemotron checks each cut
         label = f"{'Thorough' if thorough else 'Natural'} · offline model, cuts on word boundaries"
         y = render_edited(x, cuts, NATURAL_JOIN)
-        events, meta = [], {"detector": "teacher", "label": label, "lag_ms": 0, "detect_ms": 0.0}
+        cuts = [{"kind": c["kind"], "start": c["start"], "end": c["end"]} for c in cuts]
+        events, meta = [], {"detector": "teacher", "label": label, "lag_ms": 0, "detect_ms": 0.0, "guard": guard}
     elif engine == "live":
         x = _source(sid)[0] if sid.startswith("note-") else _excerpt(sid)
         from ..live import delay_overrides
@@ -118,7 +120,7 @@ def render(sid: str, engine: str) -> dict:
         summary = pipe.summary()
         from ..live import LABELS
         meta = {"detector": name, "label": f"Live · {LABELS.get(name, 'rule-based')}, Gentle",
-                "lag_ms": summary["lag_ms"]["p50"], "detect_ms": 0.0}
+                "lag_ms": summary["lag_ms"]["p50"], "detect_ms": 0.0, "guard": None}
     else:
         raise KeyError(engine)
     timeline = {

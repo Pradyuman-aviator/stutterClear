@@ -147,6 +147,8 @@ export interface DemoTimeline {
   cuts: Span[]
   events: Span[]
   captions?: { original: CaptionWord[]; clean: CaptionWord[] } | null
+  // Nemotron's review of each proposed cut (offline engines, when a key is set)
+  guard?: { model: string; checked: number; kept: { word: string; context: string; reason: string }[]; error?: string } | null
 }
 
 export const getDemos = () => json<{ samples: DemoSample[]; credit: string }>(fetch("/api/demo"))

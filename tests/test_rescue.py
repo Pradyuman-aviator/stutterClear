@@ -36,7 +36,14 @@ def test_suggest_calls_the_api(monkeypatch):
         return Reply(json.dumps({"choices": [{"message": {"content": '["StutterClear", "stutter", "study"]'}}]}).encode())
 
     monkeypatch.setenv("NEBIUS_API_KEY", "test-key")
-    monkeypatch.setattr(rescue.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(rescue.nemotron.urllib.request, "urlopen", fake_urlopen)
     assert rescue.suggest("I am building", "Project: StutterClear", "st") == ["StutterClear", "stutter", "study"]
     assert sent["url"].endswith("/chat/completions") and sent["auth"] == "Bearer test-key"
     assert sent["body"]["model"] == rescue.MODEL
+
+
+def test_last_json_takes_the_outermost_object():
+    from stutterclear.nemotron import last_json
+    assert last_json('ok {"keep": [{"id": 5}, {"id": 11}]} done') == {"keep": [{"id": 5}, {"id": 11}]}
+    assert last_json('first ["a"] then ["b", "c"]', "[") == ["b", "c"]
+    assert last_json("no json here") is None

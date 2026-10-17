@@ -1,6 +1,6 @@
 import { type RefObject } from "react"
 import { AnimatePresence, motion } from "motion/react"
-import { AudioLines, Download, LoaderCircle, Pause, Play, X } from "lucide-react"
+import { AudioLines, Download, LoaderCircle, Pause, Play, ShieldCheck, X } from "lucide-react"
 import { Segmented } from "@/components/segmented"
 import type { DemoState, Hear } from "@/hooks/use-demo"
 import type { DemoEngine, DemoSample } from "@/lib/api"
@@ -175,6 +175,20 @@ export function DemoBar({
           </motion.a>
         )}
       </div>
+      {tl?.guard && (
+        <div className="flex w-full items-start gap-2 rounded-xl border border-violet-300/15 bg-violet-300/[0.06] px-3 py-2 text-[11px] leading-relaxed text-violet-100/80">
+          <ShieldCheck className="mt-px size-3.5 shrink-0 text-violet-300" />
+          <span>
+            <span className="font-medium text-violet-100">Meaning guard · Nemotron</span> checked {tl.guard.checked} cut
+            {tl.guard.checked === 1 ? "" : "s"}
+            {tl.guard.error
+              ? ` but did not answer, so the cuts stand as detected.`
+              : tl.guard.kept.length
+                ? `; kept ${tl.guard.kept.map((k) => `"${k.word}"${k.reason ? ` (${k.reason})` : ""}`).join(", ")} because it was meant.`
+                : "; every one was a real stutter."}
+          </span>
+        </div>
+      )}
       {tl && (
         <div className={cn("text-[11px] leading-relaxed text-white/40")}>
           {tl.cuts.length} stutter{tl.cuts.length === 1 ? "" : "s"} removed, {tl.removed_s.toFixed(1)} s shorter.{" "}
