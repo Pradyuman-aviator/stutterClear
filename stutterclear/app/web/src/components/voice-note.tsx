@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from "motion/react"
 import { FileAudio, LoaderCircle, Mic, Square } from "lucide-react"
 import { GlassCard } from "@/components/glass-card"
 import { createNote, getNote, type NoteStatus } from "@/lib/api"
+import { openMic } from "@/lib/browser-mic"
 import { SPRING } from "@/lib/motion"
 import { toWav16k } from "@/lib/wav"
 import { cn } from "@/lib/utils"
@@ -71,12 +72,9 @@ export function VoiceNoteCard({
   const record = async () => {
     let stream: MediaStream
     try {
-      // Raw voice: the stutter detector was trained on unprocessed audio.
-      stream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 1 },
-      })
-    } catch {
-      setPhase({ kind: "error", message: "The browser could not use the microphone." })
+      stream = await openMic()
+    } catch (e) {
+      setPhase({ kind: "error", message: (e as Error).message })
       return
     }
     const chunks: Blob[] = []

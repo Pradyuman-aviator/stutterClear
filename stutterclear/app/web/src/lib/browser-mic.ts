@@ -57,6 +57,28 @@ class Tap extends AudioWorkletProcessor {
 registerProcessor("tap", Tap)
 `
 
+// The microphone, raw (the stutter detector was trained on unprocessed audio), with errors a person
+// can act on instead of the browser's own wording.
+export async function openMic(): Promise<MediaStream> {
+  if (!navigator.mediaDevices?.getUserMedia) {
+    throw new Error("The microphone only works on a secure page: open this site with https:// (or on localhost).")
+  }
+  try {
+    return await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 1 },
+    })
+  } catch (e) {
+    const name = (e as DOMException).name
+    if (name === "NotAllowedError" || name === "SecurityError")
+      throw new Error("Microphone access is blocked. Allow it for this site (the icon left of the address), then try again.")
+    if (name === "NotFoundError" || name === "OverconstrainedError")
+      throw new Error("No microphone found. Plug one in, or pick one in your system's sound settings.")
+    if (name === "NotReadableError" || name === "AbortError")
+      throw new Error("The microphone is busy in another app (a call?). Free it there and try again.")
+    throw e
+  }
+}
+
 // How a session ended: the summary and listen-back, and why if the server ended it itself.
 export type MicEnd = { summary: Summary | null; playback?: PlaybackInfo; ended?: string | null }
 
@@ -72,10 +94,7 @@ export class BrowserMic {
   // connection dropped mid-session (network, server restart) and there is none (null). Not called
   // after stop().
   async start(settings: { mode: string; detector: string }, onEnd?: (r: MicEnd | null) => void): Promise<{ detector: string }> {
-    this.stream = await navigator.mediaDevices.getUserMedia({
-      // Raw voice: the stutter detector was trained on unprocessed audio.
-      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 1 },
-    })
+    this.stream = await openMic()
     const proto = location.protocol === "https:" ? "wss" : "ws"
     const ws = new WebSocket(`${proto}://${location.host}/ws/mic`)
     ws.binaryType = "arraybuffer"
