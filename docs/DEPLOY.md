@@ -62,3 +62,19 @@ Update after a `git push`: `git pull && docker compose up -d --build`.
 | Microphone | the visitor's browser (streamed over a WebSocket) |
 
 One live session runs at a time; others can use the samples and voice notes meanwhile.
+
+## Plan B: serve the demo from a laptop
+
+The hackathon asks for Nebius Token Factory *or* AI Cloud: Nemotron on Token Factory already meets
+it, so if the VM is not ready, the laptop with the GPU can serve the same hosted build. Browsers
+only allow the microphone on HTTPS (or localhost), so put it behind a tunnel, for example a free
+Cloudflare quick tunnel:
+
+```
+set STUTTERCLEAR_HOSTED=1                          # PowerShell: $env:STUTTERCLEAR_HOSTED = "1"
+python scripts/run_app.py --no-browser --port 8766
+cloudflared tunnel --url http://localhost:8766      # prints an https://....trycloudflare.com link
+```
+
+The link works only while the laptop is on and the app is running, and it changes on every start,
+so this is for a judging session or a recorded demo, not for weeks of judging.
