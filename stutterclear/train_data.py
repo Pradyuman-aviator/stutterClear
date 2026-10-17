@@ -8,7 +8,6 @@ import io
 import zlib
 
 import numpy as np
-import pyarrow as pa
 import pyarrow.parquet as pq
 import soundfile as sf
 import torch
@@ -90,15 +89,21 @@ def split_of(group: str) -> str:
 class Sep28kClips(Dataset):
     def __init__(self, files, split: str = "train", augment_p: float = 0.5, seed: int = 0):
         cols = ["audio", "Show", "EpId", *SEP_COLUMNS, "PoorAudioQuality", "Music", "NoSpeech"]
-        t = pa.concat_tables([pq.read_table(f, columns=cols) for f in files])
-        d = t.drop_columns(["audio"]).to_pydict()
-        keep = [i for i in range(t.num_rows)
-                if d["PoorAudioQuality"][i] < 2 and d["Music"][i] < 2 and d["NoSpeech"][i] < 2
-                and split_of(speaker_group(d["Show"][i], d["EpId"][i])) == split]
-        # Kept as an Arrow array, not Python objects, so forked DataLoader workers share it.
-        self.audio = t.column("audio").take(keep).combine_chunks()
-        self.labels = np.array([[d[c][i] / 3.0 for c in SEP_COLUMNS] for i in keep], np.float32)
-        self.groups = sorted({speaker_group(d["Show"][i], d["EpId"][i]) for i in keep})
+        # Audio stays as one Arrow array per file (not Python objects, so forked DataLoader workers
+        # share it; not one merged array, because the full column exceeds Arrow's 2 GB offset limit).
+        self.audio, self.index, labels, groups = [], [], [], set()
+        for f in files:
+            t = pq.read_table(f, columns=cols)
+            d = t.drop_columns(["audio"]).to_pydict()
+            keep = [i for i in range(t.num_rows)
+                    if d["PoorAudioQuality"][i] < 2 and d["Music"][i] < 2 and d["NoSpeech"][i] < 2
+                    and split_of(speaker_group(d["Show"][i], d["EpId"][i])) == split]
+            self.audio.append(t.column("audio").take(keep).combine_chunks())
+            self.index += [(len(self.audio) - 1, j) for j in range(len(keep))]
+            labels += [[d[c][i] / 3.0 for c in SEP_COLUMNS] for i in keep]
+            groups |= {speaker_group(d["Show"][i], d["EpId"][i]) for i in keep}
+        self.labels = np.array(labels, np.float32).reshape(-1, len(SEP_COLUMNS))
+        self.groups = sorted(groups)
         self.augment_p, self.rng = augment_p, np.random.default_rng(seed)
         self.n = 3 * SR
 
@@ -106,7 +111,8 @@ class Sep28kClips(Dataset):
         return len(self.labels)
 
     def __getitem__(self, i):
-        y, sr = sf.read(io.BytesIO(self.audio[i]["bytes"].as_py()), dtype="float32")
+        k, j = self.index[i]
+        y, sr = sf.read(io.BytesIO(self.audio[k][j]["bytes"].as_py()), dtype="float32")
         if y.ndim > 1:
             y = y.mean(axis=1)
         y = np.pad(y[:self.n], (0, max(0, self.n - len(y))))
