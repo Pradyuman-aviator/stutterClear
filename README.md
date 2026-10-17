@@ -34,6 +34,7 @@ opt-in or shown on demand):
 - **Meaning guard.** Before a recording is cleaned, Nemotron reviews every proposed cut in its
   sentence and keeps repeats the person meant: grammar ("I know that that is true", "she had had
   enough"), emphasis ("very very good"). Neither the transcript nor the acoustic model can tell.
+  "Try the meaning guard" on the page shows it on any typed sentence.
 - **Word rescue.** Stuck on a word (a block)? Nemotron suggests the few words you most likely mean,
   from what you have said and your context card. You choose; nothing is said for you.
 - **Context agent.** Say where you will speak; Nemotron (with Tavily web search, if set up) fills

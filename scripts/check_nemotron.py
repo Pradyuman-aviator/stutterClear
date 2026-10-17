@@ -46,6 +46,8 @@ def main():
         step("chat", lambda: nemotron.chat([{"role": "user", "content": "Reply with just: ready"}], max_tokens=20)),
         step("word rescue", lambda: rescue.suggest("Tomorrow I have an interview at", "Company: NVIDIA", "N")),
         step("meaning guard", guard_case),
+        step("meaning guard, typed (the page's try-it)", lambda: [(w["w"], w["reason"]) for w in guard.check_text(
+            "I I I think that that plan is very very good")["words"] if w["kept"]]),
         step("insights", lambda: insights.summarize({"word_rep": 4, "sound_rep": 2}, 60, 3.2)),
         step("context agent" + (" + Tavily" if context_agent.search_available() else ""),
              lambda: context_agent.fill("Job interview with the speech AI team at NVIDIA")["card"][:200]),

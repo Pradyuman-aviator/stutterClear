@@ -35,7 +35,8 @@ listener to hear *you*, just without the repeats, and to keep every word you mea
 - **Context agent**: say where you'll speak; Nemotron (with Tavily search) prepares the names and
   terms you'll need.
 - **Meaning guard**: before a recording is cleaned, Nemotron reviews every proposed cut and keeps
-  repeats that were meant ("that that is true", "had had", "very very").
+  repeats that were meant ("that that is true", "had had", "very very"). Anyone can try it on a
+  typed sentence under "How StutterClear works".
 - **Insights**: three short, supportive notes after a session. No diagnosis, no cure claims.
 
 ### How we built it
@@ -107,7 +108,7 @@ WavLM, PyTorch, CrisperWhisper, FastAPI, React, Vite, Tailwind, three.js, Tavily
 |---|---|---|
 | 0:00-0:15 | Face to camera, or title card | "About 70 million people stutter. On calls, the repeats are what people hear first." |
 | 0:15-0:40 | App home; tap a real recording; play Original, then switch to Clean voice | "This is a real person who stutters. Here's the original... and here's the same recording, his own voice, without the repeats." |
-| 0:40-1:05 | Point at the meaning guard line and the mirror's red cuts | "Every cut was checked by NVIDIA Nemotron on Nebius." Then say what the guard line shows: "It kept this repeat, because it was meant", or "It confirmed every one was a real stutter." |
+| 0:40-1:05 | Point at the meaning guard line and the mirror's red cuts; then "Try the meaning guard" with "I I I think that that plan is very very good" | "Every cut was checked by NVIDIA Nemotron on Nebius. A repeat isn't always a stutter: here it cuts 'I I I' but keeps 'that that' and 'very very', because they were meant." |
 | 1:05-1:40 | Live: Start, speak a sentence with a stutter; captions appear; Stop; play Clean voice | "Live, it runs half a second behind me, on the GPU. Captions are NVIDIA FastConformer." |
 | 1:40-2:05 | Word rescue: get stuck, chips appear | "When I get stuck, Nemotron suggests the word I mean. I choose; it never speaks for me." |
 | 2:05-2:25 | Context agent: type a situation, Prepare | "Before an interview, it prepares the names and terms I'll need." |
@@ -124,3 +125,5 @@ Use headphones while recording the live part (laptop speakers feed back into the
 3. Live: Setup shows "This browser's mic"; press Start, speak for 20 seconds, press Stop, then play
    the Clean voice. One person can be live at a time, for up to 5 minutes. Turn on Word rescue on the Context card first to see suggestions.
 4. Voice note: "Clean a voice note" on the right; record or upload, then play it back.
+5. Meaning guard: under "How StutterClear works", press Check on the example sentence (or type
+   your own); Nemotron marks the repeats it would cut and the ones it keeps, with reasons.
