@@ -8,6 +8,7 @@ import io
 import zlib
 
 import numpy as np
+import pyarrow as pa
 import pyarrow.parquet as pq
 import soundfile as sf
 import torch
@@ -98,7 +99,9 @@ class Sep28kClips(Dataset):
             keep = [i for i in range(t.num_rows)
                     if d["PoorAudioQuality"][i] < 2 and d["Music"][i] < 2 and d["NoSpeech"][i] < 2
                     and split_of(speaker_group(d["Show"][i], d["EpId"][i])) == split]
-            self.audio.append(t.column("audio").take(keep).combine_chunks())
+            if not keep:  # this file has no speakers in this split
+                continue
+            self.audio.append(t.column("audio").take(pa.array(keep, pa.int64())).combine_chunks())
             self.index += [(len(self.audio) - 1, j) for j in range(len(keep))]
             labels += [[d[c][i] / 3.0 for c in SEP_COLUMNS] for i in keep]
             groups |= {speaker_group(d["Show"][i], d["EpId"][i]) for i in keep}

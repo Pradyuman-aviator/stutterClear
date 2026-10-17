@@ -132,8 +132,9 @@ def main():
         sep_files = sorted(glob.glob(str(Path(args.sep_dir) / "**" / "*.parquet"), recursive=True))
         sep_train = Sep28kClips(sep_files, "train")
         val_sep = Sep28kClips(sep_files, "val", augment_p=0.0)
+        val_sep = val_sep if len(val_sep) else None
         print(f"SEP-28k/FluencyBank: {len(sep_train)} train clips ({len(sep_train.groups)} speaker groups), "
-              f"{len(val_sep)} val clips ({len(val_sep.groups)} groups)", flush=True)
+              f"{len(val_sep) if val_sep else 0} val clips", flush=True)
         sep_it = cycle(DataLoader(sep_train, batch_size=args.sep_batch, shuffle=True, drop_last=True,
                                   num_workers=args.workers, persistent_workers=args.workers > 0))
 
