@@ -19,7 +19,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from eval_teacher import load_teacher  # noqa: E402
-from stutterclear.audio import load_wav  # noqa: E402
+from stutterclear.audio import load_wav, save_wav  # noqa: E402
 from stutterclear.synth import CLASSES, FRAME, SR  # noqa: E402
 
 COLORS = ("tab:red", "tab:orange", "tab:green", "tab:purple", "tab:blue")
@@ -70,6 +70,9 @@ def main():
     ap.add_argument("wav")
     ap.add_argument("--ckpt", default="runs/kaggle_teacher/teacher/best.pt")
     ap.add_argument("--thresholds", help="thresholds.json from eval_teacher (default 0.5)")
+    ap.add_argument("--apply", action="store_true",
+                    help="also write <wav>.teacher_clean.wav: teacher segments cut out by the splicer")
+    ap.add_argument("--cut-interjections", action="store_true")
     args = ap.parse_args()
 
     dev = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -97,6 +100,55 @@ def main():
     fig.savefig(wav.with_suffix(".teacher.png"), dpi=80)
     for s in segs:
         print(f"{s['start']:7.2f}-{s['end']:6.2f}s  {s['kind']:<13} peak {s['peak']}")
+    if args.apply:
+        kinds = {"sound_rep", "word_rep", "prolongation"} | ({"interjection"} if args.cut_interjections else set())
+        cuts = [s for s in segs if s["kind"] in kinds]
+        save_wav(wav.with_suffix(".teacher_live.wav"), apply_cuts(x, cuts))
+        y = splice_offline(x, cuts)
+        save_wav(wav.with_suffix(".teacher_edited.wav"), y)
+        print(f"cut {len(cuts)} segments, {sum(s['end'] - s['start'] for s in cuts):.1f} s of stutter.\n"
+              f"  live (real time, stutters become short silences): {wav.with_suffix('.teacher_live.wav')}\n"
+              f"  edited (stutters deleted, {len(x) / SR:.1f} s -> {len(y) / SR:.1f} s): "
+              f"{wav.with_suffix('.teacher_edited.wav')}")
+
+
+def splice_offline(x, cuts, xfade=80):
+    """Delete the segments outright with short crossfades, like editing a recording."""
+    keep, pos = [], 0
+    for s in sorted(cuts, key=lambda s: s["start"]):
+        a, b = int(s["start"] * SR), int(s["end"] * SR)
+        if a > pos:
+            keep.append(x[pos:a])
+        pos = max(pos, b)
+    keep.append(x[pos:])
+    out = keep[0].copy()
+    ramp = np.linspace(0.0, 1.0, xfade, dtype=np.float32)
+    for seg in keep[1:]:
+        n = min(xfade, len(out), len(seg))
+        if n < 2:
+            out = np.concatenate([out, seg])
+            continue
+        r = ramp[np.linspace(0, xfade - 1, n).astype(int)]
+        out = np.concatenate([out[:-n], out[-n:] * r[::-1] + seg[:n] * r, seg[n:]])
+    return out
+
+
+def apply_cuts(x, cuts):
+    """Offline preview: every segment registered with the splicer up front, then streamed through."""
+    from stutterclear.config import HOP, preset
+    from stutterclear.splicer import Splicer
+
+    sp = Splicer(SR, preset("clean", target_delay_ms=200.0, min_delay_ms=0.0))
+    for i, s in enumerate(cuts):
+        sp.set_cut(i, int(s["start"] * SR), int(s["end"] * SR), s["kind"])
+    out = []
+    for src in (x, np.zeros(SR, np.float32)):
+        for i in range(0, len(src), HOP):
+            sp.write(src[i:i + HOP])
+            out.append(sp.read(len(src[i:i + HOP])))
+    y = np.concatenate(out)
+    nz = np.flatnonzero(np.abs(y) > 1e-4)
+    return y[nz[0]:nz[-1] + 1] if len(nz) else y
 
 
 if __name__ == "__main__":
