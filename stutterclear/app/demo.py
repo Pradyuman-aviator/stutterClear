@@ -106,7 +106,8 @@ def render(sid: str, engine: str) -> dict:
         cuts, guard = guarded_cuts(toks, stutter, cut_fillers=thorough)  # Nemotron checks each cut
         label = f"{'Thorough' if thorough else 'Natural'} · offline model, cuts on word boundaries"
         y = render_edited(x, cuts, NATURAL_JOIN)
-        cuts = [{"kind": c["kind"], "start": c["start"], "end": c["end"]} for c in cuts]
+        cuts = [{"kind": c["kind"], "start": c["start"], "end": c["end"],
+                 "word": " ".join(toks[i]["w"] for i in c["tokens"])} for c in cuts]
         events, meta = [], {"detector": "teacher", "label": label, "lag_ms": 0, "detect_ms": 0.0, "guard": guard}
     elif engine == "live":
         x = _source(sid)[0] if sid.startswith("note-") else _excerpt(sid)

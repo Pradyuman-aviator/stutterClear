@@ -19,6 +19,7 @@ export interface Span {
   start: number
   end: number
   kind: string
+  word?: string // the word removed, when cuts are placed on word boundaries
 }
 
 // One WebSocket message: everything new since the previous one (sent every 50 ms).
@@ -102,6 +103,9 @@ export const getInfo = () =>
     notes: boolean
     captions: boolean
     rescue: boolean
+    nemotron: boolean
+    search: boolean
+    model: string
     detectors: DetectorInfo[]
     recommended: DetectorKind
   }>(fetch("/api/info"))
@@ -177,6 +181,21 @@ export const askRescue = (said: string, context: string) =>
       body: JSON.stringify({ said, context }),
     })
   )
+
+const post = <T,>(url: string, body: unknown) =>
+  json<T>(fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }))
+
+export const prepareContext = (situation: string, current: string) =>
+  post<{ card: string; sources: string[]; searched: boolean }>("/api/context", { situation, current })
+
+export interface InsightsBody {
+  kinds: Record<string, number>
+  duration_s: number
+  removed_s: number
+  words: string[]
+  transcript: string
+}
+export const getInsights = (body: InsightsBody) => post<{ points: string[] }>("/api/insights", body)
 
 export const KIND_LABEL: Record<string, string> = {
   sound_rep: "Sound repeat",

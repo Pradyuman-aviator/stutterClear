@@ -104,10 +104,48 @@ def list_devices():
 def info():
     # The AI detector needs its downloaded checkpoint; its measured quality (if evaluated) lets the
     # page recommend it only when it is actually better.
-    from .. import captions, rescue
+    from .. import captions, context_agent, nemotron
     return {"student": DEFAULT_STUDENT.exists(), "student_eval": student_eval(), "notes": notes.available(),
-            "captions": captions.available(), "rescue": rescue.available(), "detectors": detectors(),
-            "recommended": recommended()}
+            "captions": captions.available(), "rescue": nemotron.available(), "nemotron": nemotron.available(),
+            "search": context_agent.search_available(), "model": nemotron.MODEL,
+            "detectors": detectors(), "recommended": recommended()}
+
+
+class ContextRequest(BaseModel):
+    situation: str  # where the person is about to speak
+    current: str = ""  # what the context card says already
+
+
+@app.post("/api/context")
+def prepare_context(req: ContextRequest):
+    """Nemotron (with Tavily search when a key is set) writes a context card for the situation."""
+    from .. import context_agent, nemotron
+    if not nemotron.available():
+        raise HTTPException(503, "The context agent needs NEBIUS_API_KEY set where the app runs.")
+    try:
+        return context_agent.fill(req.situation, req.current)
+    except nemotron.NemotronError as e:
+        raise HTTPException(502, str(e)) from e
+
+
+class InsightsRequest(BaseModel):
+    kinds: dict[str, int]  # stutters removed, by kind
+    duration_s: float
+    removed_s: float
+    words: list[str] = []  # words the stutters were on
+    transcript: str = ""
+
+
+@app.post("/api/insights")
+def session_insights(req: InsightsRequest):
+    """Three short, supportive points about a session or voice note, from Nemotron (text only)."""
+    from .. import insights, nemotron
+    if not nemotron.available():
+        raise HTTPException(503, "Insights need NEBIUS_API_KEY set where the app runs.")
+    try:
+        return {"points": insights.summarize(req.kinds, req.duration_s, req.removed_s, req.words, req.transcript)}
+    except nemotron.NemotronError as e:
+        raise HTTPException(502, str(e)) from e
 
 
 class RescueRequest(BaseModel):

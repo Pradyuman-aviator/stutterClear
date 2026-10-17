@@ -270,7 +270,7 @@ export function MirrorWaveform({
         const cut = inside(th, cuts)
         const ev = inside(th, events)
         const what = cut
-          ? `${KIND_LABEL[cut.kind] ?? cut.kind} removed`
+          ? `${KIND_LABEL[cut.kind] ?? cut.kind} removed${cut.word ? ` · "${cut.word}"` : ""}`
           : ev
             ? `${KIND_LABEL[ev.kind] ?? ev.kind} kept`
             : th > latest

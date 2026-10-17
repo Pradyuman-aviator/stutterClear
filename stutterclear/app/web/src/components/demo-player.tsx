@@ -63,6 +63,7 @@ export function DemoBar({
   onEngine,
   onClose,
   downloadUrl,
+  extra,
 }: {
   state: DemoState
   sample: DemoSample | undefined
@@ -74,6 +75,7 @@ export function DemoBar({
   onEngine: (e: DemoEngine) => void
   onClose: () => void
   downloadUrl?: string
+  extra?: React.ReactNode // e.g. Nemotron insights for this recording
 }) {
   const tl = state.timeline
   const total = !tl ? sample?.duration_s ?? 0 : state.hear === "clean" ? tl.clean_s : tl.original_s
@@ -195,6 +197,7 @@ export function DemoBar({
           {credit}
         </div>
       )}
+      {tl && extra}
       {state.error && <div className="text-xs text-rose-300">{state.error}</div>}
     </div>
   )

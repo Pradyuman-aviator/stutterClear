@@ -5,6 +5,7 @@ import { AudioLines, Check, Cpu, Headphones, Lock, Mic, Square } from "lucide-re
 import { CaptionStrip } from "@/components/caption-strip"
 import { DelayMatrix } from "@/components/delay-matrix"
 import { DemoBar, DemoPicker } from "@/components/demo-player"
+import { InsightsPanel } from "@/components/insights-panel"
 import { GlassCard } from "@/components/glass-card"
 import { LiquidBackground } from "@/components/liquid-background"
 import { LiquidSwitch } from "@/components/liquid-switch"
@@ -22,7 +23,8 @@ import { useDemo } from "@/hooks/use-demo"
 import { useLive, type LiveData, type Stats } from "@/hooks/use-live"
 import { useSignals, type Signals } from "@/hooks/use-signals"
 import {
-  askRescue, getDemos, getDevices, getInfo, getPlayback, KIND_LABEL, startSession, stopSession,
+  askRescue, getDemos, getDevices, getInfo, getPlayback, KIND_LABEL, prepareContext, startSession, stopSession,
+  type DemoTimeline, type InsightsBody,
   type DemoSample, type DetectorInfo, type DetectorKind, type Devices, type Mode, type PlaybackInfo, type StartBody,
 } from "@/lib/api"
 import { EASE_OUT, SPRING } from "@/lib/motion"
@@ -92,6 +94,7 @@ export default function App() {
   const [notesOn, setNotesOn] = useState(false)
   const [captionsOn, setCaptionsOn] = useState(false)
   const [rescueAvailable, setRescueAvailable] = useState(false)
+  const [searchOn, setSearchOn] = useState(false)
   const [rescueOn, setRescueOn] = useState(() => stored("sc.rescue", "") === "on")
   const [rescue, setRescue] = useState<{ loading: boolean; words: string[]; error?: string }>({ loading: false, words: [] })
   const [noteSamples, setNoteSamples] = useState<DemoSample[]>([])
@@ -128,7 +131,8 @@ export default function App() {
       .then((i) => {
         setNotesOn(i.notes)
         setCaptionsOn(i.captions)
-        setRescueAvailable(i.rescue)
+        setRescueAvailable(i.nemotron)
+        setSearchOn(i.search)
         setDetectorList(i.detectors)
         setRecommendedDet(i.recommended)
         // Use the best measured detector unless one was picked before (and is still available here).
@@ -412,6 +416,24 @@ export default function App() {
                             Listen back · kept in memory until your next session
                           </div>
                           <Playback info={playback} version={playbackVersion} />
+                          <div className="mt-2">
+                            <InsightsPanel
+                              key={playbackVersion}
+                              enabled={rescueAvailable}
+                              build={() => {
+                                const kinds: Record<string, number> = {}
+                                for (const c of data.current.cuts) kinds[c.kind] = (kinds[c.kind] ?? 0) + 1
+                                const cap = caption.get()
+                                return {
+                                  kinds,
+                                  duration_s: playback.original_s,
+                                  removed_s: stats.get()?.removed_s ?? 0,
+                                  words: [],
+                                  transcript: cap ? [...cap.lines, cap.partial].join(" ") : "",
+                                }
+                              }}
+                            />
+                          </div>
                         </motion.div>
                       )}
                     </AnimatePresence>
@@ -445,6 +467,15 @@ export default function App() {
                               onHear={demo.setHear}
                               onEngine={demo.setEngine}
                               onClose={demo.close}
+                              extra={
+                                demo.state.timeline && (
+                                  <InsightsPanel
+                                    key={`${demo.state.id}-${demo.state.engine}`}
+                                    enabled={rescueAvailable}
+                                    build={() => insightsFromTimeline(demo.state!.timeline!)}
+                                  />
+                                )
+                              }
                             />
                           ) : (
                             <DemoPicker
@@ -587,6 +618,7 @@ export default function App() {
             {/* Context + voice notes */}
             <motion.div variants={rise} className="flex flex-col gap-4 sm:gap-5">
               <ContextCard
+                searchOn={searchOn}
                 rescueAvailable={rescueAvailable}
                 rescueOn={rescueOn}
                 onRescue={(on) => {
@@ -864,11 +896,25 @@ function EnginePill({
   )
 }
 
+function insightsFromTimeline(tl: DemoTimeline): InsightsBody {
+  const kinds: Record<string, number> = {}
+  for (const c of tl.cuts) kinds[c.kind] = (kinds[c.kind] ?? 0) + 1
+  return {
+    kinds,
+    duration_s: tl.original_s,
+    removed_s: tl.removed_s,
+    words: tl.cuts.map((c) => c.word ?? "").filter(Boolean),
+    transcript: (tl.captions?.original ?? []).map((w) => w.w).join(" "),
+  }
+}
+
 function ContextCard({
+  searchOn,
   rescueAvailable,
   rescueOn,
   onRescue,
 }: {
+  searchOn: boolean
   rescueAvailable: boolean
   rescueOn: boolean
   onRescue: (on: boolean) => void
@@ -876,6 +922,27 @@ function ContextCard({
   const [text, setText] = useState(() => stored("ctx", ""))
   const [saved, setSaved] = useState(false)
   const timer = useRef<number | undefined>(undefined)
+  const [situation, setSituation] = useState("")
+  const [agent, setAgent] = useState<{ loading: boolean; sources: string[]; error?: string }>({ loading: false, sources: [] })
+  const update = (v: string) => {
+    setText(v)
+    store("ctx", v)
+    setSaved(true)
+    window.clearTimeout(timer.current)
+    timer.current = window.setTimeout(() => setSaved(false), 1200)
+  }
+  // Context agent: Nemotron (and Tavily search, if set up) prepares the card for a situation.
+  const prepare = async () => {
+    if (!situation.trim()) return
+    setAgent({ loading: true, sources: [] })
+    try {
+      const r = await prepareContext(situation, text)
+      update(text.trim() ? `${r.card}\n\n${text.trim()}` : r.card)
+      setAgent({ loading: false, sources: r.sources })
+    } catch (e) {
+      setAgent({ loading: false, sources: [], error: (e as Error).message })
+    }
+  }
   return (
     <GlassCard tilt={0} className="flex flex-col gap-3 p-5 sm:p-6">
       <div className="flex items-center justify-between">
@@ -894,15 +961,40 @@ function ContextCard({
           )}
         </AnimatePresence>
       </div>
+      {rescueAvailable && (
+        <div className="flex flex-col gap-1.5">
+          <div className="flex gap-2">
+            <input
+              value={situation}
+              onChange={(e) => setSituation(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && prepare()}
+              placeholder="Where will you speak? e.g. Interview at NVIDIA on Friday"
+              className="min-w-0 flex-1 rounded-xl border border-white/8 bg-white/[0.03] px-3 py-2 text-base text-white/90 transition-[border-color,background-color] duration-300 outline-none placeholder:text-white/30 hover:border-white/15 focus:border-violet-300/40 sm:text-sm"
+            />
+            <motion.button
+              type="button"
+              onClick={prepare}
+              disabled={agent.loading || !situation.trim()}
+              whileHover={{ y: -1 }}
+              whileTap={{ scale: 0.95 }}
+              transition={SPRING.press}
+              className="inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-xl border border-violet-300/25 bg-violet-300/10 px-3 text-xs text-violet-100 hover:bg-violet-300/20 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {agent.loading ? "Preparing…" : "Prepare"}
+            </motion.button>
+          </div>
+          <div className="text-[11px] text-white/35">
+            {agent.error
+              ? <span className="text-rose-300/80">{agent.error}</span>
+              : agent.sources.length
+                ? `Nemotron, with Tavily search: ${agent.sources.map((u) => new URL(u).hostname.replace(/^www\./, "")).join(", ")}`
+                : `Nemotron fills the card with names and terms you may need${searchOn ? ", searching the web with Tavily" : ""}.`}
+          </div>
+        </div>
+      )}
       <textarea
         value={text}
-        onChange={(e) => {
-          setText(e.target.value)
-          store("ctx", e.target.value)
-          setSaved(true)
-          window.clearTimeout(timer.current)
-          timer.current = window.setTimeout(() => setSaved(false), 1200)
-        }}
+        onChange={(e) => update(e.target.value)}
         rows={4}
         placeholder="My name is Sam. Talking to Dr. Mehta about my project, StutterClear."
         className="w-full resize-none rounded-2xl border border-white/8 bg-white/[0.03] p-3.5 text-base leading-relaxed text-white/90 transition-[border-color,background-color,box-shadow] duration-500 outline-none placeholder:text-white/30 hover:border-white/15 hover:duration-150 focus:border-sky-300/40 focus:bg-white/[0.05] focus:shadow-[0_0_0_4px_rgb(125_211_252/0.12)] focus:duration-200 sm:text-sm"
