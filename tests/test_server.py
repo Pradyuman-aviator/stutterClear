@@ -105,3 +105,13 @@ def test_voice_notes_queue_is_bounded(monkeypatch):
     wavfile.write(buf, 16000, (np.random.default_rng(0).standard_normal(32000) * 1000).astype(np.int16))
     codes = [client.post("/api/notes", content=buf.getvalue()).status_code for _ in range(server.notes.MAX_WAITING + 1)]
     assert codes == [200] * server.notes.MAX_WAITING + [429]
+
+
+def test_hosted_nemotron_calls_are_capped(monkeypatch):
+    """Visitors spend the owner's Nebius credits: past the per-minute budget they are asked to wait."""
+    monkeypatch.setenv("NEBIUS_API_KEY", "test")
+    monkeypatch.setattr(nemotron, "chat", lambda msgs, **k: '["one", "two", "three"]')
+    monkeypatch.setattr(server, "NEMOTRON_PER_MIN", 2)
+    monkeypatch.setattr(server, "_nemotron_calls", server.deque())
+    codes = [client.post("/api/rescue", json={"said": "I am"}).status_code for _ in range(3)]
+    assert codes == [200, 200, 429]

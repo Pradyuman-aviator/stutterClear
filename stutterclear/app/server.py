@@ -7,6 +7,8 @@ The UI is a Vite + React build in static/ (source in web/: `npm run build` there
 import asyncio
 import os
 import threading
+import time
+from collections import deque
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
@@ -29,6 +31,9 @@ UPDATE_S = 0.03  # ~30 updates a second: the orb reacts within a frame or two
 # One live session at a time, so on a public deployment a tab left open must not hold it for ever.
 LIVE_LIMIT_S = 300.0 if HOSTED else None
 MIC_IDLE_S = 15.0  # no audio for this long: the page froze or the laptop went to sleep
+# Visitors' Nemotron calls spend the owner's Nebius credits: a public demo caps them per minute.
+NEMOTRON_PER_MIN = 60 if HOSTED else None
+_nemotron_calls: deque = deque()
 # "last" holds the finished session's audio, in memory only, for the play buttons. Starting a new
 # session drops it.
 state = {"session": None, "last": None}
@@ -127,12 +132,25 @@ class ContextRequest(BaseModel):
     current: str = ""  # what the context card says already
 
 
+def nemotron_budget():
+    """Count one visitor call against NEMOTRON_PER_MIN, or turn it away for a moment."""
+    if not NEMOTRON_PER_MIN:
+        return
+    now = time.monotonic()
+    while _nemotron_calls and now - _nemotron_calls[0] > 60:
+        _nemotron_calls.popleft()
+    if len(_nemotron_calls) >= NEMOTRON_PER_MIN:
+        raise HTTPException(429, "Nemotron is busy with other visitors; try again in a moment.")
+    _nemotron_calls.append(now)
+
+
 @app.post("/api/context")
 def prepare_context(req: ContextRequest):
     """Nemotron (with Tavily search when a key is set) writes a context card for the situation."""
     from .. import context_agent
     if not nemotron.available():
         raise HTTPException(503, "The context agent needs NEBIUS_API_KEY set where the app runs.")
+    nemotron_budget()
     try:
         return context_agent.fill(req.situation, req.current)
     except nemotron.NemotronError as e:
@@ -153,6 +171,7 @@ def session_insights(req: InsightsRequest):
     from .. import insights
     if not nemotron.available():
         raise HTTPException(503, "Insights need NEBIUS_API_KEY set where the app runs.")
+    nemotron_budget()
     try:
         return {"points": insights.summarize(req.kinds, req.duration_s, req.removed_s, req.words, req.transcript)}
     except nemotron.NemotronError as e:
@@ -171,6 +190,7 @@ def word_rescue(req: RescueRequest):
     from .. import rescue
     if not rescue.available():
         raise HTTPException(503, "Word rescue needs NEBIUS_API_KEY set where the app runs.")
+    nemotron_budget()
     try:
         return {"suggestions": rescue.suggest(req.said, req.context, req.onset), "model": nemotron.MODEL}
     except Exception as e:
