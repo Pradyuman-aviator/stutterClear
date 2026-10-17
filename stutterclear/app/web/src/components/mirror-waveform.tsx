@@ -144,8 +144,10 @@ export function MirrorWaveform({
         }
         ctx.fillStyle = "rgba(255,255,255,0.5)"
         ctx.font = "500 13px 'Geist Variable', system-ui, sans-serif"
-        ctx.textAlign = "center"
-        ctx.fillText("Your voice will appear here", w / 2, top2 - GAP_H / 2 + 4)
+        // Narrow screens: right-align, so it clears the lane name on the left.
+        const narrow = w < 520
+        ctx.textAlign = narrow ? "right" : "center"
+        ctx.fillText("Your voice will appear here", narrow ? w - 4 : w / 2, top2 - GAP_H / 2 + 4)
         ctx.textAlign = "left"
         ctx.globalAlpha = 1
       }

@@ -5,6 +5,7 @@ import { AudioLines, Check, Cpu, Headphones, Lock, Mic, Square } from "lucide-re
 import { CaptionStrip } from "@/components/caption-strip"
 import { DelayMatrix } from "@/components/delay-matrix"
 import { DemoBar, DemoPicker } from "@/components/demo-player"
+import { HowItWorks } from "@/components/how-it-works"
 import { InsightsPanel } from "@/components/insights-panel"
 import { GlassCard } from "@/components/glass-card"
 import { LiquidBackground } from "@/components/liquid-background"
@@ -173,7 +174,13 @@ export default function App() {
           for (let attempt = 0; ; attempt++) {
             const mic = new BrowserMic()
             try {
-              const r = await mic.start({ mode: over.mode ?? mode, detector: over.detector ?? detector })
+              const r = await mic.start({ mode: over.mode ?? mode, detector: over.detector ?? detector }, () => {
+                if (browserMic.current !== mic) return
+                browserMic.current = null
+                mic.stop()
+                setRunning(false)
+                setToast({ kind: "error", text: "The live connection dropped. Press Start to go again.", id: Date.now() })
+              })
               browserMic.current = mic
               setDetName(r.detector)
               break
@@ -647,6 +654,10 @@ export default function App() {
               />
             </motion.div>
           </div>
+
+          <motion.div variants={rise} className="mt-4 sm:mt-5">
+            <HowItWorks />
+          </motion.div>
 
           <motion.footer
             variants={rise}

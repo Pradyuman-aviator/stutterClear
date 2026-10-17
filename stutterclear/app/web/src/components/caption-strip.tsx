@@ -24,7 +24,7 @@ export function CaptionStrip({ caption, label, rescue }: { caption: Store<Captio
       <div className="mb-1.5 flex items-center gap-1.5 text-[10px] font-semibold tracking-[0.12em] text-white/40 uppercase">
         <Captions className="size-3.5" />
         {label}
-        <span className="font-normal tracking-normal normal-case text-white/25">· NVIDIA FastConformer, on this computer</span>
+        <span className="hidden font-normal tracking-normal normal-case text-white/25 sm:inline">· NVIDIA FastConformer, on this computer</span>
         {rescue?.enabled && (
           <motion.button
             type="button"
