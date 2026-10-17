@@ -142,7 +142,7 @@ class Sep28kClips(Dataset):
             labels += [[d[c][i] / 3.0 for c in SEP_COLUMNS] for i in keep]
             groups |= {speaker_group(d["Show"][i], d["EpId"][i]) for i in keep}
             name = Path(f).name
-            self.silver_words += [(silver or {}).get(f"{name}:{i}") for i in keep]
+            self.silver_words += [silver_words(silver, f"{name}:{i}") for i in keep]
         self.labels = np.array(labels, np.float32).reshape(-1, len(SEP_COLUMNS))
         self.groups = sorted(groups)
         self.augment_p, self.rng = augment_p, np.random.default_rng(seed)
@@ -170,6 +170,12 @@ class Sep28kClips(Dataset):
         return {"wave": torch.from_numpy(y.astype(np.float32)), "clip_labels": torch.from_numpy(self.labels[i]),
                 "labels": torch.from_numpy(lab), "mask": torch.from_numpy(fmask),
                 "class_mask": torch.from_numpy(cmask)}
+
+
+def silver_words(silver: dict | None, key: str):
+    """The word timings of one clip from load_silver's records, or None: no record, or no words heard
+    (nothing to learn frame labels from)."""
+    return ((silver or {}).get(key) or {}).get("words") or None
 
 
 def load_silver(paths) -> dict:
