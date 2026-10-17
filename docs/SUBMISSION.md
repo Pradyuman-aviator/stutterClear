@@ -4,6 +4,9 @@ Everything for the Nebius x NVIDIA Global AI Hackathon submission: the Devpost t
 meets each judging criterion, the demo video script, and testing steps for judges. Numbers are from
 `README.md` (7 speakers the models never trained on); update them if a new model is evaluated.
 
+Gallery image: `docs/img/app.jpg` (a real recording playing, with the Fluency Mirror). Add one of
+the guard line and one of live captions once Nemotron and the hosted demo are up.
+
 ## Name and tagline
 
 **StutterClear**: your real voice, without the repeats.

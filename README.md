@@ -7,6 +7,8 @@ recordings and voice notes. Nothing is re-synthesised; the listener hears you, m
 It is an assistive tool, not a treatment, and it never speaks for you. Stuttering is part of how many
 people talk; StutterClear gives you a choice about what a listener hears.
 
+![StutterClear playing a real stuttered recording: the Fluency Mirror shows what was said, the removed stutters in red, and what the listener hears](docs/img/app.jpg)
+
 ```
                  ┌──────────── stutter detector (big model on GPU, or small model / rules) ──┐
 mic ──► delay buffer (0.25-0.85 s) ──► splicer: skip the stutter, join with room tone ─────────┴──► call / headphones
