@@ -12,11 +12,12 @@ These are silver labels: an automatic stand-in until hand labels exist.
 """
 import argparse
 import json
-import re
+
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from stutterclear.silver import label_tokens  # noqa: E402
 
 
 def transcribe(wav: Path) -> list:
@@ -29,30 +30,6 @@ def transcribe(wav: Path) -> list:
     words = [{"w": w.word, "s": float(w.start), "e": float(w.end)} for w in r.words]
     cache.write_text(json.dumps(words))
     return words
-
-
-def norm(w: str) -> str:
-    return re.sub(r"[^a-z'\-\[\]]", "", w.lower())
-
-
-def label_tokens(words: list) -> list:
-    toks = [dict(w, n=norm(w["w"])) for w in words]
-    for t in toks:
-        t["label"] = ("filler" if t["n"].startswith("[") else
-                      "cutoff" if t["n"].endswith("-") else "fluent")
-    content = [i for i, t in enumerate(toks) if t["label"] == "fluent"]
-    # Repeated words and short phrases, ignoring fillers and cut-offs between copies:
-    # every copy but the last is a repetition.
-    for n in (3, 2, 1):
-        k = 0
-        while k + 2 * n <= len(content):
-            a = [toks[i]["n"] for i in content[k:k + n]]
-            b = [toks[i]["n"] for i in content[k + n:k + 2 * n]]
-            if a == b and all(toks[i]["label"] == "fluent" for i in content[k:k + n]):
-                for i in content[k:k + n]:
-                    toks[i]["label"] = "repeat"
-            k += 1
-    return toks
 
 
 def overlap(s, e, cuts):

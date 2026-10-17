@@ -22,7 +22,7 @@ sys.path.insert(0, str(ROOT))
 from stutterclear.audio import save_wav  # noqa: E402
 from stutterclear.synth import CLASSES, FRAME, SR, Utterance, augment, frame_labels, synthesize  # noqa: E402
 
-COLORS = ("tab:red", "tab:orange", "tab:green", "tab:purple")
+COLORS = ("tab:red", "tab:orange", "tab:green", "tab:purple", "tab:blue")
 
 
 def plot(path, y, lab, title):

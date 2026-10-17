@@ -17,6 +17,9 @@ class FrameTeacher(nn.Module):
         self.backbone_name = backbone
         self.ssl = AutoModel.from_pretrained(backbone)
         self.ssl.freeze_feature_encoder()
+        # LayerDrop skips whole transformer layers at random while training; under DDP every
+        # parameter must take part in every step, and a fixed depth is cleaner for distillation.
+        self.ssl.config.layerdrop = 0.0
         self.normalize = bool(getattr(AutoFeatureExtractor.from_pretrained(backbone), "do_normalize", False))
         n_layers = self.ssl.config.num_hidden_layers + 1
         self.layer_weights = nn.Parameter(torch.zeros(n_layers))
@@ -39,12 +42,17 @@ class FrameTeacher(nn.Module):
         return [{"params": backbone, "lr": lr_backbone}, {"params": head, "lr": lr_head}]
 
 
-def frame_loss(logits, labels, mask, pos_weight: float = 3.0):
+def frame_loss(logits, labels, mask, pos_weight: float = 3.0, class_mask=None):
+    """class_mask [B, C]: which classes each example's labels actually cover (silver labels from a
+    transcript say nothing about prolongations or blocks, so those must not be trained as absent)."""
     t = min(logits.shape[1], labels.shape[1])
-    logits, labels, mask = logits[:, :t], labels[:, :t], mask[:, :t]
+    logits, labels, mask = logits[:, :t].float(), labels[:, :t], mask[:, :t]
     pw = torch.full((logits.shape[-1],), pos_weight, device=logits.device)
-    loss = F.binary_cross_entropy_with_logits(logits, labels, pos_weight=pw, reduction="none").mean(-1)
-    return (loss * mask).sum() / mask.sum().clamp(min=1.0)
+    loss = F.binary_cross_entropy_with_logits(logits, labels, pos_weight=pw, reduction="none")
+    cm = torch.ones_like(loss[:, 0]) if class_mask is None else class_mask.to(loss.dtype)
+    per_frame = (loss * cm[:, None, :]).sum(-1) / cm.sum(-1, keepdim=True).clamp(min=1.0)
+    w = mask * (cm.sum(-1, keepdim=True) > 0)
+    return (per_frame * w).sum() / w.sum().clamp(min=1.0)
 
 
 def clip_logits(frame_logits, r: float = 5.0):

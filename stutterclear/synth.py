@@ -19,7 +19,7 @@ from scipy.signal import fftconvolve, resample_poly, butter, sosfilt
 
 SR = 16000
 FRAME = 320  # 20 ms, the frame rate of WavLM / Whisper encoders
-# interjection ("um", "uh") is only labelled in the real SEP-28k data; synthesis never produces it.
+# interjection ("um", "uh"): v2 synthesises fillers from the speaker's own schwa and nasal sounds.
 CLASSES = ("sound_rep", "word_rep", "prolongation", "block", "interjection")
 
 VOWELS = {"AA", "AE", "AH", "AO", "AW", "AY", "EH", "ER", "EY", "IH", "IY", "OW", "OY", "UH", "UW"}
@@ -53,6 +53,11 @@ class SynthConfig:
     p_prolongation: float = 0.06
     p_block: float = 0.04
     p_pause: float = 0.08
+    # v2: patterns seen in real speech that v1 never produced
+    p_rapid_rep: float = 0.05  # "m-m-m-my": 3-5 onsets with little or no gap
+    p_phrase_rep: float = 0.04  # "in roman | in roman letters", sometimes abandoned midway
+    p_filler: float = 0.06  # "uh" / "um" built from the speaker's own schwa and nasal
+    p_cluster: float = 0.03  # "th- [uh] the the": onsets, a filler and a word copy together
     max_event_fraction: float = 0.35
 
 
@@ -80,7 +85,26 @@ def synthesize(utt: Utterance, rng: np.random.Generator, cfg: SynthConfig = Synt
     phones = [(p, int(s * SR), int(e * SR)) for p, s, e in utt.phones if e > s]
     fluent = rng.random() < cfg.p_fluent_utterance
     budget = max(1, int(cfg.max_event_fraction * len(words)))
+    schwas = [x[s:e] for p, s, e in phones if p in ("AH", "ER", "UH") and e - s >= 0.04 * SR]
+    nasals = [x[s:e] for p, s, e in phones if p in ("M", "N") and e - s >= 0.03 * SR]
     cursor = 0
+
+    def filler():
+        if not schwas:
+            return None
+        y = _sustain(schwas[int(rng.integers(len(schwas)))], rng.uniform(0.15, 0.5), rng)
+        if nasals and rng.random() < 0.5:  # "um" rather than "uh"
+            y = np.concatenate([y, _sustain(nasals[int(rng.integers(len(nasals)))], rng.uniform(0.08, 0.25), rng)])
+        return y
+
+    def onsets(wph, n, gap_max):
+        onset = _onset(x, wph, rng)
+        if onset is None:
+            return False
+        for _ in range(n):
+            emit(_vary(onset, rng), "sound_rep")
+            emit(gap(rng.uniform(0.0, gap_max)), "sound_rep")
+        return True
 
     for wi, (w, ws, we) in enumerate(words):
         if ws < cursor:
@@ -90,7 +114,7 @@ def synthesize(utt: Utterance, rng: np.random.Generator, cfg: SynthConfig = Synt
         wph = [p for p in phones if p[1] >= ws - 160 and p[2] <= we + 160 and p[0] != "spn"]
         kind = None
         if not fluent and budget > 0 and w != "<unk>" and wph:
-            kind = _choose(rng, cfg, w, ws, we, wi)
+            kind = _choose(rng, cfg, w, ws, we, wi, len(words))
         word = x[ws:we]
 
         if kind == "pause":
@@ -105,11 +129,51 @@ def synthesize(utt: Utterance, rng: np.random.Generator, cfg: SynthConfig = Synt
                 events.append({"kind": kind, "word": w, "iterations": n + 1})
                 budget -= 1
         elif kind == "word_rep" and len(word) <= 0.6 * SR:
-            n = int(rng.choice([1, 2, 3], p=[0.6, 0.3, 0.1]))
+            n = int(rng.choice([1, 2, 3, 4], p=[0.45, 0.3, 0.15, 0.1]))
             for _ in range(n):
                 emit(_vary(word, rng), "word_rep")
-                emit(gap(rng.uniform(0.05, 0.3)), "word_rep")
+                emit(gap(rng.uniform(0.0, 0.3)), "word_rep")
             events.append({"kind": kind, "word": w, "iterations": n + 1})
+            budget -= 1
+        elif kind == "rapid_rep":
+            n = int(rng.integers(3, 6))
+            if onsets(wph, n, 0.06):
+                events.append({"kind": kind, "word": w, "iterations": n + 1})
+                budget -= 1
+        elif kind == "filler":
+            f = filler()
+            if f is not None:
+                emit(gap(rng.uniform(0.05, 0.2)))
+                emit(f, "interjection")
+                emit(gap(rng.uniform(0.05, 0.3)), "interjection")
+                events.append({"kind": kind, "word": w})
+                budget -= 1
+        elif kind == "phrase_rep":
+            k = int(rng.integers(2, 4))
+            phrase = x[ws:words[min(wi + k, len(words)) - 1][2]]
+            if len(phrase) <= 1.5 * SR:
+                reps = int(rng.choice([1, 2], p=[0.75, 0.25]))
+                for r in range(reps):
+                    copy = _vary(phrase, rng)
+                    if r == reps - 1 and rng.random() < 0.4:  # restart: the last copy is abandoned
+                        copy = _fade(copy[: int(len(copy) * rng.uniform(0.35, 0.85))].copy(), 64)
+                    emit(copy, "word_rep")
+                    emit(gap(rng.uniform(0.05, 0.35)), "word_rep")
+                events.append({"kind": kind, "word": w, "words": k, "iterations": reps + 1})
+                budget -= 1
+        elif kind == "cluster":
+            parts = ["onsets", "filler"] + (["word"] if len(word) <= 0.6 * SR else [])
+            rng.shuffle(parts)
+            for part in parts:
+                if part == "onsets":
+                    onsets(wph, int(rng.integers(1, 4)), 0.1)
+                elif part == "filler" and (f := filler()) is not None:
+                    emit(f, "interjection")
+                    emit(gap(rng.uniform(0.03, 0.2)), "interjection")
+                elif part == "word":
+                    emit(_vary(word, rng), "word_rep")
+                    emit(gap(rng.uniform(0.0, 0.2)), "word_rep")
+            events.append({"kind": kind, "word": w, "parts": parts})
             budget -= 1
         elif kind == "prolongation":
             target = _prolongable(wph, rng)
@@ -174,12 +238,16 @@ def augment(x: np.ndarray, rng: np.random.Generator) -> np.ndarray:
 
 # ---- helpers ------------------------------------------------------------------
 
-def _choose(rng, cfg, w, ws, we, wi):
+def _choose(rng, cfg, w, ws, we, wi, n_words):
     p = {"sound_rep": cfg.p_sound_rep,
          "word_rep": cfg.p_word_rep * (3.0 if w in FUNCTION_WORDS else 0.5),
          "prolongation": cfg.p_prolongation,
          "block": cfg.p_block if wi > 0 else 0.0,
-         "pause": cfg.p_pause if wi > 0 else 0.0}
+         "pause": cfg.p_pause if wi > 0 else 0.0,
+         "rapid_rep": cfg.p_rapid_rep,
+         "phrase_rep": cfg.p_phrase_rep if wi + 2 < n_words else 0.0,
+         "filler": cfg.p_filler,
+         "cluster": cfg.p_cluster}
     r = rng.random()
     for k, v in p.items():
         if r < v:
