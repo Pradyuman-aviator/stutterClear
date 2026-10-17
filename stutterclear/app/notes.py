@@ -21,6 +21,8 @@ from ..silver import label_tokens
 
 MAX_S = 180  # longest note accepted
 KEEP_S = 3600  # notes are forgotten after an hour
+MAX_WAITING = 4  # notes waiting for or on the GPU; more are turned away for a minute
+MAX_KEPT = 40  # finished notes held in memory; the oldest are forgotten first
 TEACHER = Path(__file__).resolve().parents[2] / "runs" / "kaggle_teacher" / "teacher" / "best.pt"
 FRAME = 320
 
@@ -30,6 +32,10 @@ _models: dict = {}
 
 
 class NoteError(ValueError):
+    pass
+
+
+class NoteBusy(RuntimeError):
     pass
 
 
@@ -104,7 +110,12 @@ def _process(nid: str):
 
 def submit(data: bytes) -> str:
     expire()
+    if sum(n["status"] not in ("done", "error") for n in _notes.values()) >= MAX_WAITING:
+        raise NoteBusy("Several voice notes are being cleaned right now. Try again in a minute.")
     x = decode(data)
+    finished = [k for k, v in _notes.items() if v["status"] in ("done", "error")]  # oldest first
+    for nid in finished[:max(0, len(_notes) + 1 - MAX_KEPT)]:
+        _notes.pop(nid, None)
     nid = "note-" + uuid.uuid4().hex[:12]
     _notes[nid] = {"status": "queued", "x": x, "created": time.time(), "error": None}
     threading.Thread(target=_process, args=(nid,), daemon=True).start()

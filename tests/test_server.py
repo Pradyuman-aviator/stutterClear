@@ -94,3 +94,14 @@ def test_browser_mic_sessions_end_themselves(monkeypatch):
         end = ws.receive_json()
     assert "minutes" in end["ended"] and end["playback"]["available"]
     assert server.state["session"] is None
+
+
+def test_voice_notes_queue_is_bounded(monkeypatch):
+    """A public server: a burst of uploads is turned away, not queued for ever."""
+    monkeypatch.setattr(server.notes, "available", lambda: True)
+    monkeypatch.setattr(server.notes, "_process", lambda nid: None)  # stays "queued", as if the GPU were busy
+    monkeypatch.setattr(server.notes, "_notes", {})
+    buf = io.BytesIO()
+    wavfile.write(buf, 16000, (np.random.default_rng(0).standard_normal(32000) * 1000).astype(np.int16))
+    codes = [client.post("/api/notes", content=buf.getvalue()).status_code for _ in range(server.notes.MAX_WAITING + 1)]
+    assert codes == [200] * server.notes.MAX_WAITING + [429]

@@ -312,6 +312,8 @@ async def create_note(request: Request):
         raise HTTPException(413, "That file is too large.")
     try:
         return {"id": notes.submit(data)}
+    except notes.NoteBusy as e:
+        raise HTTPException(429, str(e)) from e
     except notes.NoteError as e:
         raise HTTPException(415, str(e)) from e
 
