@@ -4,11 +4,53 @@
 
 import type { PlaybackInfo, Summary } from "@/lib/api"
 
-const WORKLET = `
+// Firefox only connects a mic to an AudioContext at the device's own rate (usually 48 kHz). Then the
+// worklet resamples to 16 kHz itself: a windowed-sinc low-pass below 8 kHz (so nothing folds back
+// into the band the detector hears), then linear interpolation at the 16 kHz instants.
+export const WORKLET = `
 class Tap extends AudioWorkletProcessor {
+  constructor() {
+    super()
+    this.ratio = sampleRate / 16000
+    if (this.ratio === 1) return
+    const n = 63, fc = 7200 / sampleRate
+    this.h = new Float32Array(n)
+    let sum = 0
+    for (let i = 0; i < n; i++) {
+      const m = i - (n - 1) / 2
+      const sinc = m === 0 ? 2 * fc : Math.sin(2 * Math.PI * fc * m) / (Math.PI * m)
+      const w = 0.42 - 0.5 * Math.cos((2 * Math.PI * i) / (n - 1)) + 0.08 * Math.cos((4 * Math.PI * i) / (n - 1))
+      this.h[i] = sinc * w
+      sum += this.h[i]
+    }
+    for (let i = 0; i < n; i++) this.h[i] /= sum
+    this.hist = new Float32Array(n)
+    this.pos = 0
+    this.count = 0
+    this.t = 0
+    this.prev = 0
+  }
   process(inputs) {
     const ch = inputs[0] && inputs[0][0]
-    if (ch) this.port.postMessage(ch.slice(0))
+    if (!ch) return true
+    if (this.ratio === 1) {
+      this.port.postMessage(ch.slice(0))
+      return true
+    }
+    const n = this.h.length, out = []
+    for (let i = 0; i < ch.length; i++) {
+      this.hist[this.pos] = ch[i]
+      this.pos = (this.pos + 1) % n
+      let y = 0
+      for (let k = 0; k < n; k++) y += this.h[k] * this.hist[(this.pos + k) % n]
+      while (this.t <= this.count) {
+        out.push(this.prev + (y - this.prev) * (this.t - this.count + 1))
+        this.t += this.ratio
+      }
+      this.prev = y
+      this.count++
+    }
+    if (out.length) this.port.postMessage(Float32Array.from(out))
     return true
   }
 }
@@ -53,13 +95,22 @@ export class BrowserMic {
       if (!this.stopping) onEnd?.(null)
     }
 
-    this.ctx = new AudioContext({ sampleRate: 16000 })
+    let source: MediaStreamAudioSourceNode
+    try {
+      this.ctx = new AudioContext({ sampleRate: 16000 })
+      source = this.ctx.createMediaStreamSource(this.stream)
+    } catch {
+      await this.ctx?.close().catch(() => undefined) // Firefox: the device's own rate; the worklet resamples
+      this.ctx = new AudioContext()
+      source = this.ctx.createMediaStreamSource(this.stream)
+    }
+    await this.ctx.resume().catch(() => undefined) // some browsers start it suspended
     const url = URL.createObjectURL(new Blob([WORKLET], { type: "text/javascript" }))
     await this.ctx.audioWorklet.addModule(url)
     URL.revokeObjectURL(url)
     const tap = new AudioWorkletNode(this.ctx, "tap")
     tap.port.onmessage = (e) => this.push(e.data as Float32Array)
-    this.ctx.createMediaStreamSource(this.stream).connect(tap)
+    source.connect(tap)
     return info
   }
 
