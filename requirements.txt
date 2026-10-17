@@ -10,10 +10,13 @@ pydantic>=2.5
 # Models: the big detector (live on a CUDA GPU, and voice notes), the small student detector.
 # Install the CUDA build of PyTorch for your GPU from https://pytorch.org first.
 torch>=2.3
-transformers>=4.44
+transformers==4.46.0  # tested with CrisperWhisper 2.0.3 and the WavLM teacher
 
 # Voice notes and evaluation: verbatim transcripts with word timings (non-commercial licence)
-crisperwhisper>=2.0
+crisperwhisper==2.0.3
+
+# Live captions: NVIDIA NeMo streaming FastConformer through sherpa-onnx (CPU)
+sherpa-onnx==1.13.8
 
 # Training data loading
 pyarrow>=15
