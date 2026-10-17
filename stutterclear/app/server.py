@@ -178,6 +178,25 @@ def session_insights(req: InsightsRequest):
         raise HTTPException(502, str(e)) from e
 
 
+class GuardRequest(BaseModel):
+    text: str
+
+
+@app.post("/api/guard")
+def guard_try(req: GuardRequest):
+    """The meaning guard on typed text: which repeats Nemotron would cut and which it keeps."""
+    from .. import guard
+    if not nemotron.available():
+        raise HTTPException(503, "The meaning guard needs NEBIUS_API_KEY set where the app runs.")
+    if not req.text.split():
+        raise HTTPException(400, "Type a sentence first.")
+    nemotron_budget()
+    try:
+        return guard.check_text(req.text)
+    except nemotron.NemotronError as e:
+        raise HTTPException(502, str(e)) from e
+
+
 class RescueRequest(BaseModel):
     said: str  # recent caption text
     context: str = ""  # the context card

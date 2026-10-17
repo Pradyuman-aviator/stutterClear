@@ -664,7 +664,7 @@ export default function App() {
           </div>
 
           <motion.div variants={rise} className="mt-4 sm:mt-5">
-            <HowItWorks />
+            <HowItWorks nemotron={rescueAvailable} />
           </motion.div>
 
           <motion.footer

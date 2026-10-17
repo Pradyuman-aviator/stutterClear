@@ -39,3 +39,13 @@ def test_without_a_key_or_an_answer_the_cuts_stand(monkeypatch):
     monkeypatch.setattr(nemotron, "chat", down)
     cuts, report = guard.guarded_cuts(toks())
     assert len(cuts) == 3 and "timeout" in report["error"]
+
+
+def test_check_text_marks_candidates_and_verdicts(monkeypatch):
+    from stutterclear import guard, nemotron
+    monkeypatch.setattr(nemotron, "chat", lambda msgs, **k: '{"keep": [{"id": 6, "reason": "emphasis"}]}')
+    r = guard.check_text("I I want um a- a very very good one")
+    marks = [(w["w"], w["candidate"], w["kept"]) for w in r["words"]]
+    assert marks[:2] == [("I", True, False), ("I", False, False)]  # the first copy is the candidate
+    assert ("um", True, False) in marks and ("a-", True, False) in marks  # typed fillers count too
+    assert r["words"][6] == {"w": "very", "candidate": True, "kept": True, "reason": "emphasis"}

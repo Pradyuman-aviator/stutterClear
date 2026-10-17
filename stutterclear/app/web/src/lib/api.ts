@@ -186,6 +186,10 @@ export const askRescue = (said: string, context: string) =>
 const post = <T,>(url: string, body: unknown) =>
   json<T>(fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }))
 
+// The meaning guard on typed text: each word, whether it is a candidate cut, and Nemotron's verdict.
+export type GuardWord = { w: string; candidate: boolean; kept: boolean; reason: string }
+export const checkGuard = (text: string) => post<{ model: string; words: GuardWord[] }>("/api/guard", { text })
+
 export const prepareContext = (situation: string, current: string) =>
   post<{ card: string; sources: string[]; searched: boolean }>("/api/context", { situation, current })
 

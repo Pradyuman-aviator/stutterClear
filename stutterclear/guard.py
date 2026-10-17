@@ -8,7 +8,7 @@ Without a key, or if Nemotron does not answer, the cuts are applied as the trans
 acoustic model agreed, exactly as before.
 """
 from . import nemotron
-from .silver import word_cuts
+from .silver import label_tokens, word_cuts
 
 SYSTEM = (
     "You are a careful speech editor helping a person who stutters. You get a verbatim transcript "
@@ -59,3 +59,20 @@ def guarded_cuts(toks: list, probs=None, cut_fillers: bool = False, cut_phrases:
             for i, r in sorted(keep.items())]
     return (word_cuts(toks, probs, cut_fillers=cut_fillers, keep=frozenset(keep), cut_phrases=cut_phrases),
             {"model": nemotron.MODEL, "checked": len(candidates), "kept": kept})
+
+
+TYPED_FILLERS = {"um": "[UM]", "umm": "[UM]", "erm": "[UM]", "uh": "[UH]", "uhh": "[UH]", "er": "[UH]"}
+
+
+def check_text(text: str, max_words: int = 80) -> dict:
+    """The meaning guard on typed text, so anyone can see what it does without a recording: each
+    word, whether it is a candidate (repeat, broken-off start, filler), and for candidates whether
+    Nemotron keeps it and why."""
+    words = text.split()[:max_words]
+    toks = label_tokens([{"w": TYPED_FILLERS.get(w.lower().strip(",.!?;:"), w), "s": 0.4 * i, "e": 0.4 * i + 0.3}
+                         for i, w in enumerate(words)])
+    candidates = {i for i, t in enumerate(toks) if t["label"] != "fluent"}
+    keep = review(toks, candidates) if candidates else {}
+    return {"model": nemotron.MODEL,
+            "words": [{"w": w, "candidate": i in candidates, "kept": i in keep, "reason": keep.get(i, "")}
+                      for i, w in enumerate(words)]}
