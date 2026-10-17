@@ -9,6 +9,10 @@ the onset and tail of each repeat in the output ("LA- LAST"). The cut rules:
   between words, so no word is cut in half;
 - keep the last copy: a repetition cut that runs into a pause has swallowed the final copy of
   the word, so it is pulled back to the last speech burst before that pause;
+- a long cut (over refine_long_s) usually spans a dense stutter region with real words in
+  between, so it is re-segmented strictly (no hysteresis) to keep only the stutter cores;
+- a prolongation is shortened, not deleted: the first prolong_keep_ms and the last
+  prolong_tail_ms of the held sound stay, so the word keeps its onset;
 - a repetition or prolongation cut longer than max_cut_s is more likely a detector error than a
   stutter and is dropped.
 """
@@ -27,8 +31,11 @@ class CutConfig:
     merge_gap: int = 10  # frames (200 ms)
     snap: int = 8  # frames (160 ms)
     min_frames: int = 3  # 60 ms
-    keep_last_copy: bool = True
-    max_cut_s: float = 2.0
+    keep_last_copy: bool = False  # tested: never on the removal / words-lost Pareto front
+    refine_long_s: float = 1e9
+    prolong_keep_ms: float = 0.0
+    prolong_tail_ms: float = 40.0
+    max_cut_s: float = 1e9
 
 
 OFF_RATIO = CutConfig.off_ratio
@@ -131,8 +138,19 @@ def cut_segments(probs, thresholds_or_cfg, x, kinds=None) -> list:
         segs = snap(segs, energy, cfg.snap)
     if cfg.keep_last_copy:
         segs = keep_last_copy(segs, energy)
-    out = []
+    refined = []
     for a, b, k, pk in segs:
+        if k != "interjection" and (b - a) * FRAME / SR > cfg.refine_long_s:
+            refined += [[a + sa, a + sb, sk, spk]
+                        for sa, sb, sk, spk in raw_segments(probs[a:b], cfg.thresholds, cfg.kinds, 1.0)]
+        else:
+            refined.append([a, b, k, pk])
+    keep = int(round(cfg.prolong_keep_ms * SR / 1000 / FRAME))
+    tail = int(round(cfg.prolong_tail_ms * SR / 1000 / FRAME))
+    out = []
+    for a, b, k, pk in refined:
+        if k == "prolongation" and keep:
+            a, b = a + keep, b - tail
         dur = (b - a) * FRAME / SR
         if b - a < cfg.min_frames or (k != "interjection" and dur > cfg.max_cut_s):
             continue

@@ -15,6 +15,7 @@ import torch.nn.functional as F
 from .config import SAMPLE_RATE
 from .detector import CutUpdate, DetectorEvent
 from .features import FeatureStream
+from .segments import CutConfig
 from .student import N_MELS, CausalStudent
 from .synth import CLASSES, FRAME
 
@@ -60,33 +61,44 @@ class StudentStream:
         return first, probs
 
 
+# Live cut rules, from the offline search on 7 held-out UCLASS speakers ("balanced" preset).
+LIVE_CUTS = CutConfig(thresholds=(0.4, 0.35, 0.5, 0.5, 0.4), off_ratio=0.35, merge_gap=5, snap=0,
+                      refine_long_s=0.8, prolong_keep_ms=100.0, prolong_tail_ms=40.0)
+
+
 class StudentDetector:
-    OFF_RATIO = 0.6  # hysteresis: a cut stays open until the score drops below 60 % of its threshold
-    CLOSE_AFTER = 2  # frames below the off level that close a cut
-    MIN_FRAMES = 3  # cuts shorter than 60 ms are dropped
+    """Online version of segments.cut_segments: hysteresis, merging of nearby cuts, strict mode
+    inside long cuts, and prolongations shortened rather than deleted."""
+
     MAX_FRAMES = 100  # a "stutter" longer than 2 s is more likely a detector error: cancel it
     MIN_CUT_THRESHOLD = 0.2  # tuned thresholds can be tiny for rare classes; never cut on that
 
-    def __init__(self, ckpt_path, lookahead_ms: float, report_path=None, cut_interjections: bool = False):
+    def __init__(self, ckpt_path, lookahead_ms: float, report_path=None, cut_interjections: bool = False,
+                 cut_cfg: CutConfig = LIVE_CUTS):
         self.model = load_student(ckpt_path)
         las = list(self.model.lookaheads)
         self.head = int(np.argmin([abs(la * 20 - lookahead_ms) for la in las]))
         self.lookahead = las[self.head]
         self.lookahead_ms = self.lookahead * 20
-        self.thresholds = np.full(len(CLASSES), 0.5)
+        self.cfg = cut_cfg
+        self.thresholds = np.array(cut_cfg.thresholds, dtype=float)
         if report_path and Path(report_path).exists():
             rep = json.loads(Path(report_path).read_text()).get(f"{self.lookahead_ms}ms")
             if rep:
-                self.thresholds = np.array(rep["thresholds"])
+                self.thresholds = np.array(rep["thresholds"], dtype=float)
         removable = REMOVABLE + (("interjection",) if cut_interjections else ())
         self.cut_idx = [CLASSES.index(c) for c in removable]
         self.thresholds[self.cut_idx] = np.maximum(self.thresholds[self.cut_idx], self.MIN_CUT_THRESHOLD)
+        self.close_after = max(2, cut_cfg.merge_gap)
+        self.refine_frames = cut_cfg.refine_long_s * SAMPLE_RATE / FRAME
+        self.keep = int(round(cut_cfg.prolong_keep_ms * SAMPLE_RATE / 1000 / FRAME))
+        self.tail = int(round(cut_cfg.prolong_tail_ms * SAMPLE_RATE / 1000 / FRAME))
         self.cooldown = False  # after a cancelled over-long cut, wait for the score to drop
         self.block_idx = CLASSES.index("block")
         self.stream = StudentStream(self.model)
         self.events: list[DetectorEvent] = []
         self.next_id = 0
-        self.cut = None  # open cut: dict(id, start_frame, last_active, below, kind, peak)
+        self.cut = None  # open cut: dict(id, start, first, last, strict_last, below, kind, peak)
         self.block = None
         self.frames_seen = 0
 
@@ -108,29 +120,35 @@ class StudentDetector:
         kind = CLASSES[self.cut_idx[best]]
         if self.cut is None:
             if self.cooldown:
-                self.cooldown = score[best] >= self.OFF_RATIO
+                self.cooldown = score[best] >= self.cfg.off_ratio
                 return
             if score[best] >= 1.0:
                 self.next_id += 1
-                self.cut = {"id": self.next_id, "start": f, "last": f, "below": 0, "kind": kind,
-                            "peak": float(p[self.cut_idx[best]])}
-                updates.append(CutUpdate("set", self.next_id, f * FRAME, None, kind))
+                start = f + (self.keep if kind == "prolongation" else 0)  # keep the onset of a held sound
+                self.cut = {"id": self.next_id, "start": start, "first": f, "last": f, "strict_last": f,
+                            "below": 0, "kind": kind, "peak": float(p[self.cut_idx[best]])}
+                updates.append(CutUpdate("set", self.next_id, start * FRAME, None, kind))
             return
         c = self.cut
-        if f - c["start"] >= self.MAX_FRAMES:
+        if f - c["first"] >= self.MAX_FRAMES:
             updates.append(CutUpdate("cancel", c["id"]))
             self.cut, self.cooldown = None, True
             return
-        if score[best] >= self.OFF_RATIO:
+        long_cut = f - c["first"] > self.refine_frames
+        if score[best] >= 1.0:
+            c["strict_last"] = f
+        # Inside a long cut only confident frames extend it, so real words between stutters survive.
+        if score[best] >= (1.0 if long_cut else self.cfg.off_ratio):
             c["last"], c["below"] = f, 0
             c["peak"] = max(c["peak"], float(p[self.cut_idx[best]]))
             return
         c["below"] += 1
-        if c["below"] >= self.CLOSE_AFTER:
-            if c["last"] - c["start"] + 1 >= self.MIN_FRAMES:
-                end = (c["last"] + 1) * FRAME
-                updates.append(CutUpdate("set", c["id"], c["start"] * FRAME, end, c["kind"]))
-                self._log(c["kind"], c["start"] * FRAME, end, {"peak": round(c["peak"], 3)})
+        if c["below"] >= self.close_after:
+            last = c["strict_last"] if long_cut else c["last"]
+            end_frame = last + 1 - (self.tail if c["kind"] == "prolongation" else 0)
+            if end_frame - c["start"] >= self.cfg.min_frames:
+                updates.append(CutUpdate("set", c["id"], c["start"] * FRAME, end_frame * FRAME, c["kind"]))
+                self._log(c["kind"], c["start"] * FRAME, end_frame * FRAME, {"peak": round(c["peak"], 3)})
             else:
                 updates.append(CutUpdate("cancel", c["id"]))
             self.cut = None

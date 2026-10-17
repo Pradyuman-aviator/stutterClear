@@ -31,7 +31,7 @@ SR = 16000
 CUTS = {
     "v2": CutConfig(thresholds=(0.5,) * 5, keep_last_copy=False, max_cut_s=1e9),
     "v3": CutConfig(keep_last_copy=False, max_cut_s=1e9),
-    "v3+last": CutConfig(),
+    "v3+last": CutConfig(keep_last_copy=True, max_cut_s=2.0),
 }
 JOINS = {
     "plain": JoinConfig(xfade_ms=5.0),
@@ -101,11 +101,11 @@ def grid(root: Path):
     space = {
         "thresholds": [(0.5,) * 5, (0.4, 0.35, 0.5, 0.5, 0.4), (0.35, 0.3, 0.45, 0.5, 0.35),
                        (0.3, 0.25, 0.4, 0.5, 0.3), (0.45, 0.4, 0.6, 0.5, 0.45)],
-        "off_ratio": [1.0, 0.75, 0.5, 0.35],
-        "merge_gap": [0, 5, 10, 15],
-        "snap": [0, 4, 8],
-        "keep_last_copy": [False, True],
-        "max_cut_s": [1.2, 2.0, 1e9],
+        "off_ratio": [0.75, 0.5, 0.35],
+        "merge_gap": [0, 5, 10],
+        "snap": [0, 4],
+        "refine_long_s": [0.8, 1.2, 1e9],
+        "prolong_keep_ms": [0.0, 100.0, 150.0],
     }
     results = []
     for vals in itertools.product(*space.values()):
@@ -133,7 +133,8 @@ def utmos_model():
 @torch.no_grad()
 def utmos(model, x, chunk_s=10.0):
     n = int(chunk_s * SR)
-    scores = [float(model(torch.from_numpy(x[i:i + n].astype(np.float32))[None], SR))
+    dev = next(model.parameters()).device
+    scores = [float(model(torch.from_numpy(x[i:i + n].astype(np.float32))[None].to(dev), SR))
               for i in range(0, len(x), n) if len(x[i:i + n]) >= 3 * SR]
     return float(np.mean(scores)) if scores else float("nan")
 
