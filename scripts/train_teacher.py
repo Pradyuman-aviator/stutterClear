@@ -163,7 +163,11 @@ def main():
     opt = torch.optim.AdamW(model.param_groups(args.lr_backbone, args.lr_head), weight_decay=0.01)
     net = model
     if ddp:
-        net = torch.nn.parallel.DistributedDataParallel(model, device_ids=[dev.index] if dev.type == "cuda" else None)
+        # find_unused_parameters: tolerate a parameter that sits out a step (Kaggle run 2 died on
+        # step 2 with "parameters that were not used in producing loss"); gradients accumulated
+        # under no_sync are still all-reduced.
+        net = torch.nn.parallel.DistributedDataParallel(model, device_ids=[dev.index] if dev.type == "cuda" else None,
+                                                        find_unused_parameters=True)
 
     def schedule(step, frozen_until=0):
         if step < frozen_until:
@@ -222,6 +226,9 @@ def main():
                         loss = loss + clip_loss(logits.float(), b["clip_labels"].to(dev))
                 scaler.scale(weight * loss).backward()
             losses[name] = loss.item()
+        if step == 1:
+            unused = [n for n, p in model.named_parameters() if p.requires_grad and p.grad is None]
+            log(f"parameters without a gradient after step 1: {unused[:20] or 'none'}", flush=True)
         scaler.unscale_(opt)
         torch.nn.utils.clip_grad_norm_(model.parameters(), 5.0)
         scaler.step(opt)

@@ -15,10 +15,11 @@ class FrameTeacher(nn.Module):
     def __init__(self, backbone: str = "microsoft/wavlm-base-plus", hidden: int = 256):
         super().__init__()
         self.backbone_name = backbone
-        self.ssl = AutoModel.from_pretrained(backbone)
-        self.ssl.freeze_feature_encoder()
         # LayerDrop skips whole transformer layers at random while training; under DDP every
         # parameter must take part in every step, and a fixed depth is cleaner for distillation.
+        # Set at load time too: some transformers versions copy it when the model is built.
+        self.ssl = AutoModel.from_pretrained(backbone, layerdrop=0.0)
+        self.ssl.freeze_feature_encoder()
         self.ssl.config.layerdrop = 0.0
         self.normalize = bool(getattr(AutoFeatureExtractor.from_pretrained(backbone), "do_normalize", False))
         n_layers = self.ssl.config.num_hidden_layers + 1
