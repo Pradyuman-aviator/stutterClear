@@ -15,6 +15,9 @@ class Tap extends AudioWorkletProcessor {
 registerProcessor("tap", Tap)
 `
 
+// How a session ended: the summary and listen-back, and why if the server ended it itself.
+export type MicEnd = { summary: Summary | null; playback?: PlaybackInfo; ended?: string | null }
+
 export class BrowserMic {
   private ws: WebSocket | null = null
   private ctx: AudioContext | null = null
@@ -23,8 +26,10 @@ export class BrowserMic {
   private pendingLen = 0
   private stopping = false
 
-  // onLost: the connection dropped mid-session (network, server restart), not a normal stop.
-  async start(settings: { mode: string; detector: string }, onLost?: () => void): Promise<{ detector: string }> {
+  // onEnd: the server ended the session itself (time limit, no audio) and sent its result, or the
+  // connection dropped mid-session (network, server restart) and there is none (null). Not called
+  // after stop().
+  async start(settings: { mode: string; detector: string }, onEnd?: (r: MicEnd | null) => void): Promise<{ detector: string }> {
     this.stream = await navigator.mediaDevices.getUserMedia({
       // Raw voice: the stutter detector was trained on unprocessed audio.
       audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 1 },
@@ -39,9 +44,13 @@ export class BrowserMic {
       ws.onclose = (e) => reject(new Error(e.reason || "The live connection closed."))
     })
     const info = await ready
-    ws.onmessage = null
+    ws.onmessage = (m) => {
+      if (this.stopping) return
+      this.stopping = true
+      onEnd?.(JSON.parse(m.data))
+    }
     ws.onclose = () => {
-      if (!this.stopping) onLost?.()
+      if (!this.stopping) onEnd?.(null)
     }
 
     this.ctx = new AudioContext({ sampleRate: 16000 })
@@ -70,7 +79,7 @@ export class BrowserMic {
   }
 
   // Ends the session: the server replies with the same summary and playback info as a local stop.
-  async stop(): Promise<{ summary: Summary | null; playback?: PlaybackInfo } | null> {
+  async stop(): Promise<MicEnd | null> {
     this.stopping = true
     this.stream?.getTracks().forEach((t) => t.stop())
     await this.ctx?.close().catch(() => undefined)
@@ -80,7 +89,7 @@ export class BrowserMic {
     this.stream = null
     if (!ws || ws.readyState !== WebSocket.OPEN) return null
     return new Promise((resolve) => {
-      const done = (v: { summary: Summary | null; playback?: PlaybackInfo } | null) => {
+      const done = (v: MicEnd | null) => {
         resolve(v)
         ws.close()
       }

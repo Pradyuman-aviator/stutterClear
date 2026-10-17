@@ -4,7 +4,7 @@ import { CircleAlert, Sparkles, X } from "lucide-react"
 import type { Summary } from "@/lib/api"
 
 export type ToastData =
-  | { kind: "summary"; summary: Summary; id: number }
+  | { kind: "summary"; summary: Summary; note?: string; id: number }
   | { kind: "error"; text: string; id: number }
 
 // Springs up from the bottom after a session (or an error); hover keeps it open.
@@ -47,6 +47,7 @@ export function SessionToast({ toast, onClose }: { toast: ToastData | null; onCl
                     {" · "}
                     typical delay {toast.summary.lag_ms.p50} ms
                   </div>
+                  {toast.note && <div className="mt-1 text-xs text-white/45">{toast.note}</div>}
                   {toast.summary.saved_to && (
                     <div className="mt-1 text-xs break-all text-white/45">Saved to {toast.summary.saved_to}</div>
                   )}

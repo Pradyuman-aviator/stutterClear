@@ -25,6 +25,9 @@ STATIC = Path(__file__).parent / "static"
 # own audio devices and never writes recordings to disk.
 HOSTED = os.environ.get("STUTTERCLEAR_HOSTED") == "1"
 UPDATE_S = 0.03  # ~30 updates a second: the orb reacts within a frame or two
+# One live session at a time, so on a public deployment a tab left open must not hold it for ever.
+LIVE_LIMIT_S = 300.0 if HOSTED else None
+MIC_IDLE_S = 15.0  # no audio for this long: the page froze or the laptop went to sleep
 # "last" holds the finished session's audio, in memory only, for the play buttons. Starting a new
 # session drops it.
 state = {"session": None, "last": None}
@@ -223,7 +226,8 @@ async def browser_mic(socket: WebSocket):
     """Live from the browser's mic: the first message is the settings (JSON), then 16 kHz mono
     float32 audio as binary messages, then the text "stop" (or just closing). The session shows up
     on /ws like any other; at the end the server replies with the summary and keeps the recording
-    for the play buttons. One live session at a time."""
+    for the play buttons. One live session at a time; the server ends it itself after
+    LIVE_LIMIT_S or MIC_IDLE_S without audio, and says why ("ended")."""
     await socket.accept()
     if state["session"] is not None:
         await socket.close(code=4409, reason="A live session is already running here.")
@@ -234,11 +238,19 @@ async def browser_mic(socket: WebSocket):
         cfg.get("mode", "gentle"), detector=cfg.get("detector", "heuristic"), source="browser"))
     s.start()
     state["session"], state["last"] = s, None
-    await socket.send_json({"ok": True, "detector": s.detector_name})
+    await socket.send_json({"ok": True, "detector": s.detector_name, "limit_s": LIVE_LIMIT_S})
+    t0, ended = loop.time(), None
     try:
         while True:
-            msg = await socket.receive()
+            try:
+                msg = await asyncio.wait_for(socket.receive(), timeout=MIC_IDLE_S)
+            except asyncio.TimeoutError:
+                ended = "No audio arrived for a while, so the session ended."
+                break
             if msg["type"] == "websocket.disconnect" or msg.get("text") == "stop":
+                break
+            if LIVE_LIMIT_S and loop.time() - t0 > LIVE_LIMIT_S:
+                ended = f"Live sessions here last up to {LIVE_LIMIT_S / 60:.0f} minutes, so others can try it too."
                 break
             if msg.get("bytes"):
                 await loop.run_in_executor(None, s.feed, np.frombuffer(msg["bytes"], np.float32))
@@ -251,7 +263,7 @@ async def browser_mic(socket: WebSocket):
             summary = await loop.run_in_executor(None, s.stop)
             state["last"] = s.recording()
         try:  # the page may already be gone
-            await socket.send_json({"summary": summary, "playback": playback_info()})
+            await socket.send_json({"summary": summary, "playback": playback_info(), "ended": ended})
             await socket.close()
         except Exception:
             pass

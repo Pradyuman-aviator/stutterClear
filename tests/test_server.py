@@ -1,6 +1,7 @@
 """API smoke tests. The client is used without its context manager, so the server's startup work
 (loading models, rendering demo samples) does not run here."""
 import io
+import time
 
 import numpy as np
 from fastapi.testclient import TestClient
@@ -71,3 +72,25 @@ def test_browser_mic_session_end_to_end():
     assert end["summary"]["mode_delay_ms"] > 0
     assert end["playback"]["available"] and end["playback"]["original_s"] > 1.5
     assert server.state["session"] is None  # one session at a time: the slot is free again
+
+
+def test_browser_mic_sessions_end_themselves(monkeypatch):
+    """A public demo has one live slot: a session without audio, or past the limit, gives it back."""
+    monkeypatch.setattr(server, "MIC_IDLE_S", 0.3)
+    with client.websocket_connect("/ws/mic") as ws:
+        ws.send_json({"mode": "gentle", "detector": "heuristic"})
+        ws.receive_json()
+        end = ws.receive_json()  # sends nothing: the server ends it
+    assert "No audio" in end["ended"] and server.state["session"] is None
+
+    monkeypatch.setattr(server, "LIVE_LIMIT_S", 0.5)
+    with client.websocket_connect("/ws/mic") as ws:
+        ws.send_json({"mode": "gentle", "detector": "heuristic"})
+        assert ws.receive_json()["limit_s"] == 0.5
+        frame = np.zeros(320, np.float32).tobytes()
+        for _ in range(100):  # 2 s of audio, sent faster than real time: the clock is the server's
+            ws.send_bytes(frame)
+            time.sleep(0.01)
+        end = ws.receive_json()
+    assert "minutes" in end["ended"] and end["playback"]["available"]
+    assert server.state["session"] is None

@@ -174,12 +174,20 @@ export default function App() {
           for (let attempt = 0; ; attempt++) {
             const mic = new BrowserMic()
             try {
-              const r = await mic.start({ mode: over.mode ?? mode, detector: over.detector ?? detector }, () => {
+              const r = await mic.start({ mode: over.mode ?? mode, detector: over.detector ?? detector }, (end) => {
                 if (browserMic.current !== mic) return
                 browserMic.current = null
                 mic.stop()
                 setRunning(false)
-                setToast({ kind: "error", text: "The live connection dropped. Press Start to go again.", id: Date.now() })
+                if (!end) {
+                  setToast({ kind: "error", text: "The live connection dropped. Press Start to go again.", id: Date.now() })
+                  return
+                }
+                if (end.summary) setToast({ kind: "summary", summary: end.summary, note: end.ended ?? undefined, id: Date.now() })
+                if (end.playback?.available) {
+                  setPlayback(end.playback)
+                  setPlaybackVersion((v) => v + 1)
+                }
               })
               browserMic.current = mic
               setDetName(r.detector)
@@ -665,7 +673,7 @@ export default function App() {
           >
             <Lock className="mt-0.5 size-3.5 shrink-0 sm:mt-0" />
             {hosted
-              ? "Audio is processed on StutterClear's server on Nebius and is not stored. Recordings you clean are kept in memory for an hour, then forgotten."
+              ? "Audio is processed on StutterClear's server and is not stored. Recordings you clean are kept in memory for an hour, then forgotten. Live turns last up to 5 minutes, so everyone gets one."
               : "Audio is processed on this laptop. Nothing is recorded unless you switch saving on."}
           </motion.footer>
         </motion.div>
