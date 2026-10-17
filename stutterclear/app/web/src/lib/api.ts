@@ -101,6 +101,7 @@ export const getInfo = () =>
     student_eval: StudentEval | null
     notes: boolean
     captions: boolean
+    rescue: boolean
     detectors: DetectorInfo[]
     recommended: DetectorKind
   }>(fetch("/api/info"))
@@ -165,6 +166,15 @@ export interface NoteStatus {
 export const createNote = (wav: Blob) =>
   json<{ id: string }>(fetch("/api/notes", { method: "POST", headers: { "Content-Type": "audio/wav" }, body: wav }))
 export const getNote = (id: string) => json<NoteStatus>(fetch(`/api/notes/${id}`))
+
+export const askRescue = (said: string, context: string) =>
+  json<{ suggestions: string[]; model: string }>(
+    fetch("/api/rescue", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ said, context }),
+    })
+  )
 
 export const KIND_LABEL: Record<string, string> = {
   sound_rep: "Sound repeat",

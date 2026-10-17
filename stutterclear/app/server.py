@@ -5,6 +5,7 @@
 The UI is a Vite + React build in static/ (source in web/: `npm run build` there refreshes it).
 """
 import asyncio
+import threading
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
@@ -42,9 +43,20 @@ async def broadcast():
         await asyncio.sleep(UPDATE_S)
 
 
+def warm_demo():
+    """Render every demo sample once in the background, so the first click plays at once."""
+    for s in demo.available():
+        for engine in s["engines"]:
+            try:
+                demo.render(s["id"], engine)
+            except Exception:  # a broken sample must not take the server down; it errors on click
+                pass
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     task = asyncio.create_task(broadcast())
+    threading.Thread(target=warm_demo, daemon=True).start()
     yield
     task.cancel()
     with suppress(asyncio.CancelledError):
@@ -86,9 +98,28 @@ def list_devices():
 def info():
     # The AI detector needs its downloaded checkpoint; its measured quality (if evaluated) lets the
     # page recommend it only when it is actually better.
-    from .. import captions
+    from .. import captions, rescue
     return {"student": DEFAULT_STUDENT.exists(), "student_eval": student_eval(), "notes": notes.available(),
-            "captions": captions.available(), "detectors": detectors(), "recommended": recommended()}
+            "captions": captions.available(), "rescue": rescue.available(), "detectors": detectors(),
+            "recommended": recommended()}
+
+
+class RescueRequest(BaseModel):
+    said: str  # recent caption text
+    context: str = ""  # the context card
+    onset: str = ""  # the sound the person is stuck on, if known
+
+
+@app.post("/api/rescue")
+def word_rescue(req: RescueRequest):
+    """Nemotron's guesses for the word the person is stuck on (opt-in; sends text, never audio)."""
+    from .. import rescue
+    if not rescue.available():
+        raise HTTPException(503, "Word rescue needs NEBIUS_API_KEY set where the app runs.")
+    try:
+        return {"suggestions": rescue.suggest(req.said, req.context, req.onset), "model": rescue.MODEL}
+    except Exception as e:
+        raise HTTPException(502, f"Nemotron did not answer: {e}") from e
 
 
 @app.post("/api/start")

@@ -22,7 +22,7 @@ import { useDemo } from "@/hooks/use-demo"
 import { useLive, type LiveData, type Stats } from "@/hooks/use-live"
 import { useSignals, type Signals } from "@/hooks/use-signals"
 import {
-  getDemos, getDevices, getInfo, getPlayback, KIND_LABEL, startSession, stopSession,
+  askRescue, getDemos, getDevices, getInfo, getPlayback, KIND_LABEL, startSession, stopSession,
   type DemoSample, type DetectorInfo, type DetectorKind, type Devices, type Mode, type PlaybackInfo, type StartBody,
 } from "@/lib/api"
 import { EASE_OUT, SPRING } from "@/lib/motion"
@@ -89,6 +89,9 @@ export default function App() {
   const [recommendedDet, setRecommendedDet] = useState<DetectorKind>("heuristic")
   const [notesOn, setNotesOn] = useState(false)
   const [captionsOn, setCaptionsOn] = useState(false)
+  const [rescueAvailable, setRescueAvailable] = useState(false)
+  const [rescueOn, setRescueOn] = useState(() => stored("sc.rescue", "") === "on")
+  const [rescue, setRescue] = useState<{ loading: boolean; words: string[]; error?: string }>({ loading: false, words: [] })
   const [noteSamples, setNoteSamples] = useState<DemoSample[]>([])
   const [toast, setToast] = useState<ToastData | null>(null)
   const [playback, setPlayback] = useState<PlaybackInfo | null>(null)
@@ -122,6 +125,7 @@ export default function App() {
       .then((i) => {
         setNotesOn(i.notes)
         setCaptionsOn(i.captions)
+        setRescueAvailable(i.rescue)
         setDetectorList(i.detectors)
         setRecommendedDet(i.recommended)
         // Use the best measured detector unless one was picked before (and is still available here).
@@ -221,6 +225,40 @@ export default function App() {
     }
     if (running && !busy.current) start(over)
   }
+
+  // Word rescue: ask Nemotron for the word you are stuck on, from the captions so far and the
+  // context card. Opt-in; asked automatically when a block is detected, or with the button.
+  const askForWord = useCallback(async () => {
+    const c = caption.get()
+    const said = c ? [...c.lines, c.partial].join(" ") : ""
+    setRescue({ loading: true, words: [] })
+    try {
+      const r = await askRescue(said, stored("ctx", ""))
+      setRescue({ loading: false, words: r.suggestions })
+    } catch (e) {
+      setRescue({ loading: false, words: [], error: (e as Error).message })
+    }
+  }, [caption])
+
+  useEffect(() => {
+    if (!rescueOn || !rescueAvailable || !active) return
+    let handled = data.current.lastBlockAt
+    const id = window.setInterval(() => {
+      const at = data.current.lastBlockAt
+      if (at > handled) {
+        handled = at
+        askForWord()
+      }
+    }, 200)
+    return () => window.clearInterval(id)
+  }, [rescueOn, rescueAvailable, active, data, askForWord])
+
+  // Suggestions fade away after a while: they are a prompt, not a transcript.
+  useEffect(() => {
+    if (!rescue.words.length && !rescue.error) return
+    const id = window.setTimeout(() => setRescue({ loading: false, words: [] }), 12000)
+    return () => window.clearTimeout(id)
+  }, [rescue])
 
   const setHighlight = (layer: Layer | null) => {
     highlight.current = layer
@@ -501,6 +539,7 @@ export default function App() {
                 {captionsOn && (
                   <CaptionStrip
                     caption={caption}
+                    rescue={{ enabled: rescueOn && rescueAvailable, loading: rescue.loading, words: rescue.words, error: rescue.error, onAsk: askForWord }}
                     label={demoOn ? `Captions · ${demo.state?.hear === "original" ? "original" : "clean voice"}` : "Live captions · what the listener hears"}
                   />
                 )}
@@ -510,7 +549,14 @@ export default function App() {
 
             {/* Context + voice notes */}
             <motion.div variants={rise} className="flex flex-col gap-4 sm:gap-5">
-              <ContextCard />
+              <ContextCard
+                rescueAvailable={rescueAvailable}
+                rescueOn={rescueOn}
+                onRescue={(on) => {
+                  setRescueOn(on)
+                  store("sc.rescue", on ? "on" : "")
+                }}
+              />
               <VoiceNoteCard
                 enabled={notesOn}
                 busy={running}
@@ -781,7 +827,15 @@ function EnginePill({
   )
 }
 
-function ContextCard() {
+function ContextCard({
+  rescueAvailable,
+  rescueOn,
+  onRescue,
+}: {
+  rescueAvailable: boolean
+  rescueOn: boolean
+  onRescue: (on: boolean) => void
+}) {
   const [text, setText] = useState(() => stored("ctx", ""))
   const [saved, setSaved] = useState(false)
   const timer = useRef<number | undefined>(undefined)
@@ -817,6 +871,17 @@ function ContextCard() {
         className="w-full resize-none rounded-2xl border border-white/8 bg-white/[0.03] p-3.5 text-base leading-relaxed text-white/90 transition-[border-color,background-color,box-shadow] duration-500 outline-none placeholder:text-white/30 hover:border-white/15 hover:duration-150 focus:border-sky-300/40 focus:bg-white/[0.05] focus:shadow-[0_0_0_4px_rgb(125_211_252/0.12)] focus:duration-200 sm:text-sm"
       />
       <div className="text-xs text-white/40">Names and topics you might say. Stays on this laptop.</div>
+      <div className="flex items-center justify-between gap-4 rounded-2xl border border-white/6 bg-white/[0.03] p-3.5">
+        <div className="text-sm">
+          <div className="font-medium">Word rescue · Nemotron</div>
+          <div className="text-xs leading-relaxed text-white/45">
+            {rescueAvailable
+              ? "When you get stuck, suggests the word you mean. Sends your last sentences and this card (never audio) to NVIDIA Nemotron on Nebius."
+              : "Needs NEBIUS_API_KEY set where the app runs."}
+          </div>
+        </div>
+        <LiquidSwitch label="Word rescue" checked={rescueOn && rescueAvailable} onChange={(v) => rescueAvailable && onRescue(v)} />
+      </div>
     </GlassCard>
   )
 }
