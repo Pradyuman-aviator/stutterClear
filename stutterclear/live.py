@@ -8,6 +8,7 @@ import queue
 import sys
 import threading
 import time
+from collections import deque
 from datetime import datetime
 from pathlib import Path
 
@@ -25,6 +26,26 @@ STRONG_CUTS = CutConfig(thresholds=(0.3, 0.25, 0.4, 0.5, 0.3), off_ratio=0.5, me
                         refine_long_s=1e9, prolong_keep_ms=100.0)
 MODES = {"off": ("verbatim", None, 0), "gentle": ("trim", "gentle", 200), "strong": ("clean", "strong", 500)}
 DEFAULT_STUDENT = Path(__file__).resolve().parents[1] / "runs" / "kaggle_student" / "student" / "student.pt"
+PLAYBACK_MAX_S = 600  # the app keeps the last 10 minutes in memory so you can play it back
+
+
+class Recorder:
+    """Audio blocks kept in memory, oldest dropped past a cap. Appends come from audio threads."""
+
+    def __init__(self, max_s: float = PLAYBACK_MAX_S):
+        self.blocks: deque = deque()
+        self.n = 0
+        self.cap = int(max_s * SR)
+
+    def add(self, x: np.ndarray):
+        self.blocks.append(x)
+        self.n += len(x)
+        while self.n > self.cap and len(self.blocks) > 1:
+            self.n -= len(self.blocks.popleft())
+
+    def audio(self) -> np.ndarray:
+        blocks = list(self.blocks)
+        return np.concatenate(blocks) if blocks else np.zeros(0, np.float32)
 
 
 def wasapi_index() -> int:
@@ -68,7 +89,9 @@ class LiveSession:
         self.out_device = out_device
         self.save = save
         self.q: queue.Queue = queue.Queue()
-        self.raw, self.out = [], []
+        # Kept in memory for the play buttons, dropped with the session; written to disk only
+        # when the user switched saving on.
+        self.raw, self.out = Recorder(), Recorder()
         self.env_in, self.env_out = [], []  # 10 ms peak envelopes
         self.detect_ms = []
         self.running = False
@@ -80,15 +103,13 @@ class LiveSession:
     def _on_input(self, indata, frames, t, status):
         x = indata[:, 0].copy()
         self.pipe.write(x)
-        if self.save:
-            self.raw.append(x)
+        self.raw.add(x)
         self.env_in.append(float(np.abs(x).max()) if len(x) else 0.0)
         self.q.put(x)
 
     def _emit(self, y):
         self.env_out.append(float(np.abs(y).max()) if len(y) else 0.0)
-        if self.save:
-            self.out.append(y)
+        self.out.add(y.copy())
 
     def _on_output(self, outdata, frames, t, status):
         y = self.pipe.read(frames)
@@ -135,12 +156,16 @@ class LiveSession:
         self.running = False
         self.thread.join(timeout=2)
         summary = self.pipe.summary()
-        if self.save and self.raw:  # recordings are kept only when the user switched saving on
+        if self.save and self.raw.n:  # files are written only when the user switched saving on
             folder = Path(__file__).resolve().parents[1] / "sessions" / datetime.now().strftime("%Y%m%d-%H%M%S")
-            save_wav(folder / "raw.wav", np.concatenate(self.raw))
-            save_wav(folder / "out.wav", np.concatenate(self.out) if self.out else np.zeros(1))
+            save_wav(folder / "raw.wav", self.raw.audio())
+            save_wav(folder / "out.wav", self.out.audio() if self.out.n else np.zeros(1))
             summary["saved_to"] = str(folder)
         return summary
+
+    def recording(self) -> dict:
+        """What you said and what the listener heard, for playback after the session."""
+        return {"original": self.raw.audio(), "clean": self.out.audio()}
 
     # ---- what the UI shows ------------------------------------------------------------------
 

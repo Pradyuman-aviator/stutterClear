@@ -8,6 +8,7 @@ import { LiquidBackground } from "@/components/liquid-background"
 import { LiquidSwitch } from "@/components/liquid-switch"
 import { MagneticButton } from "@/components/magnetic-button"
 import { COLORS, MirrorWaveform, type Layer } from "@/components/mirror-waveform"
+import { Playback } from "@/components/playback"
 import { RollingNumber } from "@/components/rolling-number"
 import { Segmented, type SegmentOption } from "@/components/segmented"
 import { SessionToast, type ToastData } from "@/components/session-toast"
@@ -17,8 +18,8 @@ import { VoiceOrb } from "@/components/voice-orb"
 import { useLive, type LiveData, type Stats } from "@/hooks/use-live"
 import { useSignals, type Signals } from "@/hooks/use-signals"
 import {
-  getDevices, getInfo, KIND_LABEL, startSession, stopSession,
-  type DetectorKind, type Devices, type Mode, type StartBody,
+  getDevices, getInfo, getPlayback, KIND_LABEL, startSession, stopSession,
+  type DetectorKind, type Devices, type Mode, type PlaybackInfo, type StartBody,
 } from "@/lib/api"
 import { EASE_OUT, SPRING } from "@/lib/motion"
 import { useStore, type Store } from "@/lib/store"
@@ -39,6 +40,9 @@ const DETECTORS: SegmentOption<DetectorKind>[] = [
   { value: "heuristic", label: "Rule-based" },
 ]
 const NO_OUTPUT = "none"
+// Bluetooth headset mics switch the earbuds into call mode: narrowband audio, and Windows can
+// take seconds to switch. The laptop's own mic is the better default.
+const isHeadsetMic = (name: string) => /headset|hands-?free|bluetooth/i.test(name)
 
 // Entrances animate opacity and position only: blurring big panels while they move costs frames.
 const page: Variants = { hidden: {}, show: { transition: { staggerChildren: 0.07, delayChildren: 0.05 } } }
@@ -65,6 +69,7 @@ function store(key: string, value: string) {
 export default function App() {
   const { data, stats, connected, serverRunning, reset } = useLive()
   const [running, setRunning] = useState(false)
+  const [starting, setStarting] = useState(false)
   const busy = useRef(false)
   const [devices, setDevices] = useState<Devices | null>(null)
   // Devices are remembered by name: Windows renumbers them whenever one connects or drops.
@@ -76,6 +81,8 @@ export default function App() {
   const [detName, setDetName] = useState("")
   const [hasStudent, setHasStudent] = useState(true)
   const [toast, setToast] = useState<ToastData | null>(null)
+  const [playback, setPlayback] = useState<PlaybackInfo | null>(null)
+  const [playbackVersion, setPlaybackVersion] = useState(0)
   const highlight = useRef<Layer | null>(null)
   const [hl, setHl] = useState<Layer | null>(null)
   const signals = useSignals(data, running)
@@ -84,7 +91,10 @@ export default function App() {
     getDevices()
       .then((d) => {
         setDevices(d)
-        const fallback = d.inputs.find((x) => x.index === d.default_input)?.name ?? d.inputs[0]?.name ?? ""
+        const sysDefault = d.inputs.find((x) => x.index === d.default_input)?.name ?? d.inputs[0]?.name ?? ""
+        const fallback = isHeadsetMic(sysDefault)
+          ? (d.inputs.find((x) => !isHeadsetMic(x.name))?.name ?? sysDefault)
+          : sysDefault
         setInDev((cur) => {
           const want = cur || stored("sc.in.name", "")
           return d.inputs.some((x) => x.name === want) ? want : fallback
@@ -97,6 +107,7 @@ export default function App() {
   useEffect(() => {
     if (!connected) return
     getInfo().then((i) => setHasStudent(i.student)).catch(() => {})
+    getPlayback().then((p) => setPlayback(p.available ? p : null)).catch(() => {})
     loadDevices()
   }, [connected, loadDevices])
 
@@ -110,6 +121,8 @@ export default function App() {
     async (over: Partial<StartBody> = {}) => {
       busy.current = true
       setRunning(true)
+      setStarting(true)
+      setPlayback(null) // the server drops the previous recording when a session starts
       reset()
       try {
         const r = await startSession({
@@ -127,6 +140,7 @@ export default function App() {
         setToast({ kind: "error", text: (e as Error).message, id: Date.now() })
       } finally {
         busy.current = false
+        setStarting(false)
       }
     },
     [mode, detector, save, inDev, outDev, reset, loadDevices]
@@ -138,6 +152,10 @@ export default function App() {
     try {
       const r = await stopSession()
       if (r.summary) setToast({ kind: "summary", summary: r.summary, id: Date.now() })
+      if (r.playback?.available) {
+        setPlayback(r.playback)
+        setPlaybackVersion((v) => v + 1)
+      }
     } catch (e) {
       setToast({ kind: "error", text: `Could not stop: ${(e as Error).message}`, id: Date.now() })
     } finally {
@@ -237,7 +255,14 @@ export default function App() {
                     className="w-44 shrink-0 min-[400px]:w-52 sm:w-56 lg:w-60"
                   />
                   <div className="flex min-w-0 flex-1 flex-col items-center gap-4 text-center sm:items-start sm:gap-5 sm:text-left">
-                    <StatusLine signals={signals} data={data} running={running} connected={connected} mode={mode} />
+                    <StatusLine
+                      signals={signals}
+                      data={data}
+                      running={running}
+                      starting={starting}
+                      connected={connected}
+                      mode={mode}
+                    />
                     <h1 className="text-[28px] leading-[1.1] font-semibold tracking-tight text-balance sm:text-4xl">
                       Say it your way.
                       <span className="block text-white/45">The listener hears you, without the repeats.</span>
@@ -276,6 +301,23 @@ export default function App() {
                         </kbd>
                       </span>
                     </div>
+                    <AnimatePresence initial={false}>
+                      {!running && playback && (
+                        <motion.div
+                          key="playback"
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: "auto" }}
+                          exit={{ opacity: 0, height: 0 }}
+                          transition={SPRING.glide}
+                          className="-my-1 w-full overflow-hidden py-1"
+                        >
+                          <div className="mb-2 text-xs font-medium text-white/50">
+                            Listen back · kept in memory until your next session
+                          </div>
+                          <Playback info={playback} version={playbackVersion} />
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                     <div className="flex w-full flex-col items-center gap-2 sm:items-start">
                       <Segmented label="Correction" value={mode} options={MODES} onChange={(m) => change({ mode: m })} />
                       <div className="grid">
@@ -314,6 +356,19 @@ export default function App() {
                       if (running && !busy.current) start({ in_name: v })
                     }}
                   />
+                  <AnimatePresence initial={false}>
+                    {isHeadsetMic(inDev) && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: "auto" }}
+                        exit={{ opacity: 0, height: 0 }}
+                        className="overflow-hidden text-xs text-amber-200/80"
+                      >
+                        Headset mics put earbuds into call mode: lower quality, slower to start. The
+                        laptop mic usually works better.
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </Field>
                 <Field label="Send the cleaned voice to">
                   <DeviceSelect
@@ -449,11 +504,12 @@ const TONE: Record<Tone, { color: string; shimmer: string }> = {
 
 // Its own component: it re-checks the live signals ten times a second without touching the page.
 function StatusLine({
-  signals, data, running, connected, mode,
+  signals, data, running, starting, connected, mode,
 }: {
   signals: RefObject<Signals>
   data: RefObject<LiveData>
   running: boolean
+  starting: boolean
   connected: boolean
   mode: Mode
 }) {
@@ -466,6 +522,9 @@ function StatusLine({
       let next: { text: string; tone: Tone }
       if (!connected) next = { text: everConnected.current ? "Reconnecting to the engine…" : "Connecting…", tone: "warn" }
       else if (!running) next = { text: "Tap the orb to start", tone: "idle" }
+      else if (starting) next = { text: "Opening the microphone…", tone: "idle" }
+      else if (performance.now() - data.current.lastSoundAt > 3000)
+        next = { text: "No sound from the mic. Try another in Setup.", tone: "warn" }
       else if (s.cut > 0.2) {
         const kind = (KIND_LABEL[data.current.lastCutKind] ?? "stutter").toLowerCase()
         next = { text: `Removed a ${kind}`, tone: "cut" }
@@ -475,7 +534,7 @@ function StatusLine({
       setStatus((cur) => (cur.text === next.text ? cur : next))
     }, 100)
     return () => window.clearInterval(id)
-  }, [signals, data, running, connected, mode])
+  }, [signals, data, running, starting, connected, mode])
 
   return (
     <div className="grid h-6 items-center">

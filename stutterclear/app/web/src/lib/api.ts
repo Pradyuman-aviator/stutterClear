@@ -48,6 +48,12 @@ export interface StartBody {
   save: boolean
 }
 
+export interface PlaybackInfo {
+  available: boolean
+  original_s: number
+  clean_s: number
+}
+
 export interface Summary {
   mode_delay_ms: number
   removed_ms: number
@@ -71,6 +77,8 @@ export const getDevices = () => json<Devices>(fetch("/api/devices"))
 
 export const getInfo = () => json<{ student: boolean }>(fetch("/api/info"))
 
+export const getPlayback = () => json<PlaybackInfo>(fetch("/api/playback"))
+
 export const startSession = (body: StartBody) =>
   json<{ ok: boolean; detector: string; mode: Mode }>(
     fetch("/api/start", {
@@ -81,7 +89,7 @@ export const startSession = (body: StartBody) =>
   )
 
 export const stopSession = () =>
-  json<{ ok: boolean; summary: Summary | null }>(fetch("/api/stop", { method: "POST" }))
+  json<{ ok: boolean; summary: Summary | null; playback?: PlaybackInfo }>(fetch("/api/stop", { method: "POST" }))
 
 export const KIND_LABEL: Record<string, string> = {
   sound_rep: "Sound repeat",

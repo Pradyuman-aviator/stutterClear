@@ -8,15 +8,19 @@ import asyncio
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Response, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from ..audio import wav_bytes
+from ..config import SAMPLE_RATE as SR
 from ..live import DEFAULT_STUDENT, LiveSession, devices
 
 STATIC = Path(__file__).parent / "static"
 UPDATE_S = 0.03  # ~30 updates a second: the orb reacts within a frame or two
-state = {"session": None}
+# "last" holds the finished session's audio, in memory only, for the play buttons. Starting a new
+# session drops it.
+state = {"session": None, "last": None}
 clients: set[WebSocket] = set()
 
 
@@ -87,6 +91,7 @@ def start(req: StartRequest):
     if state["session"] is not None:
         state["session"].stop()
         state["session"] = None
+    state["last"] = None
     devs = devices()
     in_device = resolve("microphone", req.in_device, req.in_name, devs["inputs"])
     out_device = resolve("output", req.out_device, req.out_name, devs["outputs"])
@@ -104,7 +109,27 @@ def start(req: StartRequest):
 @app.post("/api/stop")
 def stop():
     s, state["session"] = state["session"], None
-    return {"ok": True, "summary": s.stop() if s else None}
+    if s is None:
+        return {"ok": True, "summary": None}
+    summary = s.stop()
+    state["last"] = s.recording()
+    return {"ok": True, "summary": summary, "playback": playback_info()}
+
+
+@app.get("/api/playback")
+def playback_info():
+    last = state["last"]
+    if not last or not len(last["original"]):
+        return {"available": False}
+    return {"available": True, **{f"{k}_s": round(len(v) / SR, 2) for k, v in last.items()}}
+
+
+@app.get("/api/playback/{which}.wav")
+def playback(which: str):
+    last = state["last"]
+    if which not in ("original", "clean") or not last:
+        raise HTTPException(404, "Nothing to play yet: record a session first.")
+    return Response(wav_bytes(last[which]), media_type="audio/wav", headers={"Cache-Control": "no-store"})
 
 
 @app.websocket("/ws")
