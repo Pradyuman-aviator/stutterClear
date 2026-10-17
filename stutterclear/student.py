@@ -45,14 +45,15 @@ class CausalConv(nn.Module):
 
 
 class CausalStudent(nn.Module):
-    def __init__(self, hidden: int = 160, lookaheads=LOOKAHEADS):
+    def __init__(self, hidden: int = 160, lookaheads=LOOKAHEADS, conv: int = 128, layers: int = 2):
         super().__init__()
         self.lookaheads = tuple(lookaheads)
+        self.arch = {"hidden": hidden, "conv": conv, "layers": layers}
         self.logmel = LogMel()
         self.norm = nn.LayerNorm(N_MELS)  # per frame, so still causal
-        self.conv1 = CausalConv(N_MELS, 128, 5, stride=2)
-        self.conv2 = CausalConv(128, hidden, 3)
-        self.gru = nn.GRU(hidden, hidden, num_layers=2, batch_first=True)
+        self.conv1 = CausalConv(N_MELS, conv, 5, stride=2)
+        self.conv2 = CausalConv(conv, hidden, 3)
+        self.gru = nn.GRU(hidden, hidden, num_layers=layers, batch_first=True)
         self.heads = nn.ModuleList(nn.Linear(hidden, len(CLASSES)) for _ in self.lookaheads)
 
     def trunk(self, mel: torch.Tensor, h=None):  # mel [B, F, n_mels] -> [B, F//2, hidden]

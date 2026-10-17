@@ -57,6 +57,9 @@ def main():
     ap.add_argument("--sep-dir")
     ap.add_argument("--uclass-dir", help="unlabelled UCLASS recordings: distilled from the teacher (train speakers only)")
     ap.add_argument("--uclass-batch", type=int, default=16)
+    ap.add_argument("--hidden", type=int, default=160)
+    ap.add_argument("--conv", type=int, default=128)
+    ap.add_argument("--layers", type=int, default=2)
     ap.add_argument("--steps", type=int, default=15000)
     ap.add_argument("--batch", type=int, default=16)
     ap.add_argument("--sep-batch", type=int, default=16)
@@ -78,7 +81,7 @@ def main():
     teacher, _ = load_teacher(args.teacher_ckpt, tdev)
     for p in teacher.parameters():
         p.requires_grad_(False)
-    student = CausalStudent().to(dev)
+    student = CausalStudent(hidden=args.hidden, conv=args.conv, layers=args.layers).to(dev)
     opt = torch.optim.AdamW(student.parameters(), lr=args.lr, weight_decay=0.01)
     sched = torch.optim.lr_scheduler.LambdaLR(
         opt, lambda s: min(1.0, (s + 1) / 500) * (0.05 + 0.95 * 0.5 * (1 + math.cos(math.pi * min(1.0, s / args.steps)))))
@@ -148,7 +151,7 @@ def main():
             log.flush()
             if score > best:
                 best = score
-                torch.save({"state_dict": student.state_dict(), "lookaheads": student.lookaheads,
+                torch.save({"state_dict": student.state_dict(), "lookaheads": student.lookaheads, "arch": student.arch,
                             "classes": CLASSES, "step": step, "metrics": m}, out / "student.pt")
         if last:
             break

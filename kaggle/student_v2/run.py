@@ -1,6 +1,7 @@
 """Kaggle job: (1) teacher v2 thresholds on validation speakers + one report on the official
 SEP-28k-E test set, (2) distil teacher v2 into the causal student, now also on unlabelled UCLASS
-recordings of training speakers, (3) per-lookahead student report on test speakers.
+recordings of training speakers, with a 5.2M-parameter student (12x v1: v1 was too small for real
+speech; still ~2 ms of CPU per 20 ms frame), (3) per-lookahead student report on test speakers.
 
 Input (kernel_sources): stutterclear-teacher-v2 (teacher_v2/best.pt).
 Pushed with:  kaggle kernels push -p kaggle/student_v2
@@ -37,6 +38,7 @@ sh(
     f" --libri-train '{data}/librispeech-alignments/data/train_clean_100-*.parquet'"
     f" --libri-val '{data}/librispeech-alignments/data/dev_clean-*.parquet'"
     f" --sep-dir {data}/sep28k-fluencybank --uclass-dir {data}/uclass_all"
+    " --hidden 512 --conv 256 --layers 3 --lr 1e-3"
     " --steps 20000 --batch 16 --sep-batch 16 --uclass-batch 16 --workers 4 --eval-every 1000 --val-n 400"
     " --max-hours 10 --out /kaggle/working/student_v2"
 )

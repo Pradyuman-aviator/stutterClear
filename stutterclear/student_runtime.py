@@ -24,7 +24,7 @@ REMOVABLE = ("sound_rep", "word_rep", "prolongation")
 
 def load_student(path) -> CausalStudent:
     ckpt = torch.load(path, map_location="cpu", weights_only=False)
-    model = CausalStudent(lookaheads=ckpt["lookaheads"])
+    model = CausalStudent(lookaheads=ckpt["lookaheads"], **ckpt.get("arch", {}))
     model.load_state_dict(ckpt["state_dict"])
     return model.eval()
 
