@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import type { Span, Tick } from "@/lib/api"
+import { PAGE_ID, type Span, type Tick } from "@/lib/api"
 import { createStore } from "@/lib/store"
 
 export const STEP_S = 0.01 // one envelope point per 10 ms
@@ -79,7 +79,7 @@ export function useLive() {
 
     const connect = () => {
       const proto = location.protocol === "https:" ? "wss" : "ws"
-      ws = new WebSocket(`${proto}://${location.host}/ws`)
+      ws = new WebSocket(`${proto}://${location.host}/ws?page=${PAGE_ID}`)
       ws.onopen = () => setConnected(true)
       ws.onclose = () => {
         setConnected(false)

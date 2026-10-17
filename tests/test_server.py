@@ -115,3 +115,22 @@ def test_hosted_nemotron_calls_are_capped(monkeypatch):
     monkeypatch.setattr(server, "_nemotron_calls", server.deque())
     codes = [client.post("/api/rescue", json={"said": "I am"}).status_code for _ in range(3)]
     assert codes == [200, 200, 429]
+
+
+def test_hosted_sessions_are_private_to_their_page(monkeypatch):
+    """On a public server, another visitor never gets a session's captions, waveforms or audio."""
+    monkeypatch.setattr(server, "HOSTED", True)
+    with client.websocket_connect("/ws/mic") as ws:
+        ws.send_json({"mode": "gentle", "detector": "heuristic", "page": "alice"})
+        ws.receive_json()
+        assert server.sees_session("alice") and not server.sees_session("bob") and not server.sees_session("")
+        for _ in range(100):
+            ws.send_bytes(np.zeros(320, np.float32).tobytes())
+        assert client.post("/api/stop").status_code == 403  # nobody else can end it
+        ws.send_text("stop")
+        assert ws.receive_json()["playback"]["available"]
+    assert client.get("/api/playback?page=alice").json()["available"]
+    assert not client.get("/api/playback?page=bob").json()["available"]
+    assert not client.get("/api/playback").json()["available"]
+    assert client.get("/api/playback/clean.wav?page=bob").status_code == 404
+    assert client.get("/api/playback/clean.wav?page=alice").status_code == 200

@@ -36,8 +36,17 @@ NEMOTRON_PER_MIN = 60 if HOSTED else None
 _nemotron_calls: deque = deque()
 # "last" holds the finished session's audio, in memory only, for the play buttons. Starting a new
 # session drops it.
-state = {"session": None, "last": None}
-clients: set[WebSocket] = set()
+# On a public server a session belongs to the page that started it ("owner", a random id the page
+# sends): only that page gets its live updates (waveforms, captions) and its listen-back.
+state = {"session": None, "last": None, "owner": None, "last_owner": None}
+clients: dict[WebSocket, str] = {}  # open pages -> their page id
+IDLE = {"idle": True}
+
+
+def sees_session(page: str) -> bool:
+    """Whether a page gets the live session's updates: every page on this computer; on a public
+    server only the page that started it."""
+    return not (HOSTED and state["session"] and (not page or page != state["owner"]))
 
 
 async def broadcast():
@@ -48,12 +57,12 @@ async def broadcast():
     """
     while True:
         s = state["session"]
-        msg = s.poll() if s else {"idle": True}
-        for socket in list(clients):
+        msg = s.poll() if s else IDLE
+        for socket, page in list(clients.items()):
             try:
-                await socket.send_json(msg)
+                await socket.send_json(msg if sees_session(page) else IDLE)
             except Exception:  # closed mid-send; its handler cleans up
-                clients.discard(socket)
+                clients.pop(socket, None)
         await asyncio.sleep(UPDATE_S)
 
 
@@ -240,6 +249,8 @@ def start(req: StartRequest):
 
 @app.post("/api/stop")
 def stop():
+    if HOSTED:  # browser sessions end over their own connection; nobody else may end them
+        raise HTTPException(403, "On the hosted demo, a session stops from the page that started it.")
     s, state["session"] = state["session"], None
     if s is None:
         return {"ok": True, "summary": None}
@@ -248,17 +259,22 @@ def stop():
     return {"ok": True, "summary": summary, "playback": playback_info()}
 
 
+def _last(page: str):
+    """The finished session's audio, if this page may hear it."""
+    return None if HOSTED and (not page or page != state["last_owner"]) else state["last"]
+
+
 @app.get("/api/playback")
-def playback_info():
-    last = state["last"]
+def playback_info(page: str = ""):
+    last = _last(page)
     if not last or not len(last["original"]):
         return {"available": False}
     return {"available": True, **{f"{k}_s": round(len(v) / SR, 2) for k, v in last.items()}}
 
 
 @app.get("/api/playback/{which}.wav")
-def playback(which: str):
-    last = state["last"]
+def playback(which: str, page: str = ""):
+    last = _last(page)
     if which not in ("original", "clean") or not last:
         raise HTTPException(404, "Nothing to play yet: record a session first.")
     return Response(wav_bytes(last[which]), media_type="audio/wav", headers={"Cache-Control": "no-store"})
@@ -276,11 +292,12 @@ async def browser_mic(socket: WebSocket):
         await socket.close(code=4409, reason="A live session is already running here.")
         return
     cfg = await socket.receive_json()
+    page = str(cfg.get("page", ""))
     loop = asyncio.get_running_loop()
     s = await loop.run_in_executor(None, lambda: LiveSession(  # may load a model: off the event loop
         cfg.get("mode", "gentle"), detector=cfg.get("detector", "heuristic"), source="browser"))
     s.start()
-    state["session"], state["last"] = s, None
+    state["session"], state["last"], state["owner"] = s, None, page
     await socket.send_json({"ok": True, "detector": s.detector_name, "limit_s": LIVE_LIMIT_S})
     t0, ended = loop.time(), None
     try:
@@ -304,25 +321,25 @@ async def browser_mic(socket: WebSocket):
         if state["session"] is s:
             state["session"] = None
             summary = await loop.run_in_executor(None, s.stop)
-            state["last"] = s.recording()
+            state["last"], state["last_owner"] = s.recording(), page
         try:  # the page may already be gone
-            await socket.send_json({"summary": summary, "playback": playback_info(), "ended": ended})
+            await socket.send_json({"summary": summary, "playback": playback_info(page), "ended": ended})
             await socket.close()
         except Exception:
             pass
 
 
 @app.websocket("/ws")
-async def ws(socket: WebSocket):
+async def ws(socket: WebSocket, page: str = ""):
     await socket.accept()
-    clients.add(socket)
+    clients[socket] = page
     try:
         while True:  # the page never sends anything; this just waits for it to go away
             await socket.receive_text()
     except WebSocketDisconnect:
         pass
     finally:
-        clients.discard(socket)
+        clients.pop(socket, None)
 
 
 @app.get("/api/demo")

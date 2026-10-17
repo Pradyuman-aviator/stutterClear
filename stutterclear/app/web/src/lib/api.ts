@@ -111,7 +111,13 @@ export const getInfo = () =>
     recommended: DetectorKind
   }>(fetch("/api/info"))
 
-export const getPlayback = () => json<PlaybackInfo>(fetch("/api/playback"))
+// A random id for this page. On a public server a live session belongs to the page that started
+// it: only that page gets its live updates and its listen-back.
+export const PAGE_ID = Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, "0")).join("")
+export const playbackUrl = (which: "clean" | "original", version: number) =>
+  `/api/playback/${which}.wav?v=${version}&page=${PAGE_ID}`
+
+export const getPlayback = () => json<PlaybackInfo>(fetch(`/api/playback?page=${PAGE_ID}`))
 
 export const startSession = (body: StartBody) =>
   json<{ ok: boolean; detector: string; mode: Mode }>(

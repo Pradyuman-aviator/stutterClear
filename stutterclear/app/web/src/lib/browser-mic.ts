@@ -2,7 +2,7 @@
 // of float32 audio to the server (/ws/mic), which runs the same live pipeline as a local session.
 // Used when the app is hosted (the server has no mic) or when "This browser" is picked as the mic.
 
-import type { PlaybackInfo, Summary } from "@/lib/api"
+import { PAGE_ID, type PlaybackInfo, type Summary } from "@/lib/api"
 
 // Firefox only connects a mic to an AudioContext at the device's own rate (usually 48 kHz). Then the
 // worklet resamples to 16 kHz itself: a windowed-sinc low-pass below 8 kHz (so nothing folds back
@@ -100,7 +100,7 @@ export class BrowserMic {
     ws.binaryType = "arraybuffer"
     this.ws = ws
     const ready = new Promise<{ detector: string }>((resolve, reject) => {
-      ws.onopen = () => ws.send(JSON.stringify(settings))
+      ws.onopen = () => ws.send(JSON.stringify({ ...settings, page: PAGE_ID }))
       ws.onmessage = (m) => resolve(JSON.parse(m.data))
       ws.onclose = (e) => reject(new Error(e.reason || "The live connection closed."))
     })

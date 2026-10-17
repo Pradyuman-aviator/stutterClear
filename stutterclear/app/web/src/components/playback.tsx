@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 import { AnimatePresence, motion } from "motion/react"
-import { Pause, Play } from "lucide-react"
-import type { PlaybackInfo } from "@/lib/api"
+import { Download, Pause, Play } from "lucide-react"
+import { playbackUrl, type PlaybackInfo } from "@/lib/api"
 import { SPRING } from "@/lib/motion"
 import { cn } from "@/lib/utils"
 
@@ -63,7 +63,7 @@ export function Playback({ info, version }: { info: PlaybackInfo; version: numbe
       return
     }
     cur?.pause()
-    const a = new Audio(`/api/playback/${which}.wav?v=${version}`)
+    const a = new Audio(playbackUrl(which, version))
     const resumeAt = elapsed[which]
     a.addEventListener("loadedmetadata", () => {
       if (resumeAt > 0 && resumeAt < a.duration - 0.2) a.currentTime = resumeAt
@@ -144,6 +144,16 @@ export function Playback({ info, version }: { info: PlaybackInfo; version: numbe
           </motion.button>
         )
       })}
+      <motion.a
+        href={playbackUrl("clean", version)}
+        download="stutterclear-clean.wav"
+        whileHover={{ y: -2 }}
+        whileTap={{ scale: 0.95 }}
+        transition={SPRING.press}
+        className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-white/75 transition-colors hover:bg-white/[0.08] hover:text-white"
+      >
+        <Download className="size-3.5" /> Download clean
+      </motion.a>
     </div>
   )
 }
