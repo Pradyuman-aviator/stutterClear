@@ -39,7 +39,7 @@ def test_suggest_calls_the_api(monkeypatch):
     monkeypatch.setattr(rescue.nemotron.urllib.request, "urlopen", fake_urlopen)
     assert rescue.suggest("I am building", "Project: StutterClear", "st") == ["StutterClear", "stutter", "study"]
     assert sent["url"].endswith("/chat/completions") and sent["auth"] == "Bearer test-key"
-    assert sent["body"]["model"] == rescue.MODEL
+    assert sent["body"]["model"] == rescue.nemotron.MODEL
 
 
 def test_last_json_takes_the_outermost_object():
@@ -93,3 +93,22 @@ def test_chat_reports_a_reply_that_is_only_reasoning(monkeypatch):
         raise AssertionError("expected NemotronError")
     except nemotron.NemotronError as e:
         assert "reasoning" in str(e)
+
+
+def test_a_renamed_model_falls_back_to_the_closest_nemotron(monkeypatch):
+    from stutterclear import nemotron
+
+    class Reply(io.BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    served = ["meta-llama/Llama-3.3-70B", "nvidia/nemotron-nano-9b-v2", "nvidia/nemotron-super-49b-v2"]
+    monkeypatch.setattr(nemotron.urllib.request, "urlopen",
+                        lambda req, timeout: Reply(json.dumps({"data": [{"id": i} for i in served]}).encode()))
+    monkeypatch.setattr(nemotron, "MODEL", "nvidia/nemotron-3-super-120b-a12b")
+    assert "using nvidia/nemotron-super-49b-v2" in nemotron.resolve()
+    assert nemotron.MODEL == "nvidia/nemotron-super-49b-v2"
+    assert nemotron.resolve() == "Nemotron: nvidia/nemotron-super-49b-v2"  # now it is served: no change

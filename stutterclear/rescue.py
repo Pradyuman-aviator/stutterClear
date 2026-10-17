@@ -7,7 +7,7 @@ text (never audio) to Nebius.
 import re
 
 from . import nemotron
-from .nemotron import MODEL, available  # noqa: F401  (re-exported for the server)
+from .nemotron import available  # noqa: F401  (re-exported for the server)
 
 SYSTEM = (
     "You help a person who stutters during a live conversation. They are stuck on the next word "

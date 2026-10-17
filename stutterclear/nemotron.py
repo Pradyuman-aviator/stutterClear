@@ -22,6 +22,33 @@ def available() -> bool:
     return bool(os.environ.get("NEBIUS_API_KEY"))
 
 
+def models(timeout: float = 10.0) -> list:
+    """The model ids this endpoint serves."""
+    req = urllib.request.Request(BASE_URL.rstrip("/") + "/models",
+                                 headers={"Authorization": f"Bearer {os.environ.get('NEBIUS_API_KEY', '')}"})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return [m["id"] for m in json.load(r).get("data", [])]
+
+
+def resolve() -> str:
+    """Make sure MODEL is served here; if not (ids change), switch to the closest Nemotron: Super,
+    then Ultra, then Nano. Returns a line for the log."""
+    global MODEL
+    try:
+        ids = models()
+    except Exception as e:
+        return f"Nemotron: could not list models ({e}); using {MODEL}"
+    if MODEL in ids:
+        return f"Nemotron: {MODEL}"
+    rank = {"super": 3, "ultra": 2, "nano": 1}
+    found = sorted((i for i in ids if "nemotron" in i.lower()),
+                   key=lambda i: (max([v for k, v in rank.items() if k in i.lower()], default=0), i))
+    if not found:
+        return f"Nemotron: {MODEL} is not listed and no Nemotron model is; check NEBIUS_BASE_URL"
+    old, MODEL = MODEL, found[-1]
+    return f"Nemotron: {old} is not served here; using {MODEL}"
+
+
 def _post(body: dict, key: str, timeout: float) -> dict:
     req = urllib.request.Request(BASE_URL.rstrip("/") + "/chat/completions", data=json.dumps(body).encode(),
                                  method="POST",

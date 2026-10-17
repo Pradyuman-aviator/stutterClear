@@ -48,12 +48,11 @@ def label_tokens(words: list) -> list:
 
 
 def intended_text(model, x: np.ndarray) -> str:
-    """CrisperWhisper's intended (clean) transcript. Without word timestamps, its path for clips
-    under 30 s often returns nothing at all, so shorter clips are padded with silence past 30 s."""
-    n = int(30.5 * SR)
-    if len(x) < n:
-        x = np.concatenate([np.asarray(x, np.float32), np.zeros(n - len(x), np.float32)])
-    return model.transcribe(x, sr=SR, language="en", mode="intended").text
+    """CrisperWhisper's intended (clean) transcript. Its path without word timestamps often returns
+    nothing for clips under 30 s, and padding them with silence makes it invent text ("I don't
+    know. I don't know. ..."), so this asks for word timestamps, which takes the path that works."""
+    return model.transcribe(np.asarray(x, np.float32), sr=SR, language="en", mode="intended",
+                            word_timestamps=True).text
 
 
 def word_cuts(toks: list, probs=None, cut_fillers: bool = False, confirm: float = 0.3,

@@ -53,7 +53,10 @@ async def broadcast():
 
 def warm_demo():
     """Load the big model and render every demo sample once in the background, so the first live
-    session and the first click on a sample start at once."""
+    session and the first click on a sample start at once. Nemotron's model is checked first:
+    the meaning guard runs while the samples render."""
+    if nemotron.available():
+        print(nemotron.resolve(), flush=True)
     from ..teacher_runtime import get_teacher, live_capable, window_probs
     if live_capable():
         get_teacher()
@@ -168,7 +171,7 @@ def word_rescue(req: RescueRequest):
     if not rescue.available():
         raise HTTPException(503, "Word rescue needs NEBIUS_API_KEY set where the app runs.")
     try:
-        return {"suggestions": rescue.suggest(req.said, req.context, req.onset), "model": rescue.MODEL}
+        return {"suggestions": rescue.suggest(req.said, req.context, req.onset), "model": nemotron.MODEL}
     except Exception as e:
         raise HTTPException(502, f"Nemotron did not answer: {e}") from e
 
