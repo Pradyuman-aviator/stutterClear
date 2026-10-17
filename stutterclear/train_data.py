@@ -135,11 +135,12 @@ class Sep28kClips(Dataset):
             y = augment(y, self.rng)
         words = self.silver_words[i]
         if words is not None:
-            lab, cmask = frame_targets(words, self.frames)
+            lab, cmask, fmask = frame_targets(words, self.frames)
         else:
             lab, cmask = np.zeros((self.frames, len(CLASSES)), np.float32), np.zeros(len(CLASSES), np.float32)
+            fmask = np.ones(self.frames, np.float32)
         return {"wave": torch.from_numpy(y.astype(np.float32)), "clip_labels": torch.from_numpy(self.labels[i]),
-                "labels": torch.from_numpy(lab), "mask": torch.ones(self.frames),
+                "labels": torch.from_numpy(lab), "mask": torch.from_numpy(fmask),
                 "class_mask": torch.from_numpy(cmask)}
 
 
@@ -173,12 +174,13 @@ class UclassSilver(Dataset):
         recs = [r for r in records.values() if r["source"] == "uclass" and r["file"] in paths
                 and uclass_split(r["speaker"]) == split]
         self.n = int(crop_s * SR) // FRAME * FRAME
-        self.audio, self.targets, self.class_mask = [], [], None
+        self.audio, self.targets, self.edges, self.class_mask = [], [], [], None
         for r in recs:
             x = load_wav(paths[r["file"]])
-            lab, self.class_mask = frame_targets(r["words"], len(x) // FRAME)
+            lab, self.class_mask, fmask = frame_targets(r["words"], len(x) // FRAME)
             self.audio.append((np.clip(x, -1, 1) * 32767).astype(np.int16))  # half the memory of float32
             self.targets.append(lab)
+            self.edges.append(fmask)
         self.speakers = sorted({r["speaker"] for r in recs})
         self.lengths = np.array([len(a) for a in self.audio], np.float64)
         self.fixed, self.augment_p, self.rng = fixed, augment_p, np.random.default_rng(seed)
@@ -201,7 +203,9 @@ class UclassSilver(Dataset):
         part = self.targets[k][s // FRAME:s // FRAME + frames]
         lab[:len(part)] = part
         mask = np.zeros(frames, np.float32)
-        mask[:min(frames, len(y) // FRAME)] = 1.0
+        edge = self.edges[k][s // FRAME:s // FRAME + frames]
+        mask[:len(edge)] = edge
+        mask[min(frames, len(y) // FRAME):] = 0.0
         y = np.pad(y, (0, self.n - len(y)))
         if not self.fixed and self.rng.random() < self.augment_p:
             y = augment(y, self.rng)
