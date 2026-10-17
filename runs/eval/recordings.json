@@ -1,0 +1,40 @@
+{
+ "results": [
+  {
+   "recipe": "natural",
+   "stutter_removed_pct": 50.1,
+   "words_lost_pct": 0.0,
+   "n_stutter": 353,
+   "n_removed": 177,
+   "n_fluent": 2484,
+   "n_lost": 0
+  },
+  {
+   "recipe": "natural + fillers",
+   "stutter_removed_pct": 76.8,
+   "words_lost_pct": 0.0,
+   "n_stutter": 353,
+   "n_removed": 271,
+   "n_fluent": 2484,
+   "n_lost": 0
+  },
+  {
+   "recipe": "thorough",
+   "stutter_removed_pct": 79.9,
+   "words_lost_pct": 0.0,
+   "n_stutter": 353,
+   "n_removed": 282,
+   "n_fluent": 2484,
+   "n_lost": 0
+  },
+  {
+   "recipe": "transcript only, no acoustic check",
+   "stutter_removed_pct": 97.7,
+   "words_lost_pct": 0.0,
+   "n_stutter": 353,
+   "n_removed": 345,
+   "n_fluent": 2484,
+   "n_lost": 0
+  }
+ ]
+}

@@ -1,0 +1,77 @@
+{
+ "results": [
+  {
+   "detector": "rule-based",
+   "mode": "gentle",
+   "stutter_removed_pct": 7.6,
+   "words_lost_pct": 1.25,
+   "removed_s": 54.4,
+   "realtime_factor": 0.007,
+   "n_stutter": 353,
+   "n_removed": 27,
+   "n_fluent": 2484,
+   "n_lost": 31
+  },
+  {
+   "detector": "rule-based",
+   "mode": "strong",
+   "stutter_removed_pct": 10.2,
+   "words_lost_pct": 1.45,
+   "removed_s": 63.9,
+   "realtime_factor": 0.007,
+   "n_stutter": 353,
+   "n_removed": 36,
+   "n_fluent": 2484,
+   "n_lost": 36
+  },
+  {
+   "detector": "student",
+   "mode": "gentle",
+   "stutter_removed_pct": 19.8,
+   "words_lost_pct": 8.37,
+   "removed_s": 211.1,
+   "realtime_factor": 0.071,
+   "n_stutter": 353,
+   "n_removed": 70,
+   "n_fluent": 2484,
+   "n_lost": 208
+  },
+  {
+   "detector": "student",
+   "mode": "strong",
+   "stutter_removed_pct": 19.5,
+   "words_lost_pct": 8.33,
+   "removed_s": 216.4,
+   "realtime_factor": 0.071,
+   "n_stutter": 353,
+   "n_removed": 69,
+   "n_fluent": 2484,
+   "n_lost": 207
+  },
+  {
+   "detector": "teacher",
+   "mode": "gentle",
+   "stutter_removed_pct": 31.7,
+   "words_lost_pct": 3.18,
+   "removed_s": 125.1,
+   "realtime_factor": 0.32,
+   "n_stutter": 353,
+   "n_removed": 112,
+   "n_fluent": 2484,
+   "n_lost": 79
+  },
+  {
+   "detector": "teacher",
+   "mode": "strong",
+   "stutter_removed_pct": 65.2,
+   "words_lost_pct": 5.64,
+   "removed_s": 204.5,
+   "realtime_factor": 0.359,
+   "n_stutter": 353,
+   "n_removed": 230,
+   "n_fluent": 2484,
+   "n_lost": 140
+  }
+ ],
+ "student_mtime": 1792246330.0293977
+}

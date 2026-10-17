@@ -8,7 +8,12 @@ demo/
 # downloaded datasets and trained models
 data/
 models/
-runs/
+runs/*
+# measured results (numbers only) are kept: the app shows them
+!runs/eval/
+runs/eval/*
+!runs/eval/live_quality.json
+!runs/eval/recordings.json
 # front-end build tooling
 stutterclear/app/web/node_modules/
 stutterclear/app/web/dist/
