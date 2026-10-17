@@ -45,6 +45,52 @@ def label_tokens(words: list) -> list:
     return toks
 
 
+def _overlap(s, e, cuts) -> float:
+    return sum(max(0.0, min(e, c["end"]) - max(s, c["start"])) for c in cuts) / max(1e-3, e - s)
+
+
+def score_cuts(toks: list, cuts: list, removed_at: float = 0.5) -> dict:
+    """Score a cut list against labelled tokens, without caring which copy of a repeat is kept.
+
+    A repeat chain ("is is is is is") is the repeat tokens plus the final copy they repeat. It
+    counts as resolved when exactly one copy survives; it counts as a lost word when none does.
+    """
+    cut = [_overlap(t["s"], t["e"], cuts) >= removed_at for t in toks]
+    final_of = {}
+    for i, t in enumerate(toks):
+        if t["label"] != "repeat":
+            continue
+        for j in range(i + 1, min(len(toks), i + 12)):
+            if toks[j]["n"] == t["n"] and toks[j]["label"] == "fluent":
+                final_of[i] = j
+                break
+    chains = {}
+    for i, j in final_of.items():
+        chains.setdefault(j, []).append(i)
+    out = {}
+    for kind in ("filler", "cutoff"):
+        idx = [i for i, t in enumerate(toks) if t["label"] == kind]
+        out[f"{kind}_removed_pct"] = round(100 * sum(cut[i] for i in idx) / max(1, len(idx)), 1)
+    extra = removed = lost_chains = 0
+    for j, reps in chains.items():
+        members = reps + [j]
+        kept = sum(not cut[m] for m in members)
+        extra += len(members) - 1
+        removed += len(members) - 1 if kept == 0 else len(members) - kept
+        lost_chains += kept == 0
+    out["repeat_copies_removed_pct"] = round(100 * removed / max(1, extra), 1)
+    in_chain = set(chains) | set(final_of)
+    fluent = [i for i, t in enumerate(toks) if t["label"] == "fluent"]
+    lost = sum(cut[i] for i in fluent if i not in in_chain) + lost_chains
+    n_stutter = sum(t["label"] in ("filler", "cutoff") for t in toks) + extra
+    n_removed = sum(cut[i] for i, t in enumerate(toks) if t["label"] in ("filler", "cutoff")) + removed
+    out["stutter_removed_pct"] = round(100 * n_removed / max(1, n_stutter), 1)
+    out["words_lost_pct"] = round(100 * lost / max(1, len(fluent)), 1)
+    out["n_stutter"], out["n_fluent"], out["n_removed"], out["n_lost"] = n_stutter, len(fluent), n_removed, lost
+    out["lost_examples"] = [f"{toks[i]['w']}@{toks[i]['s']:.1f}" for i in fluent if cut[i] and i not in in_chain][:8]
+    return out
+
+
 def frame_targets(words: list, n_frames: int):
     """Returns (labels [n_frames, classes], class_mask [classes], frame_mask [n_frames])."""
     lab = np.zeros((n_frames, len(CLASSES)), np.float32)

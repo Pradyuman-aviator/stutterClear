@@ -7,17 +7,17 @@ cut-off word ("l-") and every repeated word. Tokens are labelled from it:
 - filler, cutoff:     always stutter
 - repeat:             every copy of a repeated word or 2-3 word phrase except the last
 - fluent:             everything else, which must survive
-Then each token's overlap with the cut list gives stutter removal and wrongly cut speech.
+Then each token's overlap with the cut list gives stutter removal and words lost; a repeat
+chain counts as fixed when one copy survives, whichever copy that is.
 These are silver labels: an automatic stand-in until hand labels exist.
 """
 import argparse
 import json
-
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from stutterclear.silver import label_tokens  # noqa: E402
+from stutterclear.silver import label_tokens, score_cuts  # noqa: E402
 
 
 def transcribe(wav: Path) -> list:
@@ -32,28 +32,6 @@ def transcribe(wav: Path) -> list:
     return words
 
 
-def overlap(s, e, cuts):
-    return sum(max(0.0, min(e, c["end"]) - max(s, c["start"])) for c in cuts) / max(1e-3, e - s)
-
-
-def score(toks: list, cuts: list) -> dict:
-    out = {}
-    for kind in ("filler", "cutoff", "repeat"):
-        ts = [t for t in toks if t["label"] == kind]
-        if ts:
-            removed = [overlap(t["s"], t["e"], cuts) for t in ts]
-            out[kind] = {"n": len(ts), "removed_pct": round(100 * sum(r >= 0.5 for r in removed) / len(ts))}
-    stut = [t for t in toks if t["label"] != "fluent"]
-    out["all_stutter_removed_pct"] = round(100 * sum(overlap(t["s"], t["e"], cuts) >= 0.5 for t in stut)
-                                           / max(1, len(stut)))
-    fluent = [t for t in toks if t["label"] == "fluent"]
-    hit = [t for t in fluent if overlap(t["s"], t["e"], cuts) >= 0.3]
-    out["fluent_words"] = len(fluent)
-    out["fluent_words_cut_pct"] = round(100 * len(hit) / max(1, len(fluent)), 1)
-    out["wrongly_cut_examples"] = [f"{t['w']}@{t['s']:.1f}" for t in hit[:12]]
-    return out
-
-
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("wav", help="the ORIGINAL recording the cuts refer to")
@@ -65,7 +43,7 @@ def main():
     for path in args.cuts:
         cuts = json.loads(Path(path).read_text())
         print(f"\n{Path(path).name}: {len(cuts)} cuts, {sum(c['end'] - c['start'] for c in cuts):.1f} s")
-        print(json.dumps(score(toks, cuts), indent=1))
+        print(json.dumps(score_cuts(toks, cuts), indent=1))
 
 
 if __name__ == "__main__":
