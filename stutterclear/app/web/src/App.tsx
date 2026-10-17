@@ -834,7 +834,7 @@ function EnginePill({
   const label = !connected
     ? "Engine offline"
     : running
-      ? `Live · ${det === "student" ? "AI model" : "Rule-based"}`
+      ? `Live · ${det === "teacher" ? "Best (GPU)" : det === "student" ? "AI model" : "Rule-based"}`
       : demo
         ? "Demo · real recording"
         : "Engine ready"

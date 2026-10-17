@@ -101,6 +101,10 @@ class StudentDetector:
         self.block = None
         self.frames_seen = 0
 
+    def decided_samples(self) -> int:
+        """Audio up to here has been judged (frames lag the input by the lookahead)."""
+        return max(0, self.frames_seen - self.lookahead + 1) * FRAME
+
     def process(self, x: np.ndarray) -> list[CutUpdate]:
         first, probs = self.stream.push(x)
         updates = []

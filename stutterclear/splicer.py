@@ -52,6 +52,9 @@ class Splicer:
         self.write_pos = 0
         self.read_pos = 0
         self.fade_in_start = 0
+        # How far the detector has decided (samples). Audio past it is not played yet, whatever its
+        # age: a slow or warming-up detector must hold the output, not let stutters through.
+        self.decided: int | None = None
         self.cuts: dict[int, Cut] = {}
         self.noise_floor = 1e-3
         self.join_pause = ms(cfg.join_pause_ms)
@@ -93,6 +96,10 @@ class Splicer:
                 self.cuts.pop(cut_id, None)
                 return
             self.cuts[cut_id] = Cut(start, end, kind)
+
+    def set_decided(self, pos: int) -> None:
+        with self.lock:
+            self.decided = pos
 
     def cancel_cut(self, cut_id: int) -> None:
         """Detector changed its mind. If output is already holding inside the cut,
@@ -160,6 +167,8 @@ class Splicer:
             return k
 
         stop = self.write_pos - self.min_delay
+        if self.decided is not None:
+            stop = min(stop, self.decided)
         next_cut = self._next_cut_start(pos)
         if next_cut is not None:
             stop = min(stop, next_cut)

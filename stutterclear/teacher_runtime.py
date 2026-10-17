@@ -65,6 +65,7 @@ class TeacherDetector(StudentDetector):
     def __init__(self, lookahead_ms: float = 200.0, cut_cfg: CutConfig = BALANCED_CUTS, hop_ms: float = HOP_MS,
                  context_s: float = CONTEXT_S, cut_interjections: bool = False):
         get_teacher()  # load now, not on the first word
+        window_probs(np.zeros(SAMPLE_RATE, np.float32))  # and run once: the first GPU call is slow
         self.lookahead_ms = lookahead_ms
         self.lookahead_n = int(lookahead_ms * SAMPLE_RATE / 1000)
         self.hop_frames = max(1, int(hop_ms * SAMPLE_RATE / 1000 / FRAME))
@@ -88,6 +89,9 @@ class TeacherDetector(StudentDetector):
         self.buf = np.zeros(0, np.float32)  # the last window's worth of audio
         self.total = 0  # samples received
         self.decided = 0  # frames decided so far
+
+    def decided_samples(self) -> int:
+        return self.decided * FRAME
 
     def process(self, x: np.ndarray):
         x = np.asarray(x, np.float32).ravel()

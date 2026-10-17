@@ -106,3 +106,14 @@ def test_cancel_while_holding_plays_the_audio():
     y = stream(sp, x, on_block=lambda i: sp.cancel_cut(1) if i == b0 + 6400 else None)
     assert sp.stats.removed == 0
     assert band_energy(y, 1000) > 0.9 * band_energy(x, 1000)
+
+
+def test_never_plays_audio_the_detector_has_not_decided():
+    x = np.concatenate([silence(0.3), tone(300, 1.0)])
+    sp = Splicer(SR, CFG)
+    sp.set_decided(0)  # a detector that is still warming up
+    y = stream(sp, x[:int(0.9 * SR)])
+    assert np.abs(y).max() < 1e-6  # nothing undecided reaches the listener
+    sp.set_decided(len(x))  # it catches up
+    y2 = stream(sp, np.concatenate([x[int(0.9 * SR):], silence(1.5)]))
+    assert band_energy(y2, 300) > 0.5 * band_energy(x, 300)

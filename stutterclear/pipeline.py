@@ -21,6 +21,10 @@ class Pipeline:
         """Detector path; run off the audio thread when live."""
         for u in self.detector.process(x):
             self.apply(u)
+        # Only after its cuts are in: the output (another thread) may then play up to here.
+        decided = getattr(self.detector, "decided_samples", None)
+        if decided is not None:
+            self.splicer.set_decided(decided())
 
     def apply(self, u: CutUpdate) -> None:
         if u.op == "set":

@@ -45,7 +45,12 @@ async def broadcast():
 
 
 def warm_demo():
-    """Render every demo sample once in the background, so the first click plays at once."""
+    """Load the big model and render every demo sample once in the background, so the first live
+    session and the first click on a sample start at once."""
+    from ..teacher_runtime import get_teacher, live_capable, window_probs
+    if live_capable():
+        get_teacher()
+        window_probs(np.zeros(16000, np.float32))
     for s in demo.available():
         for engine in s["engines"]:
             try:
@@ -180,11 +185,12 @@ async def browser_mic(socket: WebSocket):
         await socket.close(code=4409, reason="A live session is already running here.")
         return
     cfg = await socket.receive_json()
-    s = LiveSession(cfg.get("mode", "gentle"), detector=cfg.get("detector", "heuristic"), source="browser")
+    loop = asyncio.get_running_loop()
+    s = await loop.run_in_executor(None, lambda: LiveSession(  # may load a model: off the event loop
+        cfg.get("mode", "gentle"), detector=cfg.get("detector", "heuristic"), source="browser"))
     s.start()
     state["session"], state["last"] = s, None
     await socket.send_json({"ok": True, "detector": s.detector_name})
-    loop = asyncio.get_running_loop()
     try:
         while True:
             msg = await socket.receive()
