@@ -4,6 +4,7 @@ poll() hands the UI everything new since the last call: input and output level e
 (100 points per second), cuts, detector events, delay and counters.
 """
 import ctypes
+import json
 import queue
 import sys
 import threading
@@ -46,6 +47,18 @@ class Recorder:
     def audio(self) -> np.ndarray:
         blocks = list(self.blocks)
         return np.concatenate(blocks) if blocks else np.zeros(0, np.float32)
+
+
+def student_eval(path: Path = DEFAULT_STUDENT) -> dict | None:
+    """Measured quality of a student checkpoint, from scripts/eval_live.py saved next to it as
+    live_eval.json: stutters removed and words lost in Gentle mode on held-out speakers."""
+    p = Path(path).with_name("live_eval.json")
+    if not p.exists():
+        return None
+    for r in json.loads(p.read_text()):
+        if r["detector"] == "student" and r["mode"] == "gentle":
+            return {"removed_pct": r["stutter_removed_pct"], "words_lost_pct": r["words_lost_pct"]}
+    return None
 
 
 def wasapi_index() -> int:

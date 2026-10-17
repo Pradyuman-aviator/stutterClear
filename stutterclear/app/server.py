@@ -14,7 +14,7 @@ from pydantic import BaseModel
 
 from ..audio import wav_bytes
 from ..config import SAMPLE_RATE as SR
-from ..live import DEFAULT_STUDENT, LiveSession, devices
+from ..live import DEFAULT_STUDENT, LiveSession, devices, student_eval
 
 STATIC = Path(__file__).parent / "static"
 UPDATE_S = 0.03  # ~30 updates a second: the orb reacts within a frame or two
@@ -83,7 +83,9 @@ def list_devices():
 
 @app.get("/api/info")
 def info():
-    return {"student": DEFAULT_STUDENT.exists()}  # the AI detector needs its downloaded checkpoint
+    # The AI detector needs its downloaded checkpoint; its measured quality (if evaluated) lets the
+    # page recommend it only when it is actually better.
+    return {"student": DEFAULT_STUDENT.exists(), "student_eval": student_eval()}
 
 
 @app.post("/api/start")

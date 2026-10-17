@@ -75,7 +75,13 @@ async function json<T>(r: Promise<Response>): Promise<T> {
 
 export const getDevices = () => json<Devices>(fetch("/api/devices"))
 
-export const getInfo = () => json<{ student: boolean }>(fetch("/api/info"))
+// Measured on held-out speakers (scripts/eval_live.py), Gentle mode.
+export interface StudentEval {
+  removed_pct: number
+  words_lost_pct: number
+}
+
+export const getInfo = () => json<{ student: boolean; student_eval: StudentEval | null }>(fetch("/api/info"))
 
 export const getPlayback = () => json<PlaybackInfo>(fetch("/api/playback"))
 

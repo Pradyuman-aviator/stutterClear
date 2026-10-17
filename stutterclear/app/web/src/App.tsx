@@ -19,7 +19,7 @@ import { useLive, type LiveData, type Stats } from "@/hooks/use-live"
 import { useSignals, type Signals } from "@/hooks/use-signals"
 import {
   getDevices, getInfo, getPlayback, KIND_LABEL, startSession, stopSession,
-  type DetectorKind, type Devices, type Mode, type PlaybackInfo, type StartBody,
+  type DetectorKind, type Devices, type Mode, type PlaybackInfo, type StartBody, type StudentEval,
 } from "@/lib/api"
 import { EASE_OUT, SPRING } from "@/lib/motion"
 import { useStore, type Store } from "@/lib/store"
@@ -40,6 +40,8 @@ const DETECTORS: SegmentOption<DetectorKind>[] = [
   { value: "heuristic", label: "Rule-based" },
 ]
 const NO_OUTPUT = "none"
+// The AI detector is the default only once it is measured to lose few real words.
+const MAX_WORDS_LOST_PCT = 3
 
 // Entrances animate opacity and position only: blurring big panels while they move costs frames.
 const page: Variants = { hidden: {}, show: { transition: { staggerChildren: 0.07, delayChildren: 0.05 } } }
@@ -73,10 +75,11 @@ export default function App() {
   const [inDev, setInDev] = useState("")
   const [outDev, setOutDev] = useState(() => stored("sc.out.name", NO_OUTPUT))
   const [mode, setMode] = useState<Mode>(() => stored("sc.mode", "gentle") as Mode)
-  const [detector, setDetector] = useState<DetectorKind>(() => stored("sc.det", "student") as DetectorKind)
+  const [detector, setDetector] = useState<DetectorKind>(() => (stored("sc.det", "") || "heuristic") as DetectorKind)
   const [save, setSave] = useState(false) // never remembered: recording is opt-in every time
   const [detName, setDetName] = useState("")
   const [hasStudent, setHasStudent] = useState(true)
+  const [studentEval, setStudentEval] = useState<StudentEval | null>(null)
   const [toast, setToast] = useState<ToastData | null>(null)
   const [playback, setPlayback] = useState<PlaybackInfo | null>(null)
   const [playbackVersion, setPlaybackVersion] = useState(0)
@@ -100,7 +103,17 @@ export default function App() {
 
   useEffect(() => {
     if (!connected) return
-    getInfo().then((i) => setHasStudent(i.student)).catch(() => {})
+    getInfo()
+      .then((i) => {
+        setHasStudent(i.student)
+        setStudentEval(i.student_eval)
+        // No choice made yet: pick whichever detector the measurements say is better.
+        if (!stored("sc.det", "")) {
+          const good = i.student && i.student_eval !== null && i.student_eval.words_lost_pct <= MAX_WORDS_LOST_PCT
+          setDetector(good ? "student" : "heuristic")
+        }
+      })
+      .catch(() => {})
     getPlayback().then((p) => setPlayback(p.available ? p : null)).catch(() => {})
     loadDevices()
   }, [connected, loadDevices])
@@ -372,14 +385,26 @@ export default function App() {
                     onChange={(v) => change({ detector: v })}
                   />
                   <AnimatePresence initial={false}>
-                    {detector === "student" && !hasStudent && (
+                    {detector === "student" && (
                       <motion.div
                         initial={{ opacity: 0, height: 0 }}
                         animate={{ opacity: 1, height: "auto" }}
                         exit={{ opacity: 0, height: 0 }}
-                        className="overflow-hidden text-xs text-amber-200/80"
+                        className={cn(
+                          "overflow-hidden text-xs",
+                          !hasStudent || (studentEval && studentEval.words_lost_pct > MAX_WORDS_LOST_PCT)
+                            ? "text-amber-200/80"
+                            : "text-white/50"
+                        )}
                       >
-                        The AI model is still training, so the rule-based detector is used for now.
+                        {!hasStudent
+                          ? "The AI model is still training, so the rule-based detector is used for now."
+                          : studentEval
+                            ? `Tested on unseen speakers: removes ${studentEval.removed_pct}% of stutters, cuts ${studentEval.words_lost_pct}% of real words.` +
+                              (studentEval.words_lost_pct > MAX_WORDS_LOST_PCT
+                                ? " Rule-based is safer until the bigger model is ready."
+                                : "")
+                            : "Not measured on unseen speakers yet."}
                       </motion.div>
                     )}
                   </AnimatePresence>

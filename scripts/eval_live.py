@@ -5,7 +5,9 @@ silver labels from CrisperWhisper.
     python scripts/eval_live.py --dir data/external/uclass_eval
     python scripts/eval_live.py --dir data/external/uclass_eval --student runs/kaggle_student/student/student.pt
 
-Needs the <wav>.crisper.json files that `eval_splice.py prepare` writes.
+Needs the <wav>.crisper.json files that `eval_splice.py prepare` writes. Save the results next to
+the checkpoint as live_eval.json (--out <checkpoint dir>/live_eval.json) and the app shows them and
+recommends the AI detector only if it loses few enough words.
 """
 import argparse
 import json
