@@ -194,7 +194,7 @@ export default function App() {
               break
             } catch (e) {
               await mic.stop()
-              if (attempt >= 4 || !/already running/i.test((e as Error).message)) throw e
+              if (attempt >= 4 || !/already running|someone else is live/i.test((e as Error).message)) throw e
               await new Promise((r) => setTimeout(r, 400))
             }
           }

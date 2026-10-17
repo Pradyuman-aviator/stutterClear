@@ -31,6 +31,7 @@ UPDATE_S = 0.03  # ~30 updates a second: the orb reacts within a frame or two
 # One live session at a time, so on a public deployment a tab left open must not hold it for ever.
 LIVE_LIMIT_S = 300.0 if HOSTED else None
 MIC_IDLE_S = 15.0  # no audio for this long: the page froze or the laptop went to sleep
+BUSY_HOSTED = "Someone else is live right now (turns last up to 5 minutes). Try again shortly, or play a real recording."
 # Visitors' Nemotron calls spend the owner's Nebius credits: a public demo caps them per minute.
 NEMOTRON_PER_MIN = 60 if HOSTED else None
 _nemotron_calls: deque = deque()
@@ -289,7 +290,7 @@ async def browser_mic(socket: WebSocket):
     LIVE_LIMIT_S or MIC_IDLE_S without audio, and says why ("ended")."""
     await socket.accept()
     if state["session"] is not None:
-        await socket.close(code=4409, reason="A live session is already running here.")
+        await socket.close(code=4409, reason=BUSY_HOSTED if HOSTED else "A live session is already running here.")
         return
     cfg = await socket.receive_json()
     page = str(cfg.get("page", ""))
