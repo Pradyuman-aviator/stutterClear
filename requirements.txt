@@ -1,4 +1,21 @@
+# Core: live pipeline, rule-based detector, app server
 numpy>=1.26
 scipy>=1.11
 sounddevice>=0.4.6
+soundfile>=0.12
+fastapi>=0.110
+uvicorn[standard]>=0.29
+pydantic>=2.5
+
+# Models: the big detector (live on a CUDA GPU, and voice notes), the small student detector.
+# Install the CUDA build of PyTorch for your GPU from https://pytorch.org first.
+torch>=2.3
+transformers>=4.44
+
+# Voice notes and evaluation: verbatim transcripts with word timings (non-commercial licence)
+crisperwhisper>=2.0
+
+# Training data loading
+pyarrow>=15
+
 pytest>=7
