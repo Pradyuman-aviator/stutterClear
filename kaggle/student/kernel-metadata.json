@@ -1,6 +1,6 @@
 {
-  "id": "pradyumansharmaaa/stutterclear-student",
-  "title": "stutterclear-student",
+  "id": "pradyumansharmaaa/stutterclear-student-p100",
+  "title": "stutterclear-student-p100",
   "code_file": "run.py",
   "language": "python",
   "kernel_type": "script",
@@ -9,5 +9,8 @@
   "enable_internet": true,
   "dataset_sources": [],
   "competition_sources": [],
-  "kernel_sources": ["pradyumansharmaaa/stutterclear-teacher"]
+  "kernel_sources": [
+    "pradyumansharmaaa/stutterclear-teacher"
+  ],
+  "machine_shape": "NvidiaTeslaP100"
 }
