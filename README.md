@@ -451,6 +451,6 @@ licensed or own consented recordings.
 - `kaggle/`: GPU training jobs
 - `tests/`: the test suite
 - `runs/eval/`: measured results (numbers only)
-- `docs/`: deployment (`DEPLOY.md`), hackathon submission kit (`SUBMISSION.md`), team implementation guide
+- `docs/`: design of everything left (`DESIGN.md`), deployment (`DEPLOY.md`), hackathon submission kit (`SUBMISSION.md`), team implementation guide
   with architecture diagrams and work packages (`StutterClear_Implementation_Guide.pdf`), learning guide
 - `reports/`, `research_notes/`: literature review and novelty check
