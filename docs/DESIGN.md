@@ -21,6 +21,33 @@ document supersedes it where they differ.
 2. **Before/after voice in the video**: a consenting person who stutters, or the synthetic clip (labelled).
 3. **Accounts**: NVIDIA API key (build.nvidia.com, free) for Magpie TTS; Tailscale (free) for the stable link; Hugging Face (free) for the backup Space.
 
+## Status and hand-off (18 Oct)
+
+The backend of Part A is built and tested; the pages are open for teammates. Every endpoint is in
+the README's HTTP API table. The frontend is `stutterclear/app/web` (Vite + React; `npm run build`
+refreshes `static/`); API calls go through `src/lib/api.ts`; features show only when `GET /api/info`
+says they are available.
+
+| Item | Done (backend) | Left (open for a teammate) |
+|---|---|---|
+| A1 Tabs | nothing needed | Split `App.tsx` into `tabs/*.tsx` + `useHashTab()` |
+| A2 On stage + Say it | `POST /api/tts` (Magpie over gRPC, capped when hosted), `info.tts`, `scripts/check_tts.py` | `tabs/stage.tsx`, `lib/script-follow.ts`, block trigger, Say it button (fallback: `speechSynthesis`); phase 2 for calls (`Splicer.insert`, `LiveSession.say`) |
+| A3 Practice | `POST /api/interview/start`, `/next`, `/summary`, `info.interview` | `tabs/practice.tsx`: question card (spoken with `/api/tts`), Answer = a browser-mic session, captions as the answer, summary at the end |
+| A4 Fluency aid | nothing needed | DelayNode branch in `lib/browser-mic.ts`, switch + slider in Setup |
+| A5 Feedback loop | `/api/feedback` (log, summary, forget), multipliers applied live and to voice notes, `info.feedback` | Review UI on the voice-note player (keep / undo each cut, tap a missed stutter); when `info.feedback == "browser"`: keep entries in localStorage, send `adjust` in the `/ws/mic` settings, summary via `POST /api/feedback/summary`; offer auto mode when `auto_ready` |
+| A6 Timestamps | `GET /api/demo/{id}/cuts.csv` / `.srt` | Button next to Download clean |
+| A7 Safe demo clips | `source` per clip, `data/demo_clips`, UCLASS off on public servers (`STUTTERCLEAR_UCLASS_DEMOS`) | `scripts/make_synthetic_demo.py` (needs `NVIDIA_API_KEY`): Magpie sentences, inserted stutters, `.crisper.json` + `.teacher.npy`, entries with `source: "synthetic"` |
+| A8 Free deployment | **Done:** `scripts/serve_public.ps1` (Tailscale Funnel), `--strict-port`, `STUTTERCLEAR_NOTES=0`, `docs/DEPLOY.md` | Owner: install Tailscale and test the link. Optional: Hugging Face Space backup (CPU torch, `STUTTERCLEAR_NOTES=0`) |
+| A9 Video | n/a | Everything (Remotion) |
+
+Student v2 (5.2M parameters) was benchmarked and is not shipped: Strong 40.8% removed / 7.85% words
+lost (score 17.3, rule-based 5.9), Gentle 33.4% / 12.24% (score −3.3). Next for it: calibrate its
+thresholds on the 49 validation recordings, as was done for teacher v2.
+
+How to contribute: run `python -m pytest -q` before committing; small commits with Conventional
+Commit prefixes (`feat:`, `fix:`, `docs:`, `test:`, `chore:`, `refactor:`); never commit keys,
+checkpoints or UCLASS / SEP-28k audio.
+
 ---
 
 # Part A: the hackathon
