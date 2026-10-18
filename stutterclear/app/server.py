@@ -6,6 +6,7 @@ The UI is a Vite + React build in static/ (source in web/: `npm run build` there
 """
 import asyncio
 import os
+import re
 import threading
 import time
 from collections import deque
@@ -35,6 +36,8 @@ BUSY_HOSTED = "Someone else is live right now (turns last up to 5 minutes). Try 
 # Visitors' Nemotron calls spend the owner's Nebius credits: a public demo caps them per minute.
 NEMOTRON_PER_MIN = 60 if HOSTED else None
 _nemotron_calls: deque = deque()
+TTS_PER_MIN = 30 if HOSTED else None  # Say it spends the owner's NVIDIA credits the same way
+_tts_calls: deque = deque()
 # "last" holds the finished session's audio, in memory only, for the play buttons. Starting a new
 # session drops it.
 # On a public server a session belongs to the page that started it ("owner", a random id the page
@@ -130,10 +133,11 @@ def list_devices():
 def info():
     # The AI detector needs its downloaded checkpoint; its measured quality (if evaluated) lets the
     # page recommend it only when it is actually better.
-    from .. import captions, context_agent
+    from .. import captions, context_agent, tts
     return {"student": DEFAULT_STUDENT.exists(), "student_eval": student_eval(), "notes": notes.available(),
             "captions": captions.available(), "rescue": nemotron.available(), "nemotron": nemotron.available(),
             "search": context_agent.search_available(), "model": nemotron.MODEL, "hosted": HOSTED,
+            "tts": tts.available(), "tts_voice": tts.VOICE, "tts_label": tts.LABEL,
             "detectors": detectors(), "recommended": recommended()}
 
 
@@ -142,16 +146,20 @@ class ContextRequest(BaseModel):
     current: str = ""  # what the context card says already
 
 
-def nemotron_budget():
-    """Count one visitor call against NEMOTRON_PER_MIN, or turn it away for a moment."""
-    if not NEMOTRON_PER_MIN:
+def _budget(calls: deque, per_min: int | None, busy: str):
+    """Count one visitor call against a per-minute cap, or turn it away for a moment."""
+    if not per_min:
         return
     now = time.monotonic()
-    while _nemotron_calls and now - _nemotron_calls[0] > 60:
-        _nemotron_calls.popleft()
-    if len(_nemotron_calls) >= NEMOTRON_PER_MIN:
-        raise HTTPException(429, "Nemotron is busy with other visitors; try again in a moment.")
-    _nemotron_calls.append(now)
+    while calls and now - calls[0] > 60:
+        calls.popleft()
+    if len(calls) >= per_min:
+        raise HTTPException(429, busy)
+    calls.append(now)
+
+
+def nemotron_budget():
+    _budget(_nemotron_calls, NEMOTRON_PER_MIN, "Nemotron is busy with other visitors; try again in a moment.")
 
 
 @app.post("/api/context")
@@ -224,6 +232,30 @@ def word_rescue(req: RescueRequest):
         return {"suggestions": rescue.suggest(req.said, req.context, req.onset), "model": nemotron.MODEL}
     except Exception as e:
         raise HTTPException(502, f"Nemotron did not answer: {e}") from e
+
+
+class TTSRequest(BaseModel):
+    text: str  # the word or short phrase the user clicked
+    voice: str = ""  # a Magpie voice name; empty for the default
+
+
+@app.post("/api/tts")
+def say_it(req: TTSRequest):
+    """Say it: NVIDIA Magpie TTS speaks what the user clicked, only ever on that click. The reply is
+    a WAV; its X-Voice-Label header is the label the page shows (the voice is synthetic)."""
+    from .. import tts
+    if not tts.available():
+        raise HTTPException(503, "Say it needs NVIDIA_API_KEY set where the app runs.")
+    if not req.text.split():
+        raise HTTPException(400, "Pick a word first.")
+    if len(req.text) > tts.MAX_CHARS or (req.voice and not re.fullmatch(r"[\w.\-]{1,80}", req.voice)):
+        raise HTTPException(400, f"Say it takes a word or a short phrase (up to {tts.MAX_CHARS} characters).")
+    _budget(_tts_calls, TTS_PER_MIN, "Say it is busy with other visitors; try again in a moment.")
+    try:
+        y = tts.synthesize(req.text, req.voice or tts.VOICE)
+    except tts.TTSError as e:
+        raise HTTPException(502, str(e)) from e
+    return Response(wav_bytes(y), media_type="audio/wav", headers={"Cache-Control": "no-store", "X-Voice-Label": tts.LABEL})
 
 
 @app.post("/api/start")
