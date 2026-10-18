@@ -202,7 +202,12 @@ def main():
         rows = [(probs[w], toks[w]) for w in wavs]
         before = score(rows, base, cut_fillers)
         print(f"{mode}: with the current settings: score {before[0]:.1f} (removed {before[1]:.1f}%, lost {before[2]:.2f}%)")
-        starts = [list(base.thresholds), [0.36, 0.64, 0.41, 0.25, 0.65]]  # current, and the SEP-28k-E validation tuning
+        # Starting points: the current settings, and the SEP-28k-E validation tuning of v2. Only the
+        # classes that are cut are tuned; the block threshold (which triggers word rescue, never a
+        # cut) stays as it is.
+        sep = [0.36, 0.64, 0.41, 0.25, 0.65]
+        sep[CLASSES.index("block")] = base.thresholds[CLASSES.index("block")]
+        starts = [list(base.thresholds), sep]
         cfg, (s, removed, lost) = tune(rows, base, cut_fillers, starts)
         result[mode] = {"thresholds": [round(float(t), 2) for t in cfg.thresholds], "off_ratio": cfg.off_ratio,
                         "merge_gap": cfg.merge_gap,
