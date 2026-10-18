@@ -420,6 +420,18 @@ def demo_timeline(sid: str, engine: str = "natural"):
     return _demo(sid, engine)["timeline"]
 
 
+@app.get("/api/demo/{sid}/cuts.{fmt}")
+def demo_cuts(sid: str, fmt: str, engine: str = "natural"):
+    """Timestamps of everything removed, as a table (csv) or subtitles (srt), on the original
+    recording's clock, for editing or checking a recording elsewhere."""
+    if fmt not in ("csv", "srt"):
+        raise HTTPException(404, "Timestamps come as cuts.csv or cuts.srt.")
+    cuts = _demo(sid, engine)["timeline"]["cuts"]
+    body = demo.cuts_csv(cuts) if fmt == "csv" else demo.cuts_srt(cuts)
+    return Response(body, media_type="text/csv" if fmt == "csv" else "application/x-subrip",
+                    headers={"Content-Disposition": f'attachment; filename="{sid}-{engine}-cuts.{fmt}"'})
+
+
 @app.get("/api/demo/{sid}/{which}.wav")
 def demo_audio(sid: str, which: str, engine: str = "natural"):
     if which not in ("original", "clean"):

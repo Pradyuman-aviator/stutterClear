@@ -12,6 +12,8 @@ what a listener hears as a jerk); word-aligned cutting slices none (scripts/chec
 The audio is read from the local UCLASS download (data/external) and never committed: UCLASS is
 free for research and teaching with credit (CREDIT below), not for redistribution as a product.
 """
+import csv
+import io
 import json
 import time
 from functools import lru_cache
@@ -158,3 +160,34 @@ def _render(sid: str, engine: str) -> dict:
         "captions": _captions(x, y),
     }
     return {"timeline": timeline, "original": x, "clean": y}
+
+
+KIND_NAMES = {"sound_rep": "broken-off start", "word_rep": "repeated word", "prolongation": "stretched sound",
+              "interjection": "filler", "block": "block"}
+
+
+def cuts_csv(cuts: list) -> str:
+    """What was removed, one row per cut, on the original recording's clock."""
+    buf = io.StringIO()
+    w = csv.writer(buf, lineterminator="\n")
+    w.writerow(["start_s", "end_s", "kind", "words"])
+    for c in cuts:
+        w.writerow([f"{c['start']:.3f}", f"{c['end']:.3f}", c["kind"], c.get("word", "")])
+    return buf.getvalue()
+
+
+def _srt_time(t: float) -> str:
+    ms = max(0, round(t * 1000))
+    h, ms = divmod(ms, 3_600_000)
+    m, ms = divmod(ms, 60_000)
+    s, ms = divmod(ms, 1000)
+    return f"{h:02}:{m:02}:{s:02},{ms:03}"
+
+
+def cuts_srt(cuts: list) -> str:
+    """The cuts as subtitles over the original recording (an editor or a player shows each one)."""
+    blocks = []
+    for i, c in enumerate(cuts, 1):
+        text = f"[removed: {KIND_NAMES.get(c['kind'], c['kind'])}]" + (f" {c['word']}" if c.get("word") else "")
+        blocks.append(f"{i}\n{_srt_time(c['start'])} --> {_srt_time(c['end'])}\n{text}\n")
+    return "\n".join(blocks)
