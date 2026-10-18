@@ -302,7 +302,7 @@ Environment variables, read where the app runs:
 | Variable | Default | Purpose |
 |---|---|---|
 | `NEBIUS_API_KEY` | (none) | Enables the Nemotron features. Never put it in code or chat. |
-| `NEBIUS_BASE_URL` | `https://api.tokenfactory.us-central1.nebius.com/v1/` | Token Factory endpoint. |
+| `NEBIUS_BASE_URL` | `https://api.tokenfactory.nebius.com/v1/` | Token Factory endpoint (as in the Nebius quickstart). |
 | `NEBIUS_MODEL` | `nvidia/nemotron-3-super-120b-a12b` | Nemotron model id (falls back to the closest served one). |
 | `TAVILY_API_KEY` | (none) | Web search for the context agent. |
 | `STUTTERCLEAR_HOSTED` | (off) | `1` = public server: browser mic only, per-tab privacy, the limits below. |
