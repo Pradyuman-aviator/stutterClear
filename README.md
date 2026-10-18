@@ -270,8 +270,10 @@ One 5 s window takes 53 ms on a laptop RTX 4050, well inside the 160 ms between 
 A repeated phrase ("when he was, when he was younger") is cut or kept as a whole, never left
 half-cut. The cuts come from the same transcript as the labels, so these numbers cannot show
 whether a repeat was meant: the teacher's acoustic check and Nemotron's meaning guard decide that.
-With teacher v2 as the acoustic check, Natural removes 57.2% and Thorough 90.9%, but v2 is the
-looser check (without any check: 97.7%), so v1 stays until v2 is calibrated.
+With teacher v2 as the acoustic check, Natural removes 57.2% and Thorough 90.9% (without any check:
+97.7%). It is not a looser check: on the validation speakers, at the same threshold (0.3), v2 flags
+15.7% of fluent words where v1 flags 22.1% (`scripts/calibrate_teacher.py`), so v2 both confirms
+more stutters and lets more normal speech through untouched.
 
 **Standard benchmark** (`scripts/eval_teacher.py`): teacher v2 on the official speaker-exclusive
 SEP-28k-E test set (6,559 clips), thresholds tuned on validation speakers only:
