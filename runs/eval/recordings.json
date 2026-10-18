@@ -2,28 +2,28 @@
  "results": [
   {
    "recipe": "natural",
-   "stutter_removed_pct": 50.1,
+   "stutter_removed_pct": 57.2,
    "words_lost_pct": 0.0,
    "n_stutter": 353,
-   "n_removed": 177,
+   "n_removed": 202,
    "n_fluent": 2484,
    "n_lost": 0
   },
   {
    "recipe": "natural + fillers",
-   "stutter_removed_pct": 77.1,
+   "stutter_removed_pct": 90.4,
    "words_lost_pct": 0.0,
    "n_stutter": 353,
-   "n_removed": 272,
+   "n_removed": 319,
    "n_fluent": 2484,
    "n_lost": 0
   },
   {
    "recipe": "thorough",
-   "stutter_removed_pct": 80.7,
+   "stutter_removed_pct": 90.9,
    "words_lost_pct": 0.0,
    "n_stutter": 353,
-   "n_removed": 285,
+   "n_removed": 321,
    "n_fluent": 2484,
    "n_lost": 0
   },

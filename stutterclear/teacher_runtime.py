@@ -21,6 +21,11 @@ from .student_runtime import CLASSES, REMOVABLE, StudentDetector
 # STUTTERCLEAR_TEACHER points at another checkpoint (to evaluate or switch to a new teacher).
 TEACHER_CKPT = Path(os.environ.get("STUTTERCLEAR_TEACHER")
                     or Path(__file__).resolve().parents[1] / "runs" / "kaggle_teacher" / "teacher" / "best.pt")
+# Recordings (voice notes, demo clips) use their own teacher: v2 measured better there (more
+# stutters confirmed, fewer normal words flagged), while v1 stays best live. Falls back to the live
+# teacher; STUTTERCLEAR_RECORDINGS_TEACHER overrides.
+_V2 = Path(__file__).resolve().parents[1] / "runs" / "kaggle_teacher_v2" / "teacher_v2" / "best.pt"
+RECORDINGS_CKPT = Path(os.environ.get("STUTTERCLEAR_RECORDINGS_TEACHER") or (_V2 if _V2.exists() else TEACHER_CKPT))
 FRAME = 320
 CONTEXT_S = 4.0
 HOP_MS = 160
@@ -29,18 +34,37 @@ _lock = threading.Lock()
 _model = {}
 
 
-def get_teacher(path: Path = TEACHER_CKPT):
-    """(model, device), loaded once and shared by live detection and voice notes."""
+def get_teacher(path: Path = TEACHER_CKPT, device: str | None = None):
+    """(model, device), each checkpoint loaded once per device: live and recordings may use
+    different teachers. Without a device: the GPU if there is one."""
     with _lock:
-        if "m" not in _model:
+        key = (str(Path(path).resolve()), device)
+        if key not in _model:
             import torch
             from .teacher import FrameTeacher
-            dev = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            dev = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
             ckpt = torch.load(path, map_location="cpu", weights_only=False)
             model = FrameTeacher(ckpt["backbone"])
             model.load_state_dict(ckpt["state_dict"])
-            _model["m"] = (model.to(dev).eval(), dev)
-        return _model["m"]
+            _model[key] = (model.to(dev).eval(), dev)
+        return _model[key]
+
+
+def recordings_device() -> str | None:
+    """Where the recordings teacher runs. None = the live teacher's own model (same checkpoint).
+    A second teacher goes on the GPU only if it has room for both plus CrisperWhisper (10 GB+);
+    otherwise on the CPU: a voice note is not live, so a slower one is fine."""
+    if os.environ.get("STUTTERCLEAR_RECORDINGS_DEVICE"):
+        return os.environ["STUTTERCLEAR_RECORDINGS_DEVICE"]
+    if Path(RECORDINGS_CKPT).resolve() == Path(TEACHER_CKPT).resolve():
+        return None
+    try:
+        import torch
+        if torch.cuda.is_available() and torch.cuda.get_device_properties(0).total_memory >= 10e9:
+            return "cuda"
+    except ImportError:
+        pass
+    return "cpu"
 
 
 def calibration(path: Path = TEACHER_CKPT) -> dict:

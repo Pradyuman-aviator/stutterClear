@@ -38,7 +38,7 @@ writes live captions; the hosted demo is built to run on a Nebius AI Cloud GPU V
 | | What it is | How well it works today (7 speakers it never trained on) |
 |---|---|---|
 | **Live** | Your mic (or your browser's, on the hosted demo), cleaned in real time, sent to headphones or a virtual mic for Zoom, Meet or Teams. | Big model on a laptop GPU: **33% of stutters removed in Gentle** (fillers kept, 3.1% of words lost) and **65% in Strong** (fillers too, 5.7% lost), 0.5-0.85 s behind you. Without a GPU the rule-based detector removes ~8%. |
-| **Clean a voice note** | Record or upload a message (up to 3 minutes) in the browser and get it back cleaned, to play or download. | Cuts land **between words only**: 50% of stutters removed in Natural, **81% in Thorough** (fillers and repeated phrases too), with **no real word cut**. |
+| **Clean a voice note** | Record or upload a message (up to 3 minutes) in the browser and get it back cleaned, to play or download. | Cuts land **between words only**: 57% of stutters removed in Natural, **91% in Thorough** (fillers and repeated phrases too), with **no real word cut**. |
 | **Try a real recording** | Three real stuttered recordings (UCLASS, adult speakers) with A/B playback, no mic needed. | Every engine, side by side, on the same 30 s of speech. |
 
 ### Live modes
@@ -104,8 +104,9 @@ python -m pytest -q                 # the test suite
 ```
 
 **Models.** Checkpoints are not in the repository (they are large, and their training data is
-licensed for research only). The Kaggle jobs in `kaggle/` train them; put the teacher at
-`runs/kaggle_teacher/teacher/best.pt` (or point `STUTTERCLEAR_TEACHER` at it). Without a checkpoint
+licensed for research only). The Kaggle jobs in `kaggle/` train them; put the live teacher (v1) at
+`runs/kaggle_teacher/teacher/best.pt` and the recordings teacher (v2) at
+`runs/kaggle_teacher_v2/teacher_v2/best.pt` (without v2, recordings use v1). Without a checkpoint
 the app still runs, with the rule-based detector and no voice notes.
 
 **Live captions** (optional, 106 MB): `python scripts/download_asr.py`.
@@ -138,7 +139,7 @@ mic ──► delay buffer (0.5-0.85 s) ──► splicer: skip what was marked,
 
 | Model | What it is | Where it runs |
 |---|---|---|
-| **Teacher** | WavLM-Large (316M parameters, self-supervised speech model) → learned mix of all 25 layers → 2-layer BiGRU → 5 classes per 20 ms frame: sound repetition, word repetition, prolongation, block, filler. | GPU: live on sliding windows, and for recordings. |
+| **Teacher** | WavLM-Large (316M parameters, self-supervised speech model) → learned mix of all 25 layers → 2-layer BiGRU → 5 classes per 20 ms frame: sound repetition, word repetition, prolongation, block, filler. | GPU, live on sliding windows (v1); recordings use v2, which measured better there. |
 | **Student** | Small causal model: 80-band log-mel → causal conv → GRU, one output head per lookahead. v1 0.3M parameters; v2 5.2M, distilled from teacher v2. | CPU, for machines without a GPU. |
 | **Rule-based** | Compares the start of each speech unit with the previous one (repeats) and finds long spectrally stationary stretches (prolongations). | CPU, always available. |
 
@@ -234,12 +235,14 @@ real pipeline: delay buffer, online detector, splicer):
 | rule-based | 7.6% / 1.25% | 10.2% / 1.45% |
 | causal student v1 | 19.8% / 8.37% | 19.5% / 8.33% |
 | **teacher v1 on GPU (what the app uses)** | **33.1% / 3.10%** | **65.2% / 5.68%** |
-| teacher v2 on GPU, not yet calibrated | 41.4% / 7.45% | 77.9% / 13.33% |
+| teacher v2 on GPU, with v1's thresholds | 41.4% / 7.45% | 77.9% / 13.33% |
+| teacher v2 on GPU, calibrated | 36.8% / 6.00% | 70.0% / 7.37% |
 
-Teacher v2 hears more stutters, but with the cut thresholds tuned for v1 it also cuts real words.
-Its own thresholds, tuned on validation speakers, explain why: it wants 0.64 for word repetitions
-where live mode uses 0.35. The app keeps v1 (it scores best by the app's rule, removed minus 3 x
-lost) until v2 is calibrated on validation speakers.
+Teacher v2 hears more stutters, but with the thresholds tuned for v1 it also cuts real words.
+`scripts/calibrate_teacher.py` tuned its settings on 49 validation recordings (other speakers),
+then it was tested once here: calibration halved its word loss in Strong, but by the app's rule
+(removed minus 3 x lost) v1 still scores best live (Gentle 23.8 vs 18.8, Strong 48.2 vs 47.9), so
+live uses v1. With only 200 ms of lookahead, v2's mistakes are not a threshold problem.
 
 The live machinery costs almost nothing: cutting the same 200 ms-lookahead probabilities offline
 gives 34.8% / 3.62% in Gentle, the full live pipeline 33.1% / 3.10%. What holds Gentle back is how
@@ -263,17 +266,18 @@ One 5 s window takes 53 ms on a laptop RTX 4050, well inside the 160 ms between 
 | recipe | real words sliced | real words removed | stutters removed |
 |---|---|---|---|
 | model edges (the first version) | 98 | 183 | 49.9% |
-| word-aligned, Natural | 0 | 0 | 50.1% |
-| word-aligned + fillers | 0 | 0 | 77.1% |
-| **Thorough: fillers and repeated phrases too** | **0** | **0** | **80.7%** |
+| word-aligned, Natural, teacher v1 | 0 | 0 | 50.1% |
+| **word-aligned, Natural, teacher v2 (what the app uses)** | **0** | **0** | **57.2%** |
+| word-aligned + fillers, teacher v2 | 0 | 0 | 90.4% |
+| **Thorough: fillers and repeated phrases too, teacher v2** | **0** | **0** | **90.9%** |
 
 A repeated phrase ("when he was, when he was younger") is cut or kept as a whole, never left
 half-cut. The cuts come from the same transcript as the labels, so these numbers cannot show
 whether a repeat was meant: the teacher's acoustic check and Nemotron's meaning guard decide that.
-With teacher v2 as the acoustic check, Natural removes 57.2% and Thorough 90.9% (without any check:
-97.7%). It is not a looser check: on the validation speakers, at the same threshold (0.3), v2 flags
-15.7% of fluent words where v1 flags 22.1% (`scripts/calibrate_teacher.py`), so v2 both confirms
-more stutters and lets more normal speech through untouched.
+Recordings use teacher v2 as the acoustic check (v1: 50.1% Natural, 80.7% Thorough; without any
+check: 97.7%). It is not a looser check: on the validation speakers, at the same threshold (0.3), v2
+flags 15.7% of fluent words where v1 flags 22.1% (`scripts/calibrate_teacher.py`), so v2 both
+confirms more stutters and lets more normal speech through untouched.
 
 **Standard benchmark** (`scripts/eval_teacher.py`): teacher v2 on the official speaker-exclusive
 SEP-28k-E test set (6,559 clips), thresholds tuned on validation speakers only:
@@ -308,7 +312,9 @@ Environment variables, read where the app runs:
 | `NEBIUS_MODEL` | `nvidia/nemotron-3-super-120b-a12b` | Nemotron model id (falls back to the closest served one). |
 | `TAVILY_API_KEY` | (none) | Web search for the context agent. |
 | `STUTTERCLEAR_HOSTED` | (off) | `1` = public server: browser mic only, per-tab privacy, the limits below. |
-| `STUTTERCLEAR_TEACHER` | `runs/kaggle_teacher/teacher/best.pt` | Teacher checkpoint for live and voice notes. |
+| `STUTTERCLEAR_TEACHER` | `runs/kaggle_teacher/teacher/best.pt` | Live teacher checkpoint (its `live_cuts.json`, if any, sets its cut thresholds). |
+| `STUTTERCLEAR_RECORDINGS_TEACHER` | v2 if present, else the live teacher | Teacher for voice notes and demo clips. |
+| `STUTTERCLEAR_RECORDINGS_DEVICE` | GPU if it has 10 GB+, else CPU | Where a second (recordings) teacher runs. |
 
 `scripts/run_app.py` takes `--port`, `--host` (`0.0.0.0` in a container) and `--no-browser`.
 

@@ -17,7 +17,7 @@ from scipy.signal import resample_poly
 
 from ..config import SAMPLE_RATE as SR
 from ..silver import label_tokens
-from ..teacher_runtime import TEACHER_CKPT as TEACHER  # one checkpoint for live and notes
+from ..teacher_runtime import RECORDINGS_CKPT as TEACHER  # the recordings teacher (may differ from live)
 
 MAX_S = 180  # longest note accepted
 KEEP_S = 3600  # notes are forgotten after an hour
@@ -60,8 +60,8 @@ def decode(data: bytes) -> np.ndarray:
 
 
 def _teacher():
-    from ..teacher_runtime import get_teacher
-    return get_teacher(TEACHER)  # shared with the live detector: the GPU holds it once
+    from ..teacher_runtime import get_teacher, recordings_device
+    return get_teacher(TEACHER, recordings_device())  # shares the live model when it is the same checkpoint
 
 
 def _crisper():

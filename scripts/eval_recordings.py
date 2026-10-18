@@ -34,9 +34,9 @@ def main():
     args = ap.parse_args()
 
     from stutterclear.app.notes import teacher_probs
-    from stutterclear.teacher_runtime import calibration
-    confirm = calibration().get("confirm", 0.3)  # the checkpoint's calibrated acoustic check, if any
-    print(f"acoustic check threshold {confirm}")
+    from stutterclear.teacher_runtime import RECORDINGS_CKPT, calibration
+    confirm = calibration(RECORDINGS_CKPT).get("confirm", 0.3)  # the checkpoint's calibrated check, if any
+    print(f"recordings teacher {RECORDINGS_CKPT}, acoustic check threshold {confirm}")
     root = Path(args.dir)
     wavs = sorted(p for p in root.rglob("*.wav") if "_edited" not in p.parts)
     rows = []
