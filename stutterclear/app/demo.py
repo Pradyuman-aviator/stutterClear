@@ -10,11 +10,13 @@ Model-edge cutting sliced real words in 30-43% of cuts (a word that loses its fi
 what a listener hears as a jerk); word-aligned cutting slices none (scripts/check notes in commit).
 
 The audio is read from the local UCLASS download (data/external) and never committed: UCLASS is
-free for research and teaching with credit (CREDIT below), not for redistribution as a product.
+free for research and teaching with credit (CREDIT below), not for redistribution as a product, so a
+public server shows only synthetic and consented clips (data/demo_clips) unless told otherwise.
 """
 import csv
 import io
 import json
+import os
 import time
 from functools import lru_cache
 from pathlib import Path
@@ -29,14 +31,31 @@ from ..guard import guarded_cuts
 from ..silver import label_tokens
 
 DATA = Path(__file__).resolve().parents[2] / "data" / "external"
+CLIPS = Path(__file__).resolve().parents[2] / "data" / "demo_clips"  # synthetic and consented clips
 SAMPLES = {s["id"]: s for s in json.loads(Path(__file__).with_name("demo_samples.json").read_text())}
 CREDIT = ("Recordings: UCLASS, University College London (Howell, Davis & Bartrip, 2009). "
           "Data collection was supported by the Wellcome Trust.")
+SOURCE_CREDIT = {"uclass": CREDIT,
+                 "synthetic": "Synthetic examples: an NVIDIA Magpie TTS voice with stutters inserted by StutterClear.",
+                 "consented": "Real recordings shared with consent for this demo."}
 TEACHER_FRAME = 320  # 20 ms frames in the cached teacher probabilities
 
 
+def uclass_enabled() -> bool:
+    """UCLASS clips play on a personal computer; a public server leaves them out unless
+    STUTTERCLEAR_UCLASS_DEMOS=1 (private judging). =0 hides them anywhere."""
+    v = os.environ.get("STUTTERCLEAR_UCLASS_DEMOS")
+    if v in ("0", "1"):
+        return v == "1"
+    return os.environ.get("STUTTERCLEAR_HOSTED") != "1"
+
+
+def _source_of(sample: dict) -> str:
+    return sample.get("source", "uclass")
+
+
 def _wav(sample: dict) -> Path:
-    return DATA / sample["file"]
+    return (DATA if _source_of(sample) == "uclass" else CLIPS) / sample["file"]
 
 
 def engines(sample: dict) -> list:
@@ -55,7 +74,13 @@ def _tokens(sample: dict) -> list:
 
 def available() -> list:
     return [{"id": s["id"], "title": s["title"], "who": s["who"], "duration_s": round(s["end"] - s["start"], 2),
-             "engines": engines(s)} for s in SAMPLES.values() if _wav(s).exists()]
+             "engines": engines(s), "source": _source_of(s)} for s in SAMPLES.values()
+            if _wav(s).exists() and (_source_of(s) != "uclass" or uclass_enabled())]
+
+
+def credit(samples: list) -> str:
+    """Credit lines for the kinds of clip on show."""
+    return " ".join(SOURCE_CREDIT[k] for k in SOURCE_CREDIT if any(s["source"] == k for s in samples))
 
 
 def _envelope(x: np.ndarray) -> list:

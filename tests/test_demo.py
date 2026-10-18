@@ -48,3 +48,22 @@ def test_timestamps_endpoint(monkeypatch):
     assert "-->" in client.get("/api/demo/note-abc/cuts.srt").text
     assert client.get("/api/demo/note-abc/cuts.txt").status_code == 404
     assert client.get("/api/demo/note-gone/cuts.csv").status_code == 404
+
+
+def test_public_servers_leave_uclass_clips_out(tmp_path, monkeypatch):
+    (tmp_path / "u.wav").write_bytes(b"")
+    (tmp_path / "s.wav").write_bytes(b"")
+    monkeypatch.setattr(demo, "DATA", tmp_path)
+    monkeypatch.setattr(demo, "CLIPS", tmp_path)
+    monkeypatch.setattr(demo, "SAMPLES", {
+        "u": {"id": "u", "title": "U", "who": "x", "file": "u.wav", "start": 0, "end": 1, "source": "uclass"},
+        "s": {"id": "s", "title": "S", "who": "y", "file": "s.wav", "start": 0, "end": 1, "source": "synthetic"}})
+    ids = lambda: [s["id"] for s in demo.available()]  # noqa: E731
+    monkeypatch.delenv("STUTTERCLEAR_UCLASS_DEMOS", raising=False)
+    monkeypatch.delenv("STUTTERCLEAR_HOSTED", raising=False)
+    assert ids() == ["u", "s"]
+    monkeypatch.setenv("STUTTERCLEAR_HOSTED", "1")
+    assert ids() == ["s"]
+    assert demo.credit(demo.available()).startswith("Synthetic") and "UCLASS" not in demo.credit(demo.available())
+    monkeypatch.setenv("STUTTERCLEAR_UCLASS_DEMOS", "1")  # private judging
+    assert ids() == ["u", "s"] and "UCLASS" in demo.credit(demo.available())

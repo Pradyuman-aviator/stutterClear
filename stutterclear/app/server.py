@@ -474,7 +474,8 @@ async def ws(socket: WebSocket, page: str = ""):
 
 @app.get("/api/demo")
 def demo_list():
-    return {"samples": demo.available(), "credit": demo.CREDIT}
+    samples = demo.available()
+    return {"samples": samples, "credit": demo.credit(samples)}
 
 
 def _demo(sid: str, engine: str) -> dict:
