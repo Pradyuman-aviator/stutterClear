@@ -315,8 +315,14 @@ Environment variables, read where the app runs:
 | `STUTTERCLEAR_TEACHER` | `runs/kaggle_teacher/teacher/best.pt` | Live teacher checkpoint (its `live_cuts.json`, if any, sets its cut thresholds). |
 | `STUTTERCLEAR_RECORDINGS_TEACHER` | v2 if present, else the live teacher | Teacher for voice notes and demo clips. |
 | `STUTTERCLEAR_RECORDINGS_DEVICE` | GPU if it has 10 GB+, else CPU | Where a second (recordings) teacher runs. |
+| `NVIDIA_API_KEY` | (none) | Enables Say it (NVIDIA Magpie TTS on build.nvidia.com, free). Never put it in code or chat. |
+| `MAGPIE_VOICE` | `Magpie-Multilingual.EN-US.Aria` | Say it's voice (`MAGPIE_SERVER`, `MAGPIE_FUNCTION_ID` override the hosted endpoint). |
+| `STUTTERCLEAR_NOTES` | (on) | `0` = no voice notes (a server without a GPU). |
+| `STUTTERCLEAR_UCLASS_DEMOS` | on locally, off when hosted | `1` / `0`: show / hide the UCLASS demo clips (research licence). |
+| `STUTTERCLEAR_FEEDBACK` | `runs/feedback/feedback.jsonl` | Where this computer keeps your review decisions. |
 
-`scripts/run_app.py` takes `--port`, `--host` (`0.0.0.0` in a container) and `--no-browser`.
+`scripts/run_app.py` takes `--port`, `--host` (`0.0.0.0` in a container), `--no-browser` and
+`--strict-port` (exit if the port is taken, for a tunnel pointing at it).
 
 ## HTTP API
 
@@ -324,7 +330,7 @@ The page talks to a FastAPI server; everything it does is available to other cli
 
 | Endpoint | What it does |
 |---|---|
-| `GET /api/info` | Features available here (GPU model, captions, Nemotron, voice notes), detectors with measured quality, the recommended one. |
+| `GET /api/info` | Features available here (GPU model, captions, Nemotron, voice notes, Say it, interview, where feedback is kept, UCLASS clips), detectors with measured quality, the recommended one. |
 | `GET /api/devices` | Microphones and outputs (local only). |
 | `POST /api/start`, `POST /api/stop` | Start / stop a live session on this computer's devices (local only). |
 | `WS /ws/mic` | Live from a browser mic: settings as JSON, then 16 kHz float32 audio frames, then `"stop"`; replies with the summary. |
@@ -332,8 +338,13 @@ The page talks to a FastAPI server; everything it does is available to other cli
 | `GET /api/playback`, `GET /api/playback/{clean,original}.wav` | The last session's audio, kept in memory. |
 | `POST /api/notes`, `GET /api/notes/{id}` | Clean a voice note (16 kHz WAV body); poll its status. |
 | `GET /api/demo`, `GET /api/demo/{id}?engine=natural\|thorough\|live`, `.../{clean,original}.wav` | Demo samples and cleaned voice notes: timeline, cuts, captions, audio. |
+| `GET /api/demo/{id}/cuts.csv`, `.../cuts.srt` (`?engine=`) | Timestamps of everything removed, on the original recording's clock. |
 | `POST /api/guard` | The meaning guard on typed text. |
 | `POST /api/rescue`, `POST /api/context`, `POST /api/insights` | Word rescue, context agent, insights. |
+| `POST /api/tts` `{text, voice?}` | Say it: NVIDIA Magpie TTS speaks the clicked word; a WAV, with the synthetic-voice label in `X-Voice-Label`. |
+| `POST /api/interview/start` `{role, company, posting?}`, `/next` `{role, company, card, history}`, `/summary` | Practice interview: context card + first question, the next question, three practice points. |
+| `POST /api/feedback` `{source, id, cut + verdict \| missed_at_s}`, `GET`, `DELETE /api/feedback` | Review decisions (keep / undo a cut, a missed stutter): logged on this computer, which adapts each kind's thresholds; summary; forget. |
+| `POST /api/feedback/summary` `{entries}` | The same summary for a log a page keeps itself (public servers store none). |
 
 ## Hosted demo
 
@@ -348,8 +359,14 @@ through an HTTPS tunnel: `docs/DEPLOY.md`. On a public server (`STUTTERCLEAR_HOS
   is someone else's turn;
 - at most 4 voice notes wait for the GPU at once, and 40 are kept in memory, each for at most an
   hour;
-- visitors' Nemotron calls are capped at 60 a minute, because they spend the owner's credits;
+- visitors' Nemotron calls are capped at 60 a minute and Say it at 30, because they spend the
+  owner's credits;
+- review feedback stays in the visitor's browser (the page sends its multipliers with a session);
+- UCLASS clips are left out unless `STUTTERCLEAR_UCLASS_DEMOS=1` (private judging);
 - nothing is written to disk.
+
+Free hosting from the laptop with a stable HTTPS link: `scripts/serve_public.ps1` (Tailscale
+Funnel); see `docs/DEPLOY.md`.
 
 ## Training and evaluation
 
