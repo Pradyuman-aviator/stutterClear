@@ -138,7 +138,7 @@ def info():
             "captions": captions.available(), "rescue": nemotron.available(), "nemotron": nemotron.available(),
             "search": context_agent.search_available(), "model": nemotron.MODEL, "hosted": HOSTED,
             "tts": tts.available(), "tts_voice": tts.VOICE, "tts_label": tts.LABEL, "interview": nemotron.available(),
-            "feedback": "browser" if HOSTED else "server",
+            "feedback": "browser" if HOSTED else "server", "uclass_demos": demo.uclass_enabled(),
             "detectors": detectors(), "recommended": recommended()}
 
 

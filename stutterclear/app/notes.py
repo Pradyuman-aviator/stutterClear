@@ -6,6 +6,7 @@ Notes live in memory only, for an hour at most, and are never written to disk. O
 at a time, because the teacher and CrisperWhisper together fill most of a laptop GPU.
 """
 import io
+import os
 import threading
 import time
 import uuid
@@ -39,8 +40,9 @@ class NoteBusy(RuntimeError):
 
 
 def available() -> bool:
-    """Voice notes need the teacher checkpoint (CrisperWhisper downloads itself on first use)."""
-    return TEACHER.exists()
+    """Voice notes need the teacher checkpoint (CrisperWhisper downloads itself on first use).
+    STUTTERCLEAR_NOTES=0 turns them off, for a server without a GPU (they would take minutes)."""
+    return os.environ.get("STUTTERCLEAR_NOTES") != "0" and TEACHER.exists()
 
 
 def decode(data: bytes) -> np.ndarray:

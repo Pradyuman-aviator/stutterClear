@@ -134,3 +134,16 @@ def test_hosted_sessions_are_private_to_their_page(monkeypatch):
     assert not client.get("/api/playback").json()["available"]
     assert client.get("/api/playback/clean.wav?page=bob").status_code == 404
     assert client.get("/api/playback/clean.wav?page=alice").status_code == 200
+
+
+def test_voice_notes_can_be_switched_off(monkeypatch):
+    """A free CPU server: voice notes would take minutes, so the page hides them."""
+    monkeypatch.setenv("STUTTERCLEAR_NOTES", "0")
+    assert client.get("/api/info").json()["notes"] is False
+    assert client.post("/api/notes", content=b"x").status_code == 503
+
+
+def test_info_lists_the_new_features():
+    d = client.get("/api/info").json()
+    for key in ("tts", "tts_label", "interview", "feedback", "uclass_demos"):
+        assert key in d
