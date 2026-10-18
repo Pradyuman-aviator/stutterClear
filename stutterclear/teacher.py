@@ -31,7 +31,20 @@ class FrameTeacher(nn.Module):
     def forward(self, wave: torch.Tensor) -> torch.Tensor:
         if self.normalize:
             wave = (wave - wave.mean(dim=1, keepdim=True)) / (wave.std(dim=1, keepdim=True) + 1e-5)
-        hidden = self.ssl(wave, output_hidden_states=True).hidden_states
+        # The last hidden state must be the last layer's raw output: that is what current transformers
+        # (where the models were trained, on Kaggle) returns, while older versions return it after
+        # the final layer norm, a 160x smaller tensor. Taken from a hook, it is the same either way.
+        raw = {}
+
+        def keep(mod, args, out):  # returns None, so the layer's own output is untouched
+            raw.setdefault("last", out[0] if isinstance(out, tuple) else out)
+
+        hook = self.ssl.encoder.layers[-1].register_forward_hook(keep)
+        try:
+            hidden = list(self.ssl(wave, output_hidden_states=True).hidden_states)
+        finally:
+            hook.remove()
+        hidden[-1] = raw["last"]
         w = torch.softmax(self.layer_weights, dim=0)
         x = sum(wi * h for wi, h in zip(w, hidden))
         x, _ = self.rnn(F.gelu(self.proj(x)))
