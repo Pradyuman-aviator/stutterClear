@@ -59,3 +59,14 @@ def test_repeated_phrases_are_cut_whole():
     assert word_cuts(toks, quiet) == []
     thorough = [i for c in word_cuts(toks, quiet, cut_phrases=True) for i in c["tokens"]]
     assert thorough == [0, 1, 2]  # Thorough cuts repeated phrases without the acoustic check
+
+
+def test_teacher_uses_its_calibration_when_present():
+    from stutterclear.live import STRONG_CUTS, teacher_cut_config
+    from stutterclear.segments import BALANCED_CUTS
+    assert teacher_cut_config("gentle", {}) == BALANCED_CUTS  # no calibration: the defaults
+    calib = {"strong": {"thresholds": [0.4, 0.6, 0.5, 0.5, 0.7], "off_ratio": 0.5, "merge_gap": 3}}
+    cfg = teacher_cut_config("strong", calib)
+    assert cfg.thresholds == (0.4, 0.6, 0.5, 0.5, 0.7) and cfg.merge_gap == 3
+    assert cfg.prolong_keep_ms == STRONG_CUTS.prolong_keep_ms  # everything else stays
+    assert teacher_cut_config("gentle", calib) == BALANCED_CUTS  # only the calibrated mode changes

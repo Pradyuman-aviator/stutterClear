@@ -127,7 +127,9 @@ def _render(sid: str, engine: str) -> dict:
         x, probs, toks = _source(sid)
         stutter = probs[:, [0, 1, 2, 4]]  # sound_rep, word_rep, prolongation, interjection
         thorough = engine == "thorough"
-        cuts, guard = guarded_cuts(toks, stutter, cut_fillers=thorough, cut_phrases=thorough)  # Nemotron checks each cut
+        from ..teacher_runtime import calibration
+        cuts, guard = guarded_cuts(toks, stutter, cut_fillers=thorough, cut_phrases=thorough,  # Nemotron checks each cut
+                                   confirm=calibration().get("confirm", 0.3))
         label = f"{'Thorough' if thorough else 'Natural'} · offline model"
         y = render_edited(x, cuts, NATURAL_JOIN)
         cuts = [{"kind": c["kind"], "start": c["start"], "end": c["end"],

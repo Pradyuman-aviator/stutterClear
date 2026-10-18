@@ -6,6 +6,7 @@ UCLASS speakers (scripts/teacher_lookahead.py): with 200 ms of lookahead it keep
 offline quality (53.8% of stutters removed, 4.6% of words lost, vs 58.4% / 5.8% offline; the rule-
 based detector removes 7.4%), and one 5 s window takes 60 ms on a laptop RTX 4050. Needs a GPU.
 """
+import json
 import os
 import threading
 from pathlib import Path
@@ -40,6 +41,17 @@ def get_teacher(path: Path = TEACHER_CKPT):
             model.load_state_dict(ckpt["state_dict"])
             _model["m"] = (model.to(dev).eval(), dev)
         return _model["m"]
+
+
+def calibration(path: Path = TEACHER_CKPT) -> dict:
+    """Settings tuned for this checkpoint on validation speakers (scripts/calibrate_teacher.py), from
+    live_cuts.json next to it: live cut settings per mode and the recordings' check threshold. Empty
+    when there is none, and the defaults apply."""
+    f = Path(path).with_name("live_cuts.json")
+    try:
+        return json.loads(f.read_text()) if f.exists() else {}
+    except (OSError, ValueError):
+        return {}
 
 
 def live_capable(path: Path = TEACHER_CKPT) -> bool:

@@ -34,12 +34,16 @@ def main():
     args = ap.parse_args()
 
     from stutterclear.app.notes import teacher_probs
+    from stutterclear.teacher_runtime import calibration
+    confirm = calibration().get("confirm", 0.3)  # the checkpoint's calibrated acoustic check, if any
+    print(f"acoustic check threshold {confirm}")
     root = Path(args.dir)
     wavs = sorted(p for p in root.rglob("*.wav") if "_edited" not in p.parts)
     rows = []
     for w in wavs:
         toks = label_tokens(json.loads(w.with_suffix(".crisper.json").read_text()))
-        cached = Path(args.cache) / (w.stem + ".npy") if args.cache else None
+        # keyed by folder too: UCLASS reuses file names across task folders for different recordings
+        cached = Path(args.cache) / f"{w.parent.name}__{w.stem}.npy" if args.cache else None
         if cached and cached.exists():
             probs = np.load(cached)
         else:
@@ -56,7 +60,7 @@ def main():
         no_probs = opts.pop("no_probs", False)
         tot = {"n_stutter": 0, "n_removed": 0, "n_fluent": 0, "n_lost": 0}
         for toks, probs in rows:
-            s = score_cuts(toks, word_cuts(toks, None if no_probs else probs, **opts))
+            s = score_cuts(toks, word_cuts(toks, None if no_probs else probs, confirm=confirm, **opts))
             for k in tot:
                 tot[k] += s[k]
         r = {"recipe": name,

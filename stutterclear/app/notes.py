@@ -71,10 +71,12 @@ def _crisper():
     return _models["crisper"]
 
 
-def teacher_probs(x: np.ndarray) -> np.ndarray:
-    """Teacher probabilities [20 ms frames, 5 classes], in 30 s chunks with overlap."""
+def teacher_probs(x: np.ndarray, model=None, dev=None) -> np.ndarray:
+    """Teacher probabilities [20 ms frames, 5 classes], in 30 s chunks with overlap. The app's teacher
+    unless a model is given (scripts/calibrate_teacher.py compares checkpoints)."""
     import torch
-    model, dev = _teacher()
+    if model is None:
+        model, dev = _teacher()
     n, hop, ov = len(x), 30 * SR, 2 * SR
     total = np.zeros(((n - 400) // FRAME + 1, 5), np.float32)
     weight = np.zeros(len(total), np.float32)

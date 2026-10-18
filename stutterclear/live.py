@@ -134,14 +134,25 @@ def devices() -> dict:
     return out
 
 
+def teacher_cut_config(mode: str, calib: dict | None = None):
+    """Cut settings for the teacher in a mode: the defaults, or the checkpoint's calibration."""
+    import dataclasses
+    from .segments import BALANCED_CUTS
+    from .teacher_runtime import calibration
+    base = BALANCED_CUTS if mode == "gentle" else STRONG_CUTS
+    s = (calibration() if calib is None else calib).get(mode)
+    if not s:
+        return base
+    return dataclasses.replace(base, thresholds=tuple(s["thresholds"]), off_ratio=s["off_ratio"], merge_gap=s["merge_gap"])
+
+
 def make_detector(kind: str, mode: str, student_path=None):
     preset_name, cuts, lookahead_ms = MODES[mode]
     path = Path(student_path) if student_path else DEFAULT_STUDENT
     if kind == "teacher" and cuts:
         from .teacher_runtime import TeacherDetector, live_capable
         if live_capable():
-            from .segments import BALANCED_CUTS
-            return TeacherDetector(TEACHER_LOOKAHEAD_MS[mode], cut_cfg=BALANCED_CUTS if cuts == "gentle" else STRONG_CUTS,
+            return TeacherDetector(TEACHER_LOOKAHEAD_MS[mode], cut_cfg=teacher_cut_config(cuts),
                                    cut_interjections=cuts == "strong"), "teacher"
     if kind == "student" and path.exists() and cuts:
         from .student_runtime import LIVE_CUTS, StudentDetector

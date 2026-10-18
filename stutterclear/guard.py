@@ -46,9 +46,11 @@ def review(toks: list, candidates: set) -> dict:
     return keep
 
 
-def guarded_cuts(toks: list, probs=None, cut_fillers: bool = False, cut_phrases: bool = False) -> tuple:
-    """Word-aligned cuts, checked by Nemotron. Returns (cuts, report); report is None without a key."""
-    cuts = word_cuts(toks, probs, cut_fillers=cut_fillers, cut_phrases=cut_phrases)
+def guarded_cuts(toks: list, probs=None, cut_fillers: bool = False, cut_phrases: bool = False,
+                 confirm: float = 0.3) -> tuple:
+    """Word-aligned cuts, checked by Nemotron. Returns (cuts, report); report is None without a key.
+    `confirm` is the teacher's acoustic-check threshold (its calibration may change it)."""
+    cuts = word_cuts(toks, probs, cut_fillers=cut_fillers, cut_phrases=cut_phrases, confirm=confirm)
     candidates = {i for c in cuts for i in c["tokens"]}
     if not candidates or not nemotron.available():
         return cuts, None
@@ -58,7 +60,8 @@ def guarded_cuts(toks: list, probs=None, cut_fillers: bool = False, cut_phrases:
         return cuts, {"model": nemotron.MODEL, "checked": len(candidates), "kept": [], "error": str(e)}
     kept = [{"word": toks[i]["w"], "context": " ".join(t["w"] for t in toks[max(0, i - 3):i + 4]), "reason": r}
             for i, r in sorted(keep.items())]
-    return (word_cuts(toks, probs, cut_fillers=cut_fillers, keep=frozenset(keep), cut_phrases=cut_phrases),
+    return (word_cuts(toks, probs, cut_fillers=cut_fillers, keep=frozenset(keep), cut_phrases=cut_phrases,
+                      confirm=confirm),
             {"model": nemotron.MODEL, "checked": len(candidates), "kept": kept})
 
 
