@@ -18,7 +18,7 @@ from fastapi.staticfiles import StaticFiles
 import numpy as np
 from pydantic import BaseModel
 
-from .. import nemotron
+from .. import feedback, nemotron
 from ..audio import wav_bytes
 from ..config import SAMPLE_RATE as SR
 from ..live import DEFAULT_STUDENT, LiveSession, detectors, devices, recommended, student_eval
@@ -138,6 +138,7 @@ def info():
             "captions": captions.available(), "rescue": nemotron.available(), "nemotron": nemotron.available(),
             "search": context_agent.search_available(), "model": nemotron.MODEL, "hosted": HOSTED,
             "tts": tts.available(), "tts_voice": tts.VOICE, "tts_label": tts.LABEL, "interview": nemotron.available(),
+            "feedback": "browser" if HOSTED else "server",
             "detectors": detectors(), "recommended": recommended()}
 
 
@@ -301,6 +302,57 @@ def interview_summary(req: InterviewRequest):
     return _interview(lambda: {"points": interview.summary(req.role, req.company, req.history)})
 
 
+class FeedbackRequest(BaseModel):
+    source: str = "note"  # note | live
+    id: str = ""  # the voice note (or session) the cut belongs to
+    cut: dict | None = None  # {start, end, kind, words}
+    verdict: str | None = None  # accept (the cut was right) | reject (it should not have been cut)
+    missed_at_s: float | None = None  # a stutter that was left in, tapped at this time
+
+
+class FeedbackLog(BaseModel):
+    entries: list[dict] = []
+
+
+@app.post("/api/feedback")
+def give_feedback(req: FeedbackRequest):
+    """One review decision. The server works out which kind a missed stutter was (from the voice
+    note's teacher probabilities); a personal computer logs it, a public server hands it back for
+    the page to keep in the browser."""
+    entry = req.model_dump()
+    if req.missed_at_s is not None and req.id.startswith("note-"):
+        note = notes.ready(req.id)
+        if note is not None:
+            entry["kind"] = feedback.kind_at(note["probs"], req.missed_at_s)
+    entry = feedback.clean(entry)
+    if entry is None:
+        raise HTTPException(400, "Feedback is a reviewed cut (accept or reject) or a missed stutter's time.")
+    if HOSTED or not feedback.stored_here():
+        return {"entry": entry, "stored": False}
+    return {"entry": entry, "stored": True, **feedback.record(entry)}
+
+
+@app.get("/api/feedback")
+def feedback_summary():
+    """Multipliers per kind, agreement over the recent decisions, whether auto mode can be offered."""
+    entries = [] if HOSTED else feedback.read()
+    return {"stored": not HOSTED, **feedback.summary(entries)}
+
+
+@app.post("/api/feedback/summary")
+def feedback_summary_of(req: FeedbackLog):
+    """The same summary for a log the page keeps itself (public servers store none)."""
+    return feedback.summary([e for e in (feedback.clean(x) for x in req.entries[-2000:]) if e])
+
+
+@app.delete("/api/feedback")
+def forget_feedback():
+    """Forget every review decision on this computer; StutterClear goes back to its defaults."""
+    if not HOSTED:
+        feedback.forget()
+    return {"ok": True}
+
+
 @app.post("/api/start")
 def start(req: StartRequest):
     if HOSTED:
@@ -312,7 +364,7 @@ def start(req: StartRequest):
     devs = devices()
     in_device = resolve("microphone", req.in_device, req.in_name, devs["inputs"])
     out_device = resolve("output", req.out_device, req.out_name, devs["outputs"])
-    s = LiveSession(req.mode, in_device, out_device, req.detector, save=req.save)
+    s = LiveSession(req.mode, in_device, out_device, req.detector, save=req.save, adjust=feedback.current())
     try:
         s.start()
     except Exception as e:  # device busy or gone between listing and opening
@@ -369,9 +421,11 @@ async def browser_mic(socket: WebSocket):
         return
     cfg = await socket.receive_json()
     page = str(cfg.get("page", ""))
+    # The person's feedback: this computer's log, or on a public server what the page kept for them
+    adjust = feedback.from_page(cfg.get("adjust")) if HOSTED else feedback.current()
     loop = asyncio.get_running_loop()
     s = await loop.run_in_executor(None, lambda: LiveSession(  # may load a model: off the event loop
-        cfg.get("mode", "gentle"), detector=cfg.get("detector", "heuristic"), source="browser"))
+        cfg.get("mode", "gentle"), detector=cfg.get("detector", "heuristic"), source="browser", adjust=adjust))
     s.start()
     state["session"], state["last"], state["owner"] = s, None, page
     await socket.send_json({"ok": True, "detector": s.detector_name, "limit_s": LIVE_LIMIT_S})

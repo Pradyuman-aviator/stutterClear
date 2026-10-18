@@ -146,20 +146,29 @@ def teacher_cut_config(mode: str, calib: dict | None = None):
     return dataclasses.replace(base, thresholds=tuple(s["thresholds"]), off_ratio=s["off_ratio"], merge_gap=s["merge_gap"])
 
 
-def make_detector(kind: str, mode: str, student_path=None):
+def make_detector(kind: str, mode: str, student_path=None, adjust: dict | None = None):
+    """`adjust`: the person's feedback multipliers per kind (feedback.py), applied to the model
+    detectors' thresholds."""
     preset_name, cuts, lookahead_ms = MODES[mode]
     path = Path(student_path) if student_path else DEFAULT_STUDENT
+    det = None
     if kind == "teacher" and cuts:
         from .teacher_runtime import TeacherDetector, live_capable
         if live_capable():
-            return TeacherDetector(TEACHER_LOOKAHEAD_MS[mode], cut_cfg=teacher_cut_config(cuts),
-                                   cut_interjections=cuts == "strong"), "teacher"
-    if kind == "student" and path.exists() and cuts:
+            det, name = TeacherDetector(TEACHER_LOOKAHEAD_MS[mode], cut_cfg=teacher_cut_config(cuts),
+                                        cut_interjections=cuts == "strong"), "teacher"
+    if det is None and kind == "student" and path.exists() and cuts:
         from .student_runtime import LIVE_CUTS, StudentDetector
-        return StudentDetector(path, lookahead_ms, path.with_name("student_test_report.json"),
-                               cut_interjections=cuts == "strong",
-                               cut_cfg=LIVE_CUTS if cuts == "gentle" else STRONG_CUTS), "student"
-    return None, "rule-based"  # Pipeline falls back to the heuristic detector
+        det, name = StudentDetector(path, lookahead_ms, path.with_name("student_test_report.json"),
+                                    cut_interjections=cuts == "strong",
+                                    cut_cfg=LIVE_CUTS if cuts == "gentle" else STRONG_CUTS), "student"
+    if det is None:
+        return None, "rule-based"  # Pipeline falls back to the heuristic detector
+    if adjust:
+        from .feedback import scale_thresholds
+        det.thresholds = scale_thresholds(det.thresholds, adjust)
+        det.thresholds[det.cut_idx] = np.maximum(det.thresholds[det.cut_idx], det.MIN_CUT_THRESHOLD)
+    return det, name
 
 
 class LiveSession:
@@ -167,11 +176,11 @@ class LiveSession:
     arrives through feed() from a browser mic over a WebSocket, and the input clock drives output."""
 
     def __init__(self, mode="gentle", in_device=None, out_device=None, detector="student", student_path=None,
-                 save=False, source="device"):
+                 save=False, source="device", adjust: dict | None = None):
         self.mode = mode
         self.source = source
         preset_name, _, _ = MODES[mode]
-        det, self.detector_name = make_detector(detector, mode, student_path)
+        det, self.detector_name = make_detector(detector, mode, student_path, adjust)
         self.pipe = Pipeline(preset(preset_name, **delay_overrides(self.detector_name, mode)), detector=det)
         if source == "browser":
             in_device = out_device = None

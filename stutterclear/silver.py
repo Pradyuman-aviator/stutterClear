@@ -55,7 +55,7 @@ def intended_text(model, x: np.ndarray) -> str:
                             word_timestamps=True).text
 
 
-def word_cuts(toks: list, probs=None, cut_fillers: bool = False, confirm: float = 0.3,
+def word_cuts(toks: list, probs=None, cut_fillers: bool = False, confirm=0.3,
               frame_s: float = 0.02, keep: frozenset = frozenset(), cut_phrases: bool = False) -> list:
     """Cuts placed on word boundaries from a verbatim transcript, for recordings (not live).
 
@@ -63,7 +63,8 @@ def word_cuts(toks: list, probs=None, cut_fillers: bool = False, confirm: float 
     the next word, so no real word is ever sliced: model frame edges are about 100 ms off, a whole
     syllable, and a word that loses its first or last sound is what a listener hears as a jerk.
     With teacher probabilities, a candidate is cut only if the model also hears a stutter there
-    (so a deliberate "very very" survives). A repeated phrase ("when he was when he was") is one
+    (so a deliberate "very very" survives; `confirm` is one threshold, or one per probs column,
+    which the person's feedback moves per kind). A repeated phrase ("when he was when he was") is one
     candidate, cut or kept whole, never left half-cut as "when when he was". `cut_phrases` cuts
     repeated 2-3 word phrases without the acoustic check: like fillers they are ordinary
     disfluencies, rarely meant, and the model hears them less well than repeated sounds. `keep`
@@ -79,7 +80,7 @@ def word_cuts(toks: list, probs=None, cut_fillers: bool = False, confirm: float 
     def heard(ids):
         a = max(0, int((toks[ids[0]]["s"] - 0.1) / frame_s))
         b = min(len(probs), int((toks[ids[-1]]["e"] + 0.1) / frame_s) + 1)
-        return b > a and float(probs[a:b].max()) >= confirm
+        return b > a and bool((probs[a:b] >= confirm).any())
 
     chosen = sorted(i for ids in groups.values() if not keep.intersection(ids)
                     and (probs is None or (cut_phrases and len(ids) > 1) or heard(ids)) for i in ids)
