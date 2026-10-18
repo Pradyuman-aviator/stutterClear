@@ -77,6 +77,8 @@ def teacher_probs(x: np.ndarray, model=None, dev=None) -> np.ndarray:
     import torch
     if model is None:
         model, dev = _teacher()
+    elif dev is None:
+        dev = next(model.parameters()).device
     n, hop, ov = len(x), 30 * SR, 2 * SR
     total = np.zeros(((n - 400) // FRAME + 1, 5), np.float32)
     weight = np.zeros(len(total), np.float32)

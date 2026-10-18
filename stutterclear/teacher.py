@@ -46,7 +46,9 @@ class FrameTeacher(nn.Module):
             hook.remove()
         hidden[-1] = raw["last"]
         w = torch.softmax(self.layer_weights, dim=0)
-        x = sum(wi * h for wi, h in zip(w, hidden))
+        # strict: a transformers version returning a different number of layers must fail loudly,
+        # not silently drop a layer weight
+        x = sum(wi * h for wi, h in zip(w, hidden, strict=True))
         x, _ = self.rnn(F.gelu(self.proj(x)))
         return self.out(x)  # [batch, frames, classes]
 

@@ -198,7 +198,7 @@ def main():
     for mode, base, cut_fillers in (("gentle", BALANCED_CUTS, False), ("strong", STRONG_CUTS, True)):
         la = TEACHER_LOOKAHEAD_MS[mode] / 1000
         probs = cached(f"stream{int(la * 1000)}", args.ckpt,
-                       lambda m, x: streamed_probs(m, x, dev, la, 4.0, HOP_MS / 1000))
+                       lambda m, x, la=la: streamed_probs(m, x, dev, la, 4.0, HOP_MS / 1000))
         rows = [(probs[w], toks[w]) for w in wavs]
         before = score(rows, base, cut_fillers)
         print(f"{mode}: with the current settings: score {before[0]:.1f} (removed {before[1]:.1f}%, lost {before[2]:.2f}%)")
