@@ -137,7 +137,7 @@ def info():
     return {"student": DEFAULT_STUDENT.exists(), "student_eval": student_eval(), "notes": notes.available(),
             "captions": captions.available(), "rescue": nemotron.available(), "nemotron": nemotron.available(),
             "search": context_agent.search_available(), "model": nemotron.MODEL, "hosted": HOSTED,
-            "tts": tts.available(), "tts_voice": tts.VOICE, "tts_label": tts.LABEL,
+            "tts": tts.available(), "tts_voice": tts.VOICE, "tts_label": tts.LABEL, "interview": nemotron.available(),
             "detectors": detectors(), "recommended": recommended()}
 
 
@@ -256,6 +256,49 @@ def say_it(req: TTSRequest):
     except tts.TTSError as e:
         raise HTTPException(502, str(e)) from e
     return Response(wav_bytes(y), media_type="audio/wav", headers={"Cache-Control": "no-store", "X-Voice-Label": tts.LABEL})
+
+
+class InterviewRequest(BaseModel):
+    role: str
+    company: str = ""
+    posting: str = ""  # the job post, optional
+    card: str = ""  # the context card from /api/interview/start
+    history: list[dict] = []  # [{question, answer}], answers as the captions wrote them
+
+
+def _interview(fn):
+    if not nemotron.available():
+        raise HTTPException(503, "The interview partner needs NEBIUS_API_KEY set where the app runs.")
+    nemotron_budget()
+    try:
+        return fn()
+    except nemotron.NemotronError as e:
+        raise HTTPException(502, str(e)) from e
+
+
+@app.post("/api/interview/start")
+def interview_start(req: InterviewRequest):
+    """Practice: research the role into a context card, then the first question."""
+    from .. import interview
+    if not req.role.strip():
+        raise HTTPException(400, "Say which role the interview is for.")
+    return _interview(lambda: interview.start(req.role, req.company, req.posting))
+
+
+@app.post("/api/interview/next")
+def interview_next(req: InterviewRequest):
+    """The next question, following up on the answers so far."""
+    from .. import interview
+    return _interview(lambda: {"question": interview.next_question(req.role, req.company, req.card, req.history)})
+
+
+@app.post("/api/interview/summary")
+def interview_summary(req: InterviewRequest):
+    """Three practice points about the answers (content only, never how they were spoken)."""
+    from .. import interview
+    if not req.history:
+        raise HTTPException(400, "Answer a question first.")
+    return _interview(lambda: {"points": interview.summary(req.role, req.company, req.history)})
 
 
 @app.post("/api/start")

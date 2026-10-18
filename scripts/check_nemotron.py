@@ -11,7 +11,7 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from stutterclear import context_agent, guard, insights, nemotron, rescue  # noqa: E402
+from stutterclear import context_agent, guard, insights, interview, nemotron, rescue  # noqa: E402
 from stutterclear.silver import label_tokens  # noqa: E402
 
 
@@ -51,6 +51,8 @@ def main():
         step("insights", lambda: insights.summarize({"word_rep": 4, "sound_rep": 2}, 60, 3.2)),
         step("context agent" + (" + Tavily" if context_agent.search_available() else ""),
              lambda: context_agent.fill("Job interview with the speech AI team at NVIDIA")["card"][:200]),
+        step("interview partner", lambda: interview.next_question(
+            "Speech AI engineer", "NVIDIA", "", [{"question": "Why speech AI?", "answer": "I build tools for people who stutter"}])),
     ]
     print("all good" if all(results) else "some features failed: see above")
 
