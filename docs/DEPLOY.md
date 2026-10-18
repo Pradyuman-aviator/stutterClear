@@ -63,18 +63,49 @@ Update after a `git push`: `git pull && docker compose up -d --build`.
 
 One live session runs at a time; others can use the samples and voice notes meanwhile.
 
-## Plan B: serve the demo from a laptop
+## Free: serve the demo from the laptop (recommended until credits cover a VM)
 
 The hackathon asks for Nebius Token Factory *or* AI Cloud: Nemotron on Token Factory already meets
-it, so if the VM is not ready, the laptop with the GPU can serve the same hosted build. Browsers
-only allow the microphone on HTTPS (or localhost), so put it behind a tunnel, for example a free
-Cloudflare quick tunnel:
+it, so the laptop with the GPU can serve the hosted build with every feature, for nothing.
+Tailscale Funnel gives it a stable HTTPS link (browsers only allow the microphone on HTTPS).
+
+One-time setup:
+
+1. Install Tailscale (https://tailscale.com/download), run `tailscale up` and log in (free plan).
+2. Set the keys once, in a terminal that is then closed: `setx NEBIUS_API_KEY "..."` and, for Say it,
+   `setx NVIDIA_API_KEY "nvapi-..."` (build.nvidia.com, free). Never put keys in files or chat.
+3. Power settings: plugged in, sleep off, while people use the link.
+
+Every time:
 
 ```
-set STUTTERCLEAR_HOSTED=1                          # PowerShell: $env:STUTTERCLEAR_HOSTED = "1"
-python scripts/run_app.py --no-browser --port 8766
+powershell -ExecutionPolicy Bypass -File scripts\serve_public.ps1            # public link: synthetic clips
+powershell -ExecutionPolicy Bypass -File scripts\serve_public.ps1 -UclassDemos  # private judging link only
+```
+
+The first run prints a link to allow Funnel for the machine; after that it prints the public
+`https://<machine>.<tailnet>.ts.net` link, the same on every start. Ctrl+C stops the app and the
+link together. The script starts the app with `STUTTERCLEAR_HOSTED=1` on an exact port
+(`--strict-port`), so the link never points at another program.
+
+What the public mode changes: visitors use their own microphone, one live session at a time (up to
+5 minutes), nothing they say is written to disk, their feedback stays in their browser, Nemotron and
+Say it calls are capped per minute, and UCLASS clips are left out (research licence) unless
+`-UclassDemos` is given for a private judging link.
+
+Without Tailscale, a Cloudflare quick tunnel works too, but its link changes on every start:
+
+```
+$env:STUTTERCLEAR_HOSTED = "1"
+python scripts/run_app.py --no-browser --port 8766 --strict-port
 cloudflared tunnel --url http://localhost:8766      # prints an https://....trycloudflare.com link
 ```
 
-The link works only while the laptop is on and the app is running, and it changes on every start,
-so this is for a judging session or a recorded demo, not for weeks of judging.
+## Switches for a public server
+
+| Variable | Effect |
+|---|---|
+| `STUTTERCLEAR_HOSTED=1` | Public mode (see above) |
+| `STUTTERCLEAR_NOTES=0` | No voice notes: for a server without a GPU, where they would take minutes |
+| `STUTTERCLEAR_UCLASS_DEMOS=1` / `=0` | Show UCLASS clips on a public server (private judging) / hide them anywhere |
+| `NVIDIA_API_KEY` | Say it (NVIDIA Magpie TTS); `MAGPIE_VOICE` picks the voice |
