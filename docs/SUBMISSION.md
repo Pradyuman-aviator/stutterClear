@@ -73,9 +73,12 @@ On 7 speakers the models never trained on, through the real live pipeline:
 | | stutters removed | words lost |
 |---|---|---|
 | Live, rule-based baseline | 7.6% | 1.25% |
-| Live, teacher on GPU, Gentle (keeps fillers) | 31.7% | 3.18% |
-| Live, teacher on GPU, Strong (fillers too) | 65.2% | 5.64% |
-| Recordings, word-aligned: Natural / Thorough (fillers, repeated phrases) | 50.1% / 79.9% | 0 words sliced |
+| Live, teacher on GPU, Gentle (keeps fillers) | 33.1% | 3.10% |
+| Live, teacher on GPU, Strong (fillers too) | 65.2% | 5.68% |
+| Recordings, word-aligned: Natural / Thorough (fillers, repeated phrases) | 50.1% / 80.7% | 0 words sliced |
+
+On the standard speaker-exclusive SEP-28k-E test set, teacher v2 reaches macro F1 0.618 (AUC 0.98
+for word repetitions, 0.96 for fillers).
 
 ### What we learned
 

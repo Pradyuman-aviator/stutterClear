@@ -51,26 +51,26 @@
   {
    "detector": "teacher",
    "mode": "gentle",
-   "stutter_removed_pct": 31.7,
-   "words_lost_pct": 3.18,
-   "removed_s": 125.1,
-   "realtime_factor": 0.32,
+   "stutter_removed_pct": 33.1,
+   "words_lost_pct": 3.1,
+   "removed_s": 127.3,
+   "realtime_factor": 0.464,
    "n_stutter": 353,
-   "n_removed": 112,
+   "n_removed": 117,
    "n_fluent": 2484,
-   "n_lost": 79
+   "n_lost": 77
   },
   {
    "detector": "teacher",
    "mode": "strong",
    "stutter_removed_pct": 65.2,
-   "words_lost_pct": 5.64,
-   "removed_s": 204.5,
-   "realtime_factor": 0.359,
+   "words_lost_pct": 5.68,
+   "removed_s": 202.2,
+   "realtime_factor": 0.42,
    "n_stutter": 353,
    "n_removed": 230,
    "n_fluent": 2484,
-   "n_lost": 140
+   "n_lost": 141
   }
  ],
  "student_mtime": 1792246330.0293977

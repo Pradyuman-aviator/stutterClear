@@ -11,19 +11,19 @@
   },
   {
    "recipe": "natural + fillers",
-   "stutter_removed_pct": 76.8,
+   "stutter_removed_pct": 77.1,
    "words_lost_pct": 0.0,
    "n_stutter": 353,
-   "n_removed": 271,
+   "n_removed": 272,
    "n_fluent": 2484,
    "n_lost": 0
   },
   {
    "recipe": "thorough",
-   "stutter_removed_pct": 79.9,
+   "stutter_removed_pct": 80.7,
    "words_lost_pct": 0.0,
    "n_stutter": 353,
-   "n_removed": 282,
+   "n_removed": 285,
    "n_fluent": 2484,
    "n_lost": 0
   },
