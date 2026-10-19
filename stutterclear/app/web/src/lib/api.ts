@@ -176,7 +176,10 @@ export const sayIt = async (text: string) => {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ text }),
   })
-  if (!r.ok) throw new Error(await r.text())
+  if (!r.ok) {
+    const detail = await r.json().then((b) => b?.detail).catch(() => null)
+    throw new Error(typeof detail === "string" ? detail : `${r.status} ${r.statusText}`)
+  }
   return { wav: await r.blob(), label: r.headers.get("X-Voice-Label") ?? "Synthetic voice" }
 }
 

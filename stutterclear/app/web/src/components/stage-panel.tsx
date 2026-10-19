@@ -10,7 +10,7 @@ import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Textarea } from "@/components/ui/textarea"
 import type { LiveData } from "@/hooks/use-live"
 import { sayIt } from "@/lib/api"
-import { followScript, normaliseScript } from "@/lib/script-follow"
+import { followScript, normaliseScript, sentenceEnds } from "@/lib/script-follow"
 import type { Store } from "@/lib/store"
 import { useStore } from "@/lib/store"
 
@@ -64,9 +64,10 @@ export function StagePanel({
     if (!running) return
     const id = window.setInterval(() => {
       const script = normaliseScript(scriptText)
+      const ends = sentenceEnds(scriptText)
       const silent = data.current.heardSound && performance.now() - data.current.lastSoundAt > 700
       const blocked = performance.now() - data.current.lastBlockAt < 1200
-      const mid = pointer > 0 && pointer < script.length && !/[.!?]$/.test(script[pointer - 1] ?? "")
+      const mid = pointer > 0 && pointer < script.length && !ends[pointer - 1]
       if ((blocked || silent) && mid) {
         const next = script.slice(pointer, pointer + 3).join(" ")
         setPrompt((cur) => (cur.join(" ") === next ? cur : script.slice(pointer, pointer + 3)))

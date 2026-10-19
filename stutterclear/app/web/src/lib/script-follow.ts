@@ -2,13 +2,24 @@
 // of the other, or if their edit similarity is at least 0.75. The pointer never jumps more than
 // 30 words.
 
-export function normaliseScript(text: string): string[] {
+function tokens(text: string) {
   return text
-    .toLowerCase()
     .replace(/[“”]/g, '"')
     .split(/\s+/)
-    .map((w) => w.replace(/^[^a-z0-9']+|[^a-z0-9']+$/gi, ""))
-    .filter(Boolean)
+    .map((raw) => ({
+      w: raw.toLowerCase().replace(/^[^a-z0-9']+|[^a-z0-9']+$/gi, ""),
+      end: /[.!?]/.test(raw),
+    }))
+    .filter((t) => t.w)
+}
+
+export function normaliseScript(text: string): string[] {
+  return tokens(text).map((t) => t.w)
+}
+
+// True for each normalised word that ended a sentence in the original script.
+export function sentenceEnds(text: string): boolean[] {
+  return tokens(text).map((t) => t.end)
 }
 
 function similar(a: string, b: string) {
