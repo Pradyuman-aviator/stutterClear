@@ -1,0 +1,378 @@
+{
+ "librispeech": [
+  "6313-66125-0000",
+  "6313-66125-0001",
+  "6313-66125-0002",
+  "6313-66125-0003",
+  "6313-66125-0004",
+  "6313-66125-0005",
+  "6313-66125-0006",
+  "6313-66125-0007",
+  "6313-66125-0008",
+  "6313-66125-0009",
+  "6313-66125-0010",
+  "6313-66125-0011"
+ ],
+ "inserted": [
+  {
+   "start": 0.22,
+   "end": 0.417,
+   "kind": "sound_rep"
+  },
+  {
+   "start": 0.417,
+   "end": 0.457,
+   "kind": "sound_rep"
+  },
+  {
+   "start": 0.457,
+   "end": 0.615,
+   "kind": "sound_rep"
+  },
+  {
+   "start": 0.615,
+   "end": 0.623,
+   "kind": "sound_rep"
+  },
+  {
+   "start": 0.623,
+   "end": 0.819,
+   "kind": "sound_rep"
+  },
+  {
+   "start": 0.819,
+   "end": 0.853,
+   "kind": "sound_rep"
+  },
+  {
+   "start": 1.183,
+   "end": 1.355,
+   "kind": "word_rep"
+  },
+  {
+   "start": 1.355,
+   "end": 1.62,
+   "kind": "word_rep"
+  },
+  {
+   "start": 1.868,
+   "end": 2.235,
+   "kind": "interjection"
+  },
+  {
+   "start": 2.235,
+   "end": 2.45,
+   "kind": "interjection"
+  },
+  {
+   "start": 5.162,
+   "end": 5.196,
+   "kind": "sound_rep"
+  },
+  {
+   "start": 5.196,
+   "end": 5.242,
+   "kind": "sound_rep"
+  },
+  {
+   "start": 5.242,
+   "end": 5.279,
+   "kind": "sound_rep"
+  },
+  {
+   "start": 5.279,
+   "end": 5.279,
+   "kind": "sound_rep"
+  },
+  {
+   "start": 5.279,
+   "end": 5.319,
+   "kind": "sound_rep"
+  },
+  {
+   "start": 5.319,
+   "end": 5.344,
+   "kind": "sound_rep"
+  },
+  {
+   "start": 5.504,
+   "end": 5.574,
+   "kind": "sound_rep"
+  },
+  {
+   "start": 5.574,
+   "end": 5.661,
+   "kind": "sound_rep"
+  },
+  {
+   "start": 5.661,
+   "end": 5.716,
+   "kind": "sound_rep"
+  },
+  {
+   "start": 5.716,
+   "end": 5.829,
+   "kind": "sound_rep"
+  },
+  {
+   "start": 5.829,
+   "end": 5.899,
+   "kind": "sound_rep"
+  },
+  {
+   "start": 5.899,
+   "end": 5.996,
+   "kind": "sound_rep"
+  },
+  {
+   "start": 6.262,
+   "end": 6.755,
+   "kind": "interjection"
+  },
+  {
+   "start": 6.755,
+   "end": 6.888,
+   "kind": "interjection"
+  },
+  {
+   "start": 7.188,
+   "end": 7.276,
+   "kind": "word_rep"
+  },
+  {
+   "start": 7.276,
+   "end": 7.528,
+   "kind": "word_rep"
+  },
+  {
+   "start": 8.188,
+   "end": 8.546,
+   "kind": "interjection"
+  },
+  {
+   "start": 8.546,
+   "end": 8.755,
+   "kind": "interjection"
+  },
+  {
+   "start": 12.381,
+   "end": 12.652,
+   "kind": "sound_rep"
+  },
+  {
+   "start": 12.652,
+   "end": 12.733,
+   "kind": "sound_rep"
+  },
+  {
+   "start": 12.733,
+   "end": 13.031,
+   "kind": "sound_rep"
+  },
+  {
+   "start": 13.031,
+   "end": 13.036,
+   "kind": "sound_rep"
+  },
+  {
+   "start": 13.036,
+   "end": 13.253,
+   "kind": "sound_rep"
+  },
+  {
+   "start": 13.253,
+   "end": 13.278,
+   "kind": "sound_rep"
+  },
+  {
+   "start": 13.278,
+   "end": 13.705,
+   "kind": "word_rep"
+  },
+  {
+   "start": 13.705,
+   "end": 13.823,
+   "kind": "word_rep"
+  },
+  {
+   "start": 13.823,
+   "end": 14.21,
+   "kind": "interjection"
+  },
+  {
+   "start": 14.21,
+   "end": 14.249,
+   "kind": "interjection"
+  },
+  {
+   "start": 14.769,
+   "end": 14.832,
+   "kind": "sound_rep"
+  },
+  {
+   "start": 14.832,
+   "end": 14.884,
+   "kind": "sound_rep"
+  },
+  {
+   "start": 14.884,
+   "end": 14.941,
+   "kind": "sound_rep"
+  },
+  {
+   "start": 14.941,
+   "end": 14.993,
+   "kind": "sound_rep"
+  },
+  {
+   "start": 14.993,
+   "end": 15.056,
+   "kind": "sound_rep"
+  },
+  {
+   "start": 15.056,
+   "end": 15.093,
+   "kind": "sound_rep"
+  },
+  {
+   "start": 15.093,
+   "end": 15.161,
+   "kind": "sound_rep"
+  },
+  {
+   "start": 15.161,
+   "end": 15.21,
+   "kind": "sound_rep"
+  },
+  {
+   "start": 19.161,
+   "end": 20.224,
+   "kind": "prolongation"
+  },
+  {
+   "start": 20.829,
+   "end": 21.491,
+   "kind": "word_rep"
+  },
+  {
+   "start": 21.491,
+   "end": 21.743,
+   "kind": "word_rep"
+  },
+  {
+   "start": 22.133,
+   "end": 22.583,
+   "kind": "word_rep"
+  },
+  {
+   "start": 22.583,
+   "end": 22.858,
+   "kind": "word_rep"
+  },
+  {
+   "start": 23.198,
+   "end": 23.293,
+   "kind": "word_rep"
+  },
+  {
+   "start": 23.293,
+   "end": 23.509,
+   "kind": "word_rep"
+  },
+  {
+   "start": 26.404,
+   "end": 26.884,
+   "kind": "prolongation"
+  },
+  {
+   "start": 27.324,
+   "end": 27.406,
+   "kind": "word_rep"
+  },
+  {
+   "start": 27.406,
+   "end": 27.654,
+   "kind": "word_rep"
+  },
+  {
+   "start": 27.654,
+   "end": 27.724,
+   "kind": "word_rep"
+  },
+  {
+   "start": 27.724,
+   "end": 28.021,
+   "kind": "word_rep"
+  },
+  {
+   "start": 28.021,
+   "end": 28.088,
+   "kind": "word_rep"
+  },
+  {
+   "start": 28.088,
+   "end": 28.222,
+   "kind": "word_rep"
+  },
+  {
+   "start": 28.612,
+   "end": 28.722,
+   "kind": "word_rep"
+  },
+  {
+   "start": 28.722,
+   "end": 28.864,
+   "kind": "word_rep"
+  },
+  {
+   "start": 28.864,
+   "end": 28.95,
+   "kind": "word_rep"
+  },
+  {
+   "start": 28.95,
+   "end": 29.166,
+   "kind": "word_rep"
+  },
+  {
+   "start": 29.166,
+   "end": 29.25,
+   "kind": "word_rep"
+  },
+  {
+   "start": 29.25,
+   "end": 29.517,
+   "kind": "word_rep"
+  },
+  {
+   "start": 29.517,
+   "end": 29.606,
+   "kind": "word_rep"
+  },
+  {
+   "start": 29.606,
+   "end": 29.674,
+   "kind": "word_rep"
+  },
+  {
+   "start": 29.784,
+   "end": 30.01,
+   "kind": "word_rep"
+  },
+  {
+   "start": 30.01,
+   "end": 30.269,
+   "kind": "word_rep"
+  },
+  {
+   "start": 32.617,
+   "end": 33.19,
+   "kind": "interjection"
+  },
+  {
+   "start": 33.19,
+   "end": 33.299,
+   "kind": "interjection"
+  }
+ ]
+}
