@@ -205,6 +205,24 @@ export async function playSaid(text: string) {
   return r.label
 }
 
+// The fluency journal (on the person's own computer, once started).
+export interface JournalSummary {
+  enabled: boolean
+  stored: boolean // false on a public server, which keeps none
+  entries: number
+  minutes: number
+  per_min: number | null
+  this_week: number | null
+  last_week: number | null
+  days: { date: string; minutes: number; stutters: number; per_min: number | null }[]
+  kinds: Record<string, number>
+  words: [string, number][]
+  onsets: [string, number][]
+}
+export const getJournal = () => json<JournalSummary>(fetch("/api/journal"))
+export const startJournal = () => send<JournalSummary>("/api/journal/start", {})
+export const forgetJournal = () => json<{ ok: boolean }>(fetch("/api/journal", { method: "DELETE" }))
+
 export interface InterviewTurn {
   question: string
   answer: string
