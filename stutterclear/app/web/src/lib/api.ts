@@ -112,6 +112,7 @@ export const getInfo = () =>
     tts: boolean
     interview: boolean
     feedback: "browser" | "server"
+    video?: boolean
   }>(fetch("/api/info"))
 
 // A random id for this page. On a public server a live session belongs to the page that started
@@ -204,6 +205,39 @@ export async function playSaid(text: string) {
   await audio.play()
   return r.label
 }
+
+// Clean my video: upload (with progress), then poll; the result plays from /api/video/{id}/clean.mp4.
+export interface VideoStatus {
+  id: string
+  status: "queued" | "sound" | "cleaning" | "cutting" | "done" | "error"
+  error: string | null
+  engine: "natural" | "thorough"
+  duration_s?: number | null
+  clean_s?: number | null
+  cuts?: Span[] | null
+  text?: Transcript | null
+  slow?: boolean
+}
+
+export const uploadVideo = (file: File, engine: string, onProgress: (fraction: number) => void) =>
+  new Promise<{ id: string }>((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open("POST", `/api/video?engine=${engine}&name=${encodeURIComponent(file.name)}`)
+    xhr.upload.onprogress = (e) => e.lengthComputable && onProgress(e.loaded / e.total)
+    xhr.onload = () => {
+      let body: { id?: string; detail?: string } = {}
+      try {
+        body = JSON.parse(xhr.responseText)
+      } catch {
+        // not JSON: the status line says enough
+      }
+      if (xhr.status >= 200 && xhr.status < 300 && body.id) resolve({ id: body.id })
+      else reject(new Error(body.detail ?? `${xhr.status} ${xhr.statusText}`))
+    }
+    xhr.onerror = () => reject(new Error("The upload failed: check the connection."))
+    xhr.send(file)
+  })
+export const getVideo = (id: string) => json<VideoStatus>(fetch(`/api/video/${id}`))
 
 // The fluency journal (on the person's own computer, once started).
 export interface JournalSummary {

@@ -16,6 +16,7 @@ import { RollingNumber } from "@/components/rolling-number"
 import { CutReview } from "@/components/cut-review"
 import { DictatePanel } from "@/components/dictate-panel"
 import { JournalPanel } from "@/components/journal-panel"
+import { VideoCard } from "@/components/video-card"
 import { TranscriptView } from "@/components/transcript-view"
 import { PracticePanel } from "@/components/practice-panel"
 import { StagePanel } from "@/components/stage-panel"
@@ -105,6 +106,7 @@ export default function App() {
   const [recommendedDet, setRecommendedDet] = useState<DetectorKind>("heuristic")
   const [notesOn, setNotesOn] = useState(false)
   const [infoReady, setInfoReady] = useState(false)
+  const [videoOn, setVideoOn] = useState(false)
   const [captionsOn, setCaptionsOn] = useState(false)
   const [rescueAvailable, setRescueAvailable] = useState(false)
   const [searchOn, setSearchOn] = useState(false)
@@ -151,6 +153,7 @@ export default function App() {
       .then((i) => {
         setInfoReady(true)
         setNotesOn(i.notes)
+        setVideoOn(!!i.video)
         setCaptionsOn(i.captions)
         setRescueAvailable(i.nemotron)
         setSearchOn(i.search)
@@ -765,6 +768,7 @@ export default function App() {
                 />
               )}
             </GlassCard>
+            {videoOn && <VideoCard busy={running} />}
             </TabsContent>
             {notesOn && (
               <TabsContent value="dictate">
