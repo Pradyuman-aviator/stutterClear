@@ -99,6 +99,7 @@ export default function App() {
   const [hosted, setHosted] = useState(false)
   const [ttsOn, setTtsOn] = useState(false)
   const [interviewOn, setInterviewOn] = useState(false)
+  const [feedbackBrowser, setFeedbackBrowser] = useState(false)
   const [aidOn, setAidOn] = useState(() => stored("sc.aid", "") === "on")
   const [aidMs, setAidMs] = useState(() => Number(stored("sc.aidms", "80")) || 80)
   const [tab, setTab] = useState("calls")
@@ -143,6 +144,7 @@ export default function App() {
         setHosted(i.hosted)
         setTtsOn(!!i.tts)
         setInterviewOn(!!i.interview)
+        setFeedbackBrowser(i.feedback === "browser")
         setDetectorList(i.detectors)
         // Use the best measured detector unless one was picked before (and is still available here).
         const kept = stored("sc.det", "") as DetectorKind
@@ -267,6 +269,7 @@ export default function App() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.code !== "Space" || e.repeat) return
+      if (tab === "stage" && !e.ctrlKey) return
       const el = document.activeElement
       if (el && el !== document.body && el.matches("input, textarea, select, button, [role=switch], [role=radio], [contenteditable]")) return
       e.preventDefault()
@@ -274,7 +277,7 @@ export default function App() {
     }
     addEventListener("keydown", onKey)
     return () => removeEventListener("keydown", onKey)
-  }, [toggle])
+  }, [toggle, tab])
 
   // Settings changed mid-session restart it, so you can flip Off / Gentle / Strong while talking.
   const change = (over: Partial<StartBody>) => {
@@ -368,7 +371,7 @@ export default function App() {
               history.replaceState(null, "", `#${next}`)
             }}
           >
-            <TabsList className="h-auto max-w-full flex-wrap">
+            <TabsList className="sticky top-2 z-20 h-auto max-w-full flex-wrap sm:static">
               <TabsTrigger value="calls">Calls</TabsTrigger>
               <TabsTrigger value="recordings">Recordings</TabsTrigger>
               {ttsOn && <TabsTrigger value="stage">On stage</TabsTrigger>}
@@ -513,7 +516,10 @@ export default function App() {
                   {inDev === BROWSER_MIC && (
                   <FormField>
                     <div className="flex items-center justify-between gap-3">
-                      <FieldLabel>Fluency aid</FieldLabel>
+                      <div>
+                        <FieldLabel>Fluency aid</FieldLabel>
+                        <p className="text-xs text-white/45">Use headphones. Many people find a short delay helps.</p>
+                      </div>
                       <Switch
                         checked={aidOn}
                         onCheckedChange={(on) => {
@@ -661,7 +667,7 @@ export default function App() {
                           enabled={rescueAvailable}
                           build={() => insightsFromTimeline(demo.state!.timeline!)}
                         />
-                        <CutReview id={demo.state.id} cuts={demo.state.timeline.cuts} />
+                        <CutReview id={demo.state.id} cuts={demo.state.timeline.cuts} at={demo.state.t} browserStore={feedbackBrowser} />
                       </>
                     )
                   }
@@ -676,12 +682,20 @@ export default function App() {
             </TabsContent>
             {ttsOn && (
               <TabsContent value="stage">
-                <StagePanel />
+                <StagePanel running={running} caption={caption} data={data} onToggle={toggle} />
               </TabsContent>
             )}
             {interviewOn && (
               <TabsContent value="practice">
-                <PracticePanel />
+                <PracticePanel
+                  running={running}
+                  caption={caption}
+                  playback={playback}
+                  playbackVersion={playbackVersion}
+                  insights={rescueAvailable}
+                  onStart={() => start()}
+                  onStop={() => stop()}
+                />
               </TabsContent>
             )}
           </Tabs>

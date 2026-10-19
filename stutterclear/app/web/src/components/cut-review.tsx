@@ -5,14 +5,37 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { sendFeedback, type Span } from "@/lib/api"
 
-export function CutReview({ id, cuts }: { id: string; cuts: Span[] }) {
+const KEY = "sc.feedback"
+
+function keepLocal(entry: Record<string, unknown>) {
+  try {
+    const cur = JSON.parse(localStorage.getItem(KEY) || "[]") as unknown[]
+    cur.push(entry)
+    localStorage.setItem(KEY, JSON.stringify(cur.slice(-2000)))
+  } catch {
+    // private window: the review is not remembered
+  }
+}
+
+export function CutReview({
+  id,
+  cuts,
+  at,
+  browserStore,
+}: {
+  id: string
+  cuts: Span[]
+  at: number
+  browserStore: boolean
+}) {
   const [done, setDone] = useState<Record<number, string>>({})
   if (!id.startsWith("note-") || !cuts.length) return null
 
-  const mark = async (i: number, verdict: "accept" | "reject", cut: Span) => {
+  const send = async (body: Record<string, unknown>, mark?: () => void) => {
     try {
-      await sendFeedback({ source: "note", id, verdict, cut })
-      setDone((d) => ({ ...d, [i]: verdict }))
+      const r = await sendFeedback(body)
+      if (!r.stored || browserStore) keepLocal(r.entry)
+      mark?.()
     } catch (e) {
       toast.error((e as Error).message)
     }
@@ -27,14 +50,17 @@ export function CutReview({ id, cuts }: { id: string; cuts: Span[] }) {
           <span className="text-xs text-muted-foreground">
             {c.word || "cut"} · {c.start.toFixed(1)}s
           </span>
-          <Button size="xs" variant="outline" disabled={!!done[i]} onClick={() => mark(i, "accept", c)}>
+          <Button size="xs" variant="outline" disabled={!!done[i]} onClick={() => send({ source: "note", id, verdict: "accept", cut: c }, () => setDone((d) => ({ ...d, [i]: "accept" })))}>
             Keep
           </Button>
-          <Button size="xs" variant="ghost" disabled={!!done[i]} onClick={() => mark(i, "reject", c)}>
+          <Button size="xs" variant="ghost" disabled={!!done[i]} onClick={() => send({ source: "note", id, verdict: "reject", cut: c }, () => setDone((d) => ({ ...d, [i]: "reject" })))}>
             Undo
           </Button>
         </div>
       ))}
+      <Button size="xs" variant="outline" onClick={() => send({ source: "note", id, missed_at_s: at })}>
+        This moment was a stutter
+      </Button>
     </div>
   )
 }

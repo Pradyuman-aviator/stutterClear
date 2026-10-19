@@ -188,7 +188,7 @@ export interface InterviewTurn {
 const send = <T,>(path: string, body: unknown) =>
   json<T>(fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }))
 
-export const interviewStart = (body: { role: string; company: string }) =>
+export const interviewStart = (body: { role: string; company: string; posting?: string }) =>
   send<{ card: string; question: string }>("/api/interview/start", body)
 export const interviewNext = (body: { role: string; company: string; card: string; history: InterviewTurn[] }) =>
   send<{ question: string }>("/api/interview/next", body)
