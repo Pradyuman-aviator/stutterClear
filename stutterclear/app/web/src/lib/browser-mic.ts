@@ -95,7 +95,7 @@ export class BrowserMic {
   // connection dropped mid-session (network, server restart) and there is none (null). Not called
   // after stop().
   async start(
-    settings: { mode: string; detector: string; aidMs?: number },
+    settings: { mode: string; detector: string; aidMs?: number; adjust?: Record<string, number> },
     onEnd?: (r: MicEnd | null) => void,
   ): Promise<{ detector: string }> {
     this.stream = await openMic()

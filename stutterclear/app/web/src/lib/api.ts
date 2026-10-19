@@ -198,8 +198,19 @@ export const interviewNext = (body: { role: string; company: string; card: strin
 export const interviewSummary = (body: { role: string; company: string; history: InterviewTurn[] }) =>
   send<{ points: string[] }>("/api/interview/summary", body)
 
+export interface FeedbackSummary {
+  multipliers: Record<string, number> // per kind of stutter: above 1 more careful, below 1 bolder
+  recent: number // review decisions counted for agreement (the last 50)
+  agreement: number | null // share of them that kept the cut
+  auto_ready: boolean // enough agreement to offer to stop asking
+  entries: number
+}
+
 export const sendFeedback = (body: Record<string, unknown>) =>
-  send<{ entry: Record<string, unknown>; stored: boolean }>("/api/feedback", body)
+  send<{ entry: Record<string, unknown>; stored: boolean } & Partial<FeedbackSummary>>("/api/feedback", body)
+export const getFeedback = () => json<FeedbackSummary & { stored: boolean }>(fetch("/api/feedback"))
+export const feedbackSummary = (entries: Record<string, unknown>[]) =>
+  send<FeedbackSummary>("/api/feedback/summary", { entries })
 
 // "Clean a voice note": the page uploads WAV, the server cleans it with the offline engines and the
 // result plays through the demo player under its note id.

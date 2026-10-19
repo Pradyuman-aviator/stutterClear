@@ -37,6 +37,7 @@ import {
 import { EASE_OUT, SPRING } from "@/lib/motion"
 import { useStore, type Store } from "@/lib/store"
 import { BrowserMic } from "@/lib/browser-mic"
+import { localAdjust } from "@/lib/feedback"
 import { cn } from "@/lib/utils"
 
 const MODES: { value: Mode; label: string }[] = [
@@ -197,7 +198,9 @@ export default function App() {
           for (let attempt = 0; ; attempt++) {
             const mic = new BrowserMic()
             try {
-              const r = await mic.start({ mode: over.mode ?? mode, detector: over.detector ?? detector, aidMs: aidOn ? aidMs : 0 }, (end) => {
+              // On a public server this browser's own reviews tune the detector (the server keeps none).
+              const adjust = feedbackBrowser ? await localAdjust() : undefined
+              const r = await mic.start({ mode: over.mode ?? mode, detector: over.detector ?? detector, aidMs: aidOn ? aidMs : 0, adjust }, (end) => {
                 if (browserMic.current !== mic) return
                 browserMic.current = null
                 mic.stop()
@@ -241,7 +244,7 @@ export default function App() {
         setStarting(false)
       }
     },
-    [mode, detector, save, inDev, outDev, reset, loadDevices, aidOn, aidMs]
+    [mode, detector, save, inDev, outDev, reset, loadDevices, aidOn, aidMs, feedbackBrowser]
   )
 
   const stop = useCallback(async () => {
