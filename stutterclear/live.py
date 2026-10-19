@@ -196,6 +196,9 @@ class LiveSession:
         self.running = False
         self.started = None
         self._sent = {"env_in": 0, "env_out": 0, "cuts": 0, "events": 0}
+        # Say it in the call: synthetic speech the user asked for, mixed into what the listener hears.
+        self._say: deque = deque()
+        self._say_lock = threading.Lock()
         # Captions of what the listener hears, on their own thread (the model runs on the CPU).
         from . import captions
         self.captioner = captions.Captioner() if captions.available() else None
@@ -234,8 +237,30 @@ class LiveSession:
                 self.captioner.feed(np.concatenate(pending))
                 pending = []
 
+    def say(self, samples: np.ndarray):
+        """Speak this to the listener (Say it, on the user's click): it is mixed into the cleaned
+        voice as it plays, so it fills the silence of a block without moving anything else."""
+        with self._say_lock:
+            self._say.append(np.asarray(samples, np.float32).copy())
+
+    def _mix(self, y: np.ndarray) -> np.ndarray:
+        if not self._say:
+            return y
+        y, i = y.copy(), 0
+        with self._say_lock:
+            while self._say and i < len(y):
+                clip = self._say[0]
+                k = min(len(clip), len(y) - i)
+                y[i:i + k] += clip[:k]
+                i += k
+                if k == len(clip):
+                    self._say.popleft()
+                else:
+                    self._say[0] = clip[k:]
+        return np.clip(y, -1.0, 1.0)
+
     def _on_output(self, outdata, frames, t, status):
-        y = self.pipe.read(frames)
+        y = self._mix(self.pipe.read(frames))
         outdata[:, 0] = y
         self._emit(y)
 
@@ -249,7 +274,7 @@ class LiveSession:
             self.pipe.detect(x)
             self.detect_ms.append((time.perf_counter() - t0) * 1000)
             if self.out_device is None:
-                self._emit(self.pipe.read(len(x)))  # no device: the input clock drives the output
+                self._emit(self._mix(self.pipe.read(len(x))))  # no device: the input clock drives the output
 
     # ---- control ----------------------------------------------------------------------------
 

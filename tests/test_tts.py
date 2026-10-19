@@ -91,3 +91,42 @@ def test_hosted_say_it_is_capped(monkeypatch):
     monkeypatch.setattr(server, "_tts_calls", server.deque())
     codes = [client.post("/api/tts", json={"text": w}).status_code for w in ("one", "two", "three")]
     assert codes == [200, 200, 429]
+
+
+def test_say_is_mixed_into_what_the_listener_hears():
+    import threading
+    from collections import deque
+    from stutterclear.live import LiveSession
+    s = object.__new__(LiveSession)  # only the mixer, no audio devices or models
+    s._say, s._say_lock = deque(), threading.Lock()
+    s.say(np.full(500, 0.5, np.float32))
+    a = s._mix(np.zeros(320, np.float32))
+    b = s._mix(np.full(320, 0.7, np.float32))
+    c = s._mix(np.zeros(320, np.float32))
+    assert np.allclose(a, 0.5) and np.allclose(b[:180], 1.0) and np.allclose(b[180:], 0.7) and np.allclose(c, 0.0)
+
+
+def test_say_in_the_call_endpoint(monkeypatch):
+    tts._pcm.cache_clear()
+    monkeypatch.setenv("NVIDIA_API_KEY", "test")
+    monkeypatch.setattr(tts, "_call", lambda req, timeout: _fake_reply())
+    said = []
+
+    class Session:
+        out_device = 7
+
+        def say(self, y):
+            said.append(len(y))
+
+    monkeypatch.setitem(server.state, "session", None)
+    assert client.post("/api/say", json={"text": "Kaggle"}).status_code == 409  # no session
+    monkeypatch.setitem(server.state, "session", Session())
+    r = client.post("/api/say", json={"text": "Kaggle"})
+    assert r.status_code == 200 and said == [1600] and "synthetic" in r.json()["label"].lower()
+    Session.out_device = None  # a browser session: nothing goes to a call
+    assert client.post("/api/say", json={"text": "Kaggle"}).status_code == 409
+    Session.out_device = 7
+    monkeypatch.setattr(server, "HOSTED", True)
+    monkeypatch.setitem(server.state, "owner", "alice")
+    assert client.post("/api/say", json={"text": "Kaggle", "page": "bob"}).status_code == 403
+    assert client.post("/api/say", json={"text": "Kaggle", "page": "alice"}).status_code == 200

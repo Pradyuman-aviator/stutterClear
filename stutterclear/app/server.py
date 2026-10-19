@@ -358,6 +358,37 @@ def forget_feedback():
     return {"ok": True}
 
 
+class SayRequest(BaseModel):
+    text: str
+    voice: str = ""
+    page: str = ""  # on a public server, only the page that owns the session
+
+
+@app.post("/api/say")
+def say_in_call(req: SayRequest):
+    """Say it in the call: NVIDIA Magpie TTS speaks the clicked word into the live session's output
+    (what the listener hears, e.g. through a virtual cable), only ever on that click."""
+    from .. import tts
+    s = state["session"]
+    if s is None:
+        raise HTTPException(409, "Start a live session first.")
+    if HOSTED and req.page != state["owner"]:
+        raise HTTPException(403, "Only the page that started the session can speak into it.")
+    if s.out_device is None:
+        raise HTTPException(409, "Nothing is sending your voice to a call here, so Say it plays in this browser instead.")
+    if not tts.available():
+        raise HTTPException(503, "Say it needs NVIDIA_API_KEY set where the app runs.")
+    if not req.text.split() or len(req.text) > tts.MAX_CHARS:
+        raise HTTPException(400, f"Say it takes a word or a short phrase (up to {tts.MAX_CHARS} characters).")
+    _budget(_tts_calls, TTS_PER_MIN, "Say it is busy with other visitors; try again in a moment.")
+    try:
+        y = tts.synthesize(req.text, req.voice or tts.VOICE)
+    except tts.TTSError as e:
+        raise HTTPException(502, str(e)) from e
+    s.say(y)
+    return {"ok": True, "seconds": round(len(y) / SR, 2), "label": tts.LABEL}
+
+
 @app.post("/api/start")
 def start(req: StartRequest):
     if HOSTED:
