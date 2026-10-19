@@ -47,11 +47,13 @@ export function StagePanel({
 }) {
   const [scriptText, setScriptText] = useState("")
   const [pointer, setPointer] = useState(0)
-  const [prompt, setPrompt] = useState<string[]>([])
+  // The next words, shown while the speaker is stuck at `at`; they go once the speaker moves on.
+  const [prompt, setPrompt] = useState<{ at: number; words: string[] } | null>(null)
   const [busy, setBusy] = useState(false)
   const [label, setLabel] = useState("")
   const cap = useStore(caption)
   const words = normaliseScript(scriptText)
+  const shown = prompt && prompt.at === pointer ? prompt.words : []
 
   useEffect(() => {
     if (!running || !cap) return
@@ -69,8 +71,7 @@ export function StagePanel({
       const blocked = performance.now() - data.current.lastBlockAt < 1200
       const mid = pointer > 0 && pointer < script.length && !ends[pointer - 1]
       if ((blocked || silent) && mid) {
-        const next = script.slice(pointer, pointer + 3).join(" ")
-        setPrompt((cur) => (cur.join(" ") === next ? cur : script.slice(pointer, pointer + 3)))
+        setPrompt((cur) => (cur && cur.at === pointer ? cur : { at: pointer, words: script.slice(pointer, pointer + 3) }))
       }
     }, 200)
     return () => window.clearInterval(id)
@@ -112,11 +113,11 @@ export function StagePanel({
               ))}
             </p>
           )}
-          {prompt.length > 0 && <p className="text-3xl font-medium text-white">{prompt.join(" ")}</p>}
+          {shown.length > 0 && <p className="text-3xl font-medium text-white">{shown.join(" ")}</p>}
           <div className="flex flex-wrap gap-2">
             <Button type="button" variant="secondary" onClick={onToggle}>{running ? "Stop" : "Start"}</Button>
-            <Button type="button" variant="outline" disabled={!running || pointer >= words.length} onClick={() => setPrompt(words.slice(pointer, pointer + 3))}>Stuck</Button>
-            <Button type="button" disabled={busy || prompt.length === 0} onClick={() => say(prompt.join(" "))}>
+            <Button type="button" variant="outline" disabled={!running || pointer >= words.length} onClick={() => setPrompt({ at: pointer, words: words.slice(pointer, pointer + 3) })}>Stuck</Button>
+            <Button type="button" disabled={busy || shown.length === 0} onClick={() => say(shown.join(" "))}>
               <Volume2 data-icon="inline-start" />
               {busy ? "Speaking…" : "Say it"}
             </Button>
