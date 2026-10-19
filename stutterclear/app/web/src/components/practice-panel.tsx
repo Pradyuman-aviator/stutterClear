@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
 
 import { InsightsPanel } from "@/components/insights-panel"
@@ -12,6 +12,14 @@ import { Textarea } from "@/components/ui/textarea"
 import type { Caption } from "@/hooks/use-live"
 import { interviewNext, interviewStart, interviewSummary, sayIt, type InterviewTurn, type PlaybackInfo } from "@/lib/api"
 import type { Store } from "@/lib/store"
+
+// The live captions carry only the newest finished lines; an answer keeps every line it had.
+function merge(acc: string[], lines: string[]) {
+  for (let k = Math.min(acc.length, lines.length); k > 0; k--) {
+    if (acc.slice(-k).join("\n") === lines.slice(0, k).join("\n")) return [...acc, ...lines.slice(k)]
+  }
+  return [...acc, ...lines]
+}
 
 async function speak(text: string) {
   try {
@@ -53,6 +61,16 @@ export function PracticePanel({
   const [history, setHistory] = useState<InterviewTurn[]>([])
   const [points, setPoints] = useState<string[]>([])
   const [busy, setBusy] = useState(false)
+  const heard = useRef<string[]>([])
+
+  useEffect(() => {
+    if (!running) return
+    heard.current = []
+    return caption.subscribe(() => {
+      const c = caption.get()
+      if (c) heard.current = merge(heard.current, c.lines)
+    })
+  }, [running, caption])
 
   const start = async () => {
     setBusy(true)
@@ -71,11 +89,12 @@ export function PracticePanel({
     }
   }
 
+  // While answering: everything captioned so far. Afterwards: the answer box, which the person can
+  // correct, or type into when this machine has no captions model.
   const spoken = () => {
-    if (!running && answer.trim()) return answer.trim()
+    if (!running) return answer.trim()
     const c = caption.get()
-    const heard = c ? [...c.lines, c.partial].join(" ").trim() : ""
-    return heard || answer.trim()
+    return [...heard.current, c?.partial ?? ""].join(" ").trim()
   }
 
   const next = async () => {
@@ -131,7 +150,18 @@ export function PracticePanel({
             </Button>
           )}
           {question && <p className="text-base text-foreground">{question}</p>}
-          {answer && <p className="text-sm text-muted-foreground">{answer}</p>}
+          {question && !running && (
+            <Field>
+              <FieldLabel htmlFor="answer">Your answer</FieldLabel>
+              <Textarea
+                id="answer"
+                value={answer}
+                onChange={(e) => setAnswer(e.target.value)}
+                rows={4}
+                placeholder="Press Answer and speak, or type here"
+              />
+            </Field>
+          )}
           {playback && <Playback info={playback} version={playbackVersion} />}
           {playback && (
             <InsightsPanel
