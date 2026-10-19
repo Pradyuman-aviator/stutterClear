@@ -66,11 +66,27 @@ def _teacher():
     return get_teacher(TEACHER, recordings_device())  # shares the live model when it is the same checkpoint
 
 
-def _crisper():
-    if "crisper" not in _models:
+def _crisper(device: str = "auto"):
+    key = f"crisper-{device}"
+    if key not in _models:
         from crisperwhisper import CrisperWhisperModel
-        _models["crisper"] = CrisperWhisperModel("large", backend="transformers")
-    return _models["crisper"]
+        cpu = {} if device == "auto" else {"device": device, "compute_type": "float32"}
+        _models[key] = CrisperWhisperModel("large", backend="transformers", **cpu)
+    return _models[key]
+
+
+def _transcribe(note: dict):
+    """CrisperWhisper on the GPU. A 6 GB card that also holds the live model can run out of memory:
+    then free what the failed try held and transcribe on the CPU (slower, but the note gets cleaned)."""
+    try:
+        return _crisper().transcribe(note["x"], sr=SR, language="en", word_timestamps=True)
+    except Exception as e:
+        if "out of memory" not in str(e).lower():
+            raise
+    import torch
+    torch.cuda.empty_cache()
+    note["status"] = "transcribing on the CPU"
+    return _crisper("cpu").transcribe(note["x"], sr=SR, language="en", word_timestamps=True)
 
 
 def teacher_probs(x: np.ndarray, model=None, dev=None) -> np.ndarray:
@@ -106,7 +122,7 @@ def _process(nid: str):
             note["status"] = "listening"  # the teacher looks for stutters
             note["probs"] = teacher_probs(note["x"])
             note["status"] = "transcribing"  # CrisperWhisper writes down every word, stutters included
-            r = _crisper().transcribe(note["x"], sr=SR, language="en", word_timestamps=True)
+            r = _transcribe(note)
             note["toks"] = label_tokens([{"w": t.word, "s": float(t.start), "e": float(t.end)} for t in r.words])
         note["status"] = "done"
     except Exception as e:  # report it on the page instead of failing silently
