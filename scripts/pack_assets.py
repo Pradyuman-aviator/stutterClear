@@ -3,7 +3,10 @@ the teacher checkpoints (live, and recordings if different) with their calibrati
 live quality, the demo recordings with their caches, and the captions model. See docs/DEPLOY.md.
 
     python scripts/pack_assets.py            # writes stutterclear_assets.tar
+    python scripts/pack_assets.py --demos    # only the demo clips and their caches (~45 MB), for a
+                                             # teammate's laptop: stutterclear_demos.tar
 """
+import argparse
 import json
 import sys
 import tarfile
@@ -15,25 +18,40 @@ from stutterclear.captions import MODEL_DIR  # noqa: E402
 from stutterclear.teacher_runtime import RECORDINGS_CKPT, TEACHER_CKPT  # noqa: E402
 
 
-def files() -> list:
+def demo_files() -> list:
+    """Each demo clip's recording plus its cached teacher probabilities and verbatim transcript, so
+    the Natural and Thorough engines work without the teacher or CrisperWhisper."""
+    out = []
+    for s in json.loads((ROOT / "stutterclear" / "app" / "demo_samples.json").read_text()):
+        folder = "external" if s.get("source", "uclass") == "uclass" else "demo_clips"
+        wav = ROOT / "data" / folder / s["file"]
+        out += [wav, wav.with_suffix(".teacher.npy"), wav.with_suffix(".crisper.json")]
+    return out
+
+
+def files(demos_only: bool = False) -> list:
+    if demos_only:
+        return demo_files()
     out = [ROOT / "runs" / "eval" / "live_quality.json"]
     for ckpt in dict.fromkeys([TEACHER_CKPT, RECORDINGS_CKPT]):  # live and recordings teachers, once each
         out.append(ckpt)
         if ckpt.with_name("live_cuts.json").exists():
             out.append(ckpt.with_name("live_cuts.json"))
-    for s in json.loads((ROOT / "stutterclear" / "app" / "demo_samples.json").read_text()):
-        wav = ROOT / "data" / "external" / s["file"]
-        out += [wav, wav.with_suffix(".teacher.npy"), wav.with_suffix(".crisper.json")]
+    out += demo_files()
     out += sorted(p for p in MODEL_DIR.iterdir() if p.is_file())
     return out
 
 
 if __name__ == "__main__":
-    missing = [p for p in files() if not p.exists()]
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--demos", action="store_true", help="only the demo clips and their caches")
+    args = ap.parse_args()
+    todo = files(args.demos)
+    missing = [p for p in todo if not p.exists()]
     if missing:
         sys.exit("missing:\n  " + "\n  ".join(str(p) for p in missing))
-    dest = ROOT / "stutterclear_assets.tar"
+    dest = ROOT / ("stutterclear_demos.tar" if args.demos else "stutterclear_assets.tar")
     with tarfile.open(dest, "w") as tar:
-        for p in files():
+        for p in todo:
             tar.add(p, arcname=p.relative_to(ROOT).as_posix())
-    print(f"{dest} ({dest.stat().st_size / 1e6:.0f} MB, {len(files())} files)")
+    print(f"{dest} ({dest.stat().st_size / 1e6:.0f} MB, {len(todo)} files)")
