@@ -53,6 +53,11 @@ function modeHint(mode: Mode, detector: DetectorKind) {
     ? `Removes clear repeats. About ${behind} behind you.`
     : `Removes the most stutters, fillers too; may clip a word now and then. About ${behind} behind you.`
 }
+const DETECTOR_NOTE: Record<DetectorKind, string> = {
+  teacher: "The big model, run live on your GPU.",
+  student: "A small model that runs on any computer.",
+  heuristic: "Light rules: safe, but removes little.",
+}
 const NO_OUTPUT = "none"
 const BROWSER_MIC = "__browser__" // live from this browser's mic, streamed to the server
 
@@ -92,6 +97,7 @@ export default function App() {
   const [save, setSave] = useState(false) // never remembered: recording is opt-in every time
   const [detName, setDetName] = useState("")
   const [detectorList, setDetectorList] = useState<DetectorInfo[]>([])
+  const [recommendedDet, setRecommendedDet] = useState<DetectorKind>("heuristic")
   const [notesOn, setNotesOn] = useState(false)
   const [captionsOn, setCaptionsOn] = useState(false)
   const [rescueAvailable, setRescueAvailable] = useState(false)
@@ -146,6 +152,7 @@ export default function App() {
         setInterviewOn(!!i.interview)
         setFeedbackBrowser(i.feedback === "browser")
         setDetectorList(i.detectors)
+        setRecommendedDet(i.recommended)
         // Use the best measured detector unless one was picked before (and is still available here).
         const kept = stored("sc.det", "") as DetectorKind
         const ok = i.detectors.some((d) => d.kind === kept && d.available)
@@ -512,6 +519,7 @@ export default function App() {
                       <ToggleGroupItem key={d.value} value={d.value}>{d.label}</ToggleGroupItem>
                     ))}
                   </ToggleGroup>
+                  <DetectorNote info={detectorList.find((d) => d.kind === detector)} recommended={recommendedDet} />
                   </FormField>
                   {inDev === BROWSER_MIC && (
                   <FormField>
@@ -1073,6 +1081,38 @@ function ContextCard({
   )
 }
 
+
+// What each detector is and how it measured on held-out speakers: the page shows its evidence.
+function DetectorNote({ info, recommended }: { info: DetectorInfo | undefined; recommended: DetectorKind }) {
+  if (!info) return null
+  const q = info.quality
+  return (
+    <div className="grid">
+      <AnimatePresence initial={false}>
+        <motion.div
+          key={info.kind}
+          initial={{ opacity: 0, y: 4 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -4 }}
+          transition={{ duration: 0.25, ease: EASE_OUT }}
+          className="text-xs leading-relaxed text-white/50 [grid-area:1/1]"
+        >
+          {DETECTOR_NOTE[info.kind]}{" "}
+          {q ? (
+            <>
+              Unseen speakers: removes <span className="text-white/80">{q.removed_pct}%</span> of stutters, loses{" "}
+              <span className={q.words_lost_pct > 3 ? "text-amber-200/90" : "text-white/80"}>{q.words_lost_pct}%</span> of
+              words.
+            </>
+          ) : (
+            "Not measured yet."
+          )}
+          {info.kind === recommended && <span className="ml-1 text-emerald-300/80">Recommended.</span>}
+        </motion.div>
+      </AnimatePresence>
+    </div>
+  )
+}
 
 function detectorOptions(list: DetectorInfo[]): { value: DetectorKind; label: string }[] {
   const avail = list.filter((d) => d.available)
