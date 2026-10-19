@@ -50,6 +50,19 @@ def get_teacher(path: Path = TEACHER_CKPT, device: str | None = None):
         return _model[key]
 
 
+def release_gpu():
+    """Free the teachers on the GPU for another model that needs the room (CrisperWhisper on a 6 GB
+    card); the next use loads them again. Only call it when no live session is running."""
+    with _lock:
+        for key in [k for k, (_, dev) in _model.items() if dev.type == "cuda"]:
+            del _model[key]
+    try:
+        import torch
+        torch.cuda.empty_cache()
+    except ImportError:
+        pass
+
+
 def recordings_device() -> str | None:
     """Where the recordings teacher runs. None = the live teacher's own model (same checkpoint).
     A second teacher goes on the GPU only if it has room for both plus CrisperWhisper (10 GB+);

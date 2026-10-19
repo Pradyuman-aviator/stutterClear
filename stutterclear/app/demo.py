@@ -99,6 +99,8 @@ def _excerpt(sid: str) -> np.ndarray:
 def _live_detector():
     """The detector the page recommends (best measured quality this machine can run)."""
     from ..live import make_detector, recommended
+    from . import notes
+    notes.release_gpu()  # the live teacher needs the GPU back from a finished voice note
     return make_detector(recommended(), "gentle")
 
 

@@ -43,6 +43,7 @@ _tts_calls: deque = deque()
 # On a public server a session belongs to the page that started it ("owner", a random id the page
 # sends): only that page gets its live updates (waveforms, captions) and its listen-back.
 state = {"session": None, "last": None, "owner": None, "last_owner": None}
+notes.live_running = lambda: state["session"] is not None  # a voice note leaves the live teacher alone
 clients: dict[WebSocket, str] = {}  # open pages -> their page id
 IDLE = {"idle": True}
 
@@ -74,23 +75,27 @@ def warm_demo():
     """Load the big model and render every demo sample once in the background, so the first live
     session and the first click on a sample start at once. Nemotron's model is checked first:
     the meaning guard runs while the samples render."""
-    if nemotron.available():
-        print(nemotron.resolve(), flush=True)
-    from ..teacher_runtime import get_teacher, live_capable, window_probs
-    if live_capable():
-        get_teacher()
-        window_probs(np.zeros(16000, np.float32))
-    for s in demo.available():
-        for engine in s["engines"]:
-            try:
-                demo.render(s["id"], engine)
-            except Exception:  # a broken sample must not take the server down; it errors on click
-                pass
+    try:
+        if nemotron.available():
+            print(nemotron.resolve(), flush=True)
+        from ..teacher_runtime import get_teacher, live_capable, window_probs
+        if live_capable():
+            get_teacher()
+            window_probs(np.zeros(16000, np.float32))
+        for s in demo.available():
+            for engine in s["engines"]:
+                try:
+                    demo.render(s["id"], engine)
+                except Exception:  # a broken sample must not take the server down; it errors on click
+                    pass
+    finally:
+        notes.warm.set()  # voice notes may take the GPU now
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     task = asyncio.create_task(broadcast())
+    notes.warm.clear()  # voice notes wait: the warm-up uses the live teacher on the GPU
     threading.Thread(target=warm_demo, daemon=True).start()
     yield
     task.cancel()
@@ -364,6 +369,7 @@ def start(req: StartRequest):
     devs = devices()
     in_device = resolve("microphone", req.in_device, req.in_name, devs["inputs"])
     out_device = resolve("output", req.out_device, req.out_name, devs["outputs"])
+    notes.release_gpu()  # the live teacher gets the GPU back from a finished voice note
     s = LiveSession(req.mode, in_device, out_device, req.detector, save=req.save, adjust=feedback.current())
     try:
         s.start()
@@ -423,6 +429,7 @@ async def browser_mic(socket: WebSocket):
     page = str(cfg.get("page", ""))
     # The person's feedback: this computer's log, or on a public server what the page kept for them
     adjust = feedback.from_page(cfg.get("adjust")) if HOSTED else feedback.current()
+    notes.release_gpu()
     loop = asyncio.get_running_loop()
     s = await loop.run_in_executor(None, lambda: LiveSession(  # may load a model: off the event loop
         cfg.get("mode", "gentle"), detector=cfg.get("detector", "heuristic"), source="browser", adjust=adjust))

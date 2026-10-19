@@ -29,6 +29,10 @@ FRAME = 320
 _notes: dict = {}
 _gpu = threading.Lock()
 _models: dict = {}
+# Set once the server's warm-up (live teacher, demo renders) is over; until then a note waiting
+# for the GPU would load CrisperWhisper next to the live teacher. Nothing to wait for by default.
+warm = threading.Event()
+warm.set()
 
 
 class NoteError(ValueError):
@@ -75,16 +79,65 @@ def _crisper(device: str = "auto"):
     return _models[key]
 
 
-def _transcribe(note: dict):
-    """CrisperWhisper on the GPU. A 6 GB card that also holds the live model can run out of memory:
-    then free what the failed try held and transcribe on the CPU (slower, but the note gets cleaned)."""
+
+NEED_GB = 4.0  # free GPU memory CrisperWhisper large needs to run there
+
+
+def live_running() -> bool:
+    """Whether a live session holds the live teacher on the GPU (the server replaces this)."""
+    return False
+
+
+def _gpu_free_gb() -> float | None:
+    """Free GPU memory, or None without a GPU."""
     try:
-        return _crisper().transcribe(note["x"], sr=SR, language="en", word_timestamps=True)
-    except Exception as e:
-        if "out of memory" not in str(e).lower():
-            raise
-    import torch
-    torch.cuda.empty_cache()
+        import torch
+        if not torch.cuda.is_available():
+            return None
+        return torch.cuda.mem_get_info()[0] / 1e9
+    except ImportError:
+        return None
+
+
+def _gpu_ready() -> bool:
+    """Whether CrisperWhisper can use the GPU. A 6 GB card cannot hold it next to the live teacher,
+    and Windows does not fail then: it spills into system memory and runs many times slower. So the
+    live teacher makes room when no session needs it (the next session loads it again); during a
+    session the note goes to the CPU."""
+    free = _gpu_free_gb()
+    if free is None or "crisper-auto" in _models or free >= NEED_GB:
+        return True
+    if live_running():
+        return False
+    from ..teacher_runtime import release_gpu
+    release_gpu()
+    return (_gpu_free_gb() or 0.0) >= NEED_GB
+
+
+def release_gpu():
+    """Give the GPU back to a live session: drop CrisperWhisper's GPU copy, unless a note is being
+    transcribed right now."""
+    if not _gpu.acquire(blocking=False):
+        return
+    try:
+        if _models.pop("crisper-auto", None) is not None:
+            import torch
+            torch.cuda.empty_cache()
+    finally:
+        _gpu.release()
+
+
+def _transcribe(note: dict):
+    """CrisperWhisper on the GPU when it fits, else on the CPU (slower, but the note gets cleaned).
+    Running out of memory anyway also falls back to the CPU."""
+    if _gpu_ready():
+        try:
+            return _crisper().transcribe(note["x"], sr=SR, language="en", word_timestamps=True)
+        except Exception as e:
+            if "out of memory" not in str(e).lower():
+                raise
+        import torch
+        torch.cuda.empty_cache()
     note["slow"] = True  # the page says it will take longer
     return _crisper("cpu").transcribe(note["x"], sr=SR, language="en", word_timestamps=True)
 
@@ -118,6 +171,7 @@ def teacher_probs(x: np.ndarray, model=None, dev=None) -> np.ndarray:
 def _process(nid: str):
     note = _notes[nid]
     try:
+        warm.wait(timeout=300)
         with _gpu:
             note["status"] = "listening"  # the teacher looks for stutters
             note["probs"] = teacher_probs(note["x"])
