@@ -200,6 +200,11 @@ def _process(nid: str):
             note["status"] = "transcribing"  # CrisperWhisper writes down every word, stutters included
             r = _transcribe(note)
             note["toks"] = label_tokens([{"w": t.word, "s": float(t.start), "e": float(t.end)} for t in r.words])
+        try:  # the journal (if the person started one) must never fail a note
+            from .. import journal
+            journal.record(journal.from_note(note["toks"], len(note["x"]) / SR))
+        except Exception:
+            pass
         note["status"] = "done"
     except Exception as e:  # report it on the page instead of failing silently
         note["status"], note["error"] = "error", f"Cleaning failed: {e}"

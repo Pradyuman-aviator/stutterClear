@@ -18,7 +18,7 @@ from fastapi.staticfiles import StaticFiles
 import numpy as np
 from pydantic import BaseModel
 
-from .. import feedback, nemotron
+from .. import feedback, journal, nemotron
 from ..audio import wav_bytes
 from ..config import SAMPLE_RATE as SR
 from ..live import DEFAULT_STUDENT, LiveSession, detectors, devices, recommended, student_eval
@@ -389,6 +389,29 @@ def say_in_call(req: SayRequest):
     return {"ok": True, "seconds": round(len(y) / SR, 2), "label": tts.LABEL}
 
 
+@app.get("/api/journal")
+def journal_summary():
+    """Progress over time: stutters per minute by day, this week against the last, hardest words."""
+    return journal.summary([] if HOSTED else journal.read())
+
+
+@app.post("/api/journal/start")
+def journal_start():
+    """Start keeping a journal on this computer (counts and words, never audio)."""
+    if HOSTED:
+        raise HTTPException(403, "The journal is kept only on your own computer; a public server keeps none.")
+    journal.start()
+    return journal.summary(journal.read())
+
+
+@app.delete("/api/journal")
+def journal_forget():
+    """Forget the journal and stop keeping one."""
+    if not HOSTED:
+        journal.forget()
+    return {"ok": True}
+
+
 @app.post("/api/start")
 def start(req: StartRequest):
     if HOSTED:
@@ -421,6 +444,7 @@ def stop():
         return {"ok": True, "summary": None}
     summary = s.stop()
     state["last"] = s.recording()
+    journal.record(journal.from_session(summary, s.raw.n / SR))  # only if the person started a journal
     return {"ok": True, "summary": summary, "playback": playback_info()}
 
 
@@ -490,6 +514,8 @@ async def browser_mic(socket: WebSocket):
             state["session"] = None
             summary = await loop.run_in_executor(None, s.stop)
             state["last"], state["last_owner"] = s.recording(), page
+            if not HOSTED:
+                journal.record(journal.from_session(summary, s.raw.n / SR))
         try:  # the page may already be gone
             await socket.send_json({"summary": summary, "playback": playback_info(page), "ended": ended})
             await socket.close()
