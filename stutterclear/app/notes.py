@@ -75,12 +75,34 @@ def _crisper(device: str = "auto"):
     if key not in _models:
         from crisperwhisper import CrisperWhisperModel
         cpu = {} if device == "auto" else {"device": device, "compute_type": "float32"}
-        _models[key] = CrisperWhisperModel("large", backend="transformers", **cpu)
+        _models[key] = _lean(CrisperWhisperModel("large", backend="transformers", **cpu))
     return _models[key]
 
 
+def _lean(cw):
+    """CrisperWhisper's transformers backend asks generate() for attention weights (its word timing
+    reads the cross-attention), and Whisper then also keeps every encoder layer's self-attention:
+    32 maps of 1500 x 1500, 2.9 GB that a 6 GB card does not have (Windows spills it into system
+    memory and runs ten times slower). Running the encoder first, without them, gives the same
+    words and times at 4.0 GB peak instead of 6.8: a 31 s note transcribes in 10 s."""
+    model = getattr(getattr(cw, "_engine", None), "model", None)
+    if model is None or not hasattr(model, "get_encoder"):
+        return cw
+    generate = model.generate
 
-NEED_GB = 4.0  # free GPU memory CrisperWhisper large needs to run there
+    def lean_generate(input_features=None, **kw):
+        if kw.get("output_attentions") and "encoder_outputs" not in kw and input_features is not None:
+            import torch
+            with torch.no_grad():
+                kw["encoder_outputs"] = model.get_encoder()(input_features, output_attentions=False, return_dict=True)
+            return generate(None, **kw)  # Whisper takes the features or the encoder's output, not both
+        return generate(input_features, **kw)
+
+    model.generate = lean_generate
+    return cw
+
+
+NEED_GB = 4.5  # free GPU memory CrisperWhisper large needs to run there (4.0 GB peak, measured)
 
 
 def live_running() -> bool:

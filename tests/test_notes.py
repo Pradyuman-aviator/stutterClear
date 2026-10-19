@@ -73,3 +73,29 @@ def test_other_errors_are_reported(monkeypatch):
                                                      "created": time.time(), "error": None}})
     notes._process("note-y")
     assert notes._notes["note-y"]["status"] == "error" and "bad audio" in notes._notes["note-y"]["error"]
+
+
+def test_lean_crisper_runs_the_encoder_without_attention_maps():
+    seen = {}
+
+    class Encoder:
+        def __call__(self, feats, output_attentions, return_dict):
+            seen["encoder_attentions"] = output_attentions
+            return "encoded"
+
+    class Model:
+        def get_encoder(self):
+            return Encoder()
+
+        def generate(self, input_features=None, **kw):
+            seen["features"], seen["kw"] = input_features, kw
+            return "out"
+
+    cw = SimpleNamespace(_engine=SimpleNamespace(model=Model()))
+    notes._lean(cw)
+    gen = cw._engine.model.generate
+    assert gen("feats", output_attentions=True, max_new_tokens=5) == "out"
+    assert seen["encoder_attentions"] is False and seen["features"] is None
+    assert seen["kw"] == {"output_attentions": True, "max_new_tokens": 5, "encoder_outputs": "encoded"}
+    gen("feats", max_new_tokens=5)  # no attention asked for: untouched
+    assert seen["features"] == "feats" and "encoder_outputs" not in seen["kw"]
