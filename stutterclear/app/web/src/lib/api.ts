@@ -191,6 +191,20 @@ export const sayIt = async (text: string) => {
   return { wav: await r.blob(), label: r.headers.get("X-Voice-Label") ?? "Synthetic voice" }
 }
 
+// Say it in the call: the server mixes the word into what the listener hears (device sessions only).
+export const sayInCall = (text: string) =>
+  send<{ ok: boolean; seconds: number; label: string }>("/api/say", { text, page: PAGE_ID })
+
+// Say it here: play the synthetic word in this browser.
+export async function playSaid(text: string) {
+  const r = await sayIt(text)
+  const url = URL.createObjectURL(r.wav)
+  const audio = new Audio(url)
+  audio.onended = () => URL.revokeObjectURL(url)
+  await audio.play()
+  return r.label
+}
+
 export interface InterviewTurn {
   question: string
   answer: string

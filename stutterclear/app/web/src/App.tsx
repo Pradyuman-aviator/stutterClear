@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from "react"
+import { useCallback, useEffect, useEffectEvent, useRef, useState, type ReactNode, type RefObject } from "react"
 import { AnimatePresence, MotionConfig, motion, type Variants } from "motion/react"
 import { Check, Cpu, Lock, Mic, Square } from "lucide-react"
 import { IsoBadge, IsoContext, IsoLogo, IsoMirror, IsoSetup } from "@/components/iso-icon"
@@ -23,6 +23,7 @@ import { Slider } from "@/components/ui/slider"
 import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Toaster } from "@/components/ui/sonner"
+import { toast as notify } from "sonner"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { SessionToast, type ToastData } from "@/components/session-toast"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -32,7 +33,7 @@ import { useDemo } from "@/hooks/use-demo"
 import { useLive, type LiveData, type Stats } from "@/hooks/use-live"
 import { useSignals, type Signals } from "@/hooks/use-signals"
 import {
-  askRescue, getDemos, getDevices, getInfo, getPlayback, KIND_LABEL, prepareContext, startSession, stopSession,
+  askRescue, playSaid, sayInCall, getDemos, getDevices, getInfo, getPlayback, KIND_LABEL, prepareContext, startSession, stopSession,
   type DemoTimeline, type InsightsBody,
   type DemoSample, type DetectorInfo, type DetectorKind, type Devices, type Mode, type PlaybackInfo, type StartBody,
 } from "@/lib/api"
@@ -305,6 +306,47 @@ export default function App() {
     if (running && !busy.current) start(over)
   }
 
+  const lastMode = useRef<Mode>(mode === "off" ? "gentle" : mode)
+  useEffect(() => {
+    if (mode !== "off") lastMode.current = mode
+  }, [mode])
+  const pauseCleaning = useEffectEvent(() => {
+    const next = mode === "off" ? lastMode.current : "off"
+    change({ mode: next })
+    notify.message(next === "off" ? "Cleaning paused: the listener hears you as you are. Esc resumes." : "Cleaning resumed.")
+  })
+
+  // Esc pauses the cleaning mid-session (Off) and brings the last mode back: if something sounds
+  // wrong in a call, one key gives the listener your voice exactly as it is.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.code !== "Escape" || e.repeat || !running) return
+      e.preventDefault()
+      pauseCleaning()
+    }
+    addEventListener("keydown", onKey)
+    return () => removeEventListener("keydown", onKey)
+  }, [running])
+
+  // Say it: the synthetic voice speaks a word you picked. Into the call when the cleaned voice goes to
+  // an output (a virtual cable), otherwise here in the browser.
+  const sayWord = useCallback(
+    async (word: string) => {
+      try {
+        if (running && inDev !== BROWSER_MIC && outDev !== NO_OUTPUT) {
+          const r = await sayInCall(word)
+          notify.success(`Said in the call: "${word}" (${r.label})`)
+        } else {
+          const label = await playSaid(word)
+          notify.message(`"${word}" (${label})`)
+        }
+      } catch (e) {
+        notify.error((e as Error).message)
+      }
+    },
+    [running, inDev, outDev]
+  )
+
   // Word rescue: ask Nemotron for the word you are stuck on, from the captions so far and the
   // context card. Opt-in; asked automatically when a block is detected, or with the button.
   const askForWord = useCallback(async () => {
@@ -435,6 +477,14 @@ export default function App() {
                         <kbd className="rounded-md border border-white/15 bg-white/5 px-1.5 py-0.5 font-sans text-[11px] text-white/60">
                           Space
                         </kbd>
+                        {running && (
+                          <>
+                            · pause cleaning
+                            <kbd className="rounded-md border border-white/15 bg-white/5 px-1.5 py-0.5 font-sans text-[11px] text-white/60">
+                              Esc
+                            </kbd>
+                          </>
+                        )}
                       </span>
                     </div>
                     <div className="flex w-full flex-col items-center gap-2 sm:items-start">
@@ -618,7 +668,7 @@ export default function App() {
                 {captionsOn && (
                   <CaptionStrip
                     caption={caption}
-                    rescue={{ enabled: rescueOn && rescueAvailable, loading: rescue.loading, words: rescue.words, error: rescue.error, onAsk: askForWord }}
+                    rescue={{ enabled: rescueOn && rescueAvailable, loading: rescue.loading, words: rescue.words, error: rescue.error, onAsk: askForWord, onSay: ttsOn ? sayWord : undefined }}
                     label={demoOn ? `Captions · ${demo.state?.hear === "original" ? "original" : "clean voice"}` : "Live captions · what the listener hears"}
                   />
                 )}

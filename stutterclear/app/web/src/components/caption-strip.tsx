@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from "motion/react"
-import { Captions, LoaderCircle, Sparkles } from "lucide-react"
+import { Captions, LoaderCircle, Sparkles, Volume2 } from "lucide-react"
 import type { Caption } from "@/hooks/use-live"
 import { EASE_OUT, SPRING } from "@/lib/motion"
 import { useStore, type Store } from "@/lib/store"
@@ -11,6 +11,7 @@ export interface Rescue {
   words: string[]
   error?: string
   onAsk: () => void
+  onSay?: (word: string) => void // Say it: the synthetic voice speaks the chosen word (on click only)
 }
 
 // What the listener hears, as text: the previous line dimmed, the current one with each new word
@@ -56,15 +57,20 @@ export function CaptionStrip({ caption, label, rescue }: { caption: Store<Captio
                 <>
                   <span className="text-violet-200/70">Maybe:</span>
                   {rescue.words.map((w, i) => (
-                    <motion.span
+                    <motion.button
+                      type="button"
                       key={w}
+                      disabled={!rescue.onSay}
+                      onClick={() => rescue.onSay?.(w)}
+                      title={rescue.onSay ? "Say it: a synthetic voice speaks this word" : undefined}
                       initial={{ opacity: 0, scale: 0.8, y: 4 }}
                       animate={{ opacity: 1, scale: 1, y: 0 }}
                       transition={{ ...SPRING.press, delay: i * 0.06 }}
-                      className="rounded-full border border-violet-300/30 bg-violet-300/15 px-2.5 py-0.5 text-[13px] text-violet-50"
+                      className="inline-flex items-center gap-1 rounded-full border border-violet-300/30 bg-violet-300/15 px-2.5 py-0.5 text-[13px] text-violet-50 enabled:cursor-pointer enabled:hover:bg-violet-300/25 disabled:cursor-default"
                     >
+                      {rescue.onSay && <Volume2 className="size-3 text-violet-200/70" />}
                       {w}
-                    </motion.span>
+                    </motion.button>
                   ))}
                   <span className="text-white/30">· Nemotron</span>
                 </>
