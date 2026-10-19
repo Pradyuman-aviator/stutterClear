@@ -18,6 +18,9 @@ crisperwhisper==2.0.3
 # Say it: NVIDIA Magpie TTS on build.nvidia.com, called over gRPC (needs NVIDIA_API_KEY)
 grpcio>=1.60
 
+# Clean my video: a bundled ffmpeg cuts picture and sound
+imageio-ffmpeg>=0.5
+
 # Live captions: NVIDIA NeMo streaming FastConformer through sherpa-onnx (CPU)
 sherpa-onnx==1.13.8
 

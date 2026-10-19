@@ -22,7 +22,7 @@ from .. import feedback, journal, nemotron
 from ..audio import wav_bytes
 from ..config import SAMPLE_RATE as SR
 from ..live import DEFAULT_STUDENT, LiveSession, detectors, devices, recommended, student_eval
-from . import demo, notes
+from . import demo, notes, video
 
 STATIC = Path(__file__).parent / "static"
 # A public deployment: visitors bring their own mic through the browser; the server never opens its
@@ -144,6 +144,7 @@ def info():
             "search": context_agent.search_available(), "model": nemotron.MODEL, "hosted": HOSTED,
             "tts": tts.available(), "tts_voice": tts.VOICE, "tts_label": tts.LABEL, "interview": nemotron.available(),
             "feedback": "browser" if HOSTED else "server", "uclass_demos": demo.uclass_enabled(),
+            "video": video.available(),
             "detectors": detectors(), "recommended": recommended()}
 
 
@@ -567,6 +568,42 @@ async def create_note(request: Request):
         raise HTTPException(429, str(e)) from e
     except notes.NoteError as e:
         raise HTTPException(415, str(e)) from e
+
+
+@app.post("/api/video")
+async def create_video(request: Request, engine: str = "natural", name: str = "video.mp4"):
+    """Body: a video file. Its stutters are cut from picture and sound together (the voice-note
+    engines on its soundtrack, ffmpeg for the cuts)."""
+    if not video.available():
+        raise HTTPException(503, "Cleaning a video needs the offline model and ffmpeg (pip install imageio-ffmpeg).")
+    data = await request.body()
+    if len(data) > video.MAX_BYTES:
+        raise HTTPException(413, "That video is too large (300 MB at most).")
+    try:
+        return {"id": video.submit(data, name, engine)}
+    except notes.NoteBusy as e:
+        raise HTTPException(429, str(e)) from e
+    except video.VideoError as e:
+        raise HTTPException(400, str(e)) from e
+
+
+@app.get("/api/video/{jid}")
+def video_status(jid: str):
+    s = video.status(jid)
+    if s is None:
+        raise HTTPException(404, "No such video (they are kept for an hour).")
+    return s
+
+
+@app.get("/api/video/{jid}/clean.mp4")
+def video_result(jid: str, download: bool = False):
+    data = video.result(jid)
+    if data is None:
+        raise HTTPException(404, "That video is not ready (or was forgotten after an hour).")
+    headers = {"Cache-Control": "no-store"}
+    if download:
+        headers["Content-Disposition"] = 'attachment; filename="stutterclear-video.mp4"'
+    return Response(data, media_type="video/mp4", headers=headers)
 
 
 @app.get("/api/notes/{nid}")
