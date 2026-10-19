@@ -33,13 +33,18 @@ writes live captions; the hosted demo is built to run on a Nebius AI Cloud GPU V
 
 ## What it does
 
-### Three ways to use it
+### Ways to use it (one tab each)
 
 | | What it is | How well it works today (7 speakers it never trained on) |
 |---|---|---|
 | **Live** | Your mic (or your browser's, on the hosted demo), cleaned in real time, sent to headphones or a virtual mic for Zoom, Meet or Teams. | Big model on a laptop GPU: **33% of stutters removed in Gentle** (fillers kept, 3.1% of words lost) and **65% in Strong** (fillers too, 5.7% lost), 0.5-0.85 s behind you. Without a GPU the rule-based detector removes ~8%. |
 | **Clean a voice note** | Record or upload a message (up to 3 minutes) in the browser and get it back cleaned, to play or download. | Cuts land **between words only**: 57% of stutters removed in Natural, **91% in Thorough** (fillers and repeated phrases too), with **no real word cut**. |
-| **Try a real recording** | Three real stuttered recordings (UCLASS, adult speakers) with A/B playback, no mic needed. | Every engine, side by side, on the same 30 s of speech. |
+| **Try a real recording** | Real stuttered recordings (UCLASS, adult speakers; on this computer only) and read speech from LibriSpeech with synthetic stutters (safe to publish), with A/B playback, no mic needed. | Every engine, side by side, on the same 30 s of speech. |
+| **Dictate** | Speak (or upload) and get the text without the stutters, ready to paste into an email or a chat. | The Thorough engine read as text; the removed words are shown struck through. |
+| **Clean my video** | Upload a talk, a post or a recorded answer (up to 3 minutes) and get the video back with the stutters cut from picture and sound together. | The recording engines on its soundtrack; ffmpeg cuts at word boundaries with 10 ms fades. |
+| **On stage** (needs `NVIDIA_API_KEY`) | Paste your speech; the highlight follows what you say, and when you are stuck the next words appear; Say it speaks them in a synthetic voice, only on your click. | Script following from the live captions; NVIDIA Magpie TTS. |
+| **Practice** (needs `NEBIUS_API_KEY`) | A mock interview for a role and company: spoken questions, answers by voice, three practice points at the end. | Nemotron researches the role and asks one question at a time; it never comments on how you speak. |
+| **Journal** (on your own computer) | Stutters a minute by day, this week against the last, your hardest words and first sounds. Opt-in, never audio. | Counts from each live session and voice note. |
 
 ### Live modes
 
@@ -70,6 +75,15 @@ Every cut in Natural and Thorough is reviewed by Nemotron's meaning guard (below
 - **Live captions** of what the listener hears (NVIDIA FastConformer, streaming, on the CPU).
 - **Listen back** after a session: the original and the clean voice, and a download of the clean one.
 - **Session summary**: stutters removed, seconds saved, typical delay.
+- **Esc** pauses the cleaning mid-session (your voice exactly as it is) and brings the mode back.
+- **Say it in the call**: a word-rescue suggestion, tapped, is spoken into the call through the same
+  output as your cleaned voice (synthetic voice, labelled, only on your tap).
+- **Review the cuts** of a voice note (good cut, undo, "this moment was a stutter"): StutterClear
+  adjusts each kind's thresholds to you, and offers to stop asking once it agrees with you 95% of
+  the time.
+- **Fluency aid**: hear your own voice 50-200 ms late in headphones (many people find it helps).
+- **Timestamps** of every cut as CSV or SRT subtitles, and the transcript with removed words struck
+  through.
 
 ### NVIDIA Nemotron on Nebius Token Factory
 
@@ -320,6 +334,7 @@ Environment variables, read where the app runs:
 | `STUTTERCLEAR_NOTES` | (on) | `0` = no voice notes (a server without a GPU). |
 | `STUTTERCLEAR_UCLASS_DEMOS` | on locally, off when hosted | `1` / `0`: show / hide the UCLASS demo clips (research licence). |
 | `STUTTERCLEAR_FEEDBACK` | `runs/feedback/feedback.jsonl` | Where this computer keeps your review decisions. |
+| `STUTTERCLEAR_JOURNAL` | `runs/journal/journal.jsonl` | Where this computer keeps the fluency journal (once started). |
 
 `scripts/run_app.py` takes `--port`, `--host` (`0.0.0.0` in a container), `--no-browser` and
 `--strict-port` (exit if the port is taken, for a tunnel pointing at it).
@@ -345,6 +360,12 @@ The page talks to a FastAPI server; everything it does is available to other cli
 | `POST /api/interview/start` `{role, company, posting?}`, `/next` `{role, company, card, history}`, `/summary` | Practice interview: context card + first question, the next question, three practice points. |
 | `POST /api/feedback` `{source, id, cut + verdict \| missed_at_s}`, `GET`, `DELETE /api/feedback` | Review decisions (keep / undo a cut, a missed stutter): logged on this computer, which adapts each kind's thresholds; summary; forget. |
 | `POST /api/feedback/summary` `{entries}` | The same summary for a log a page keeps itself (public servers store none). |
+| `POST /api/say` `{text, page?}` | Say it in the call: the spoken word is mixed into the live session's output (device sessions). |
+| `POST /api/video?engine=` (body: a video), `GET /api/video/{id}`, `.../clean.mp4[?download=1]` | Clean my video: progress, cuts and transcript, then the cleaned video. |
+| `GET /api/journal`, `POST /api/journal/start`, `DELETE /api/journal` | The fluency journal on this computer (opt-in). |
+
+Natural and Thorough timelines also carry `text`: every word as said, whether a cut removed it, and
+the clean text (what Dictate copies).
 
 ## Hosted demo
 
