@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useEffectEvent, useRef, useState, type ReactNode, type RefObject } from "react"
 import { AnimatePresence, MotionConfig, motion, type Variants } from "motion/react"
-import { Check, Cpu, Lock, Mic, Square } from "lucide-react"
+import { Check, Cpu, Lock, Mic, Play, Square } from "lucide-react"
 import { IsoBadge, IsoContext, IsoLogo, IsoMirror, IsoSetup } from "@/components/iso-icon"
 
 import { CaptionStrip } from "@/components/caption-strip"
@@ -173,6 +173,11 @@ export default function App() {
     getDemos().then(setDemos).catch(() => {})
     loadDevices()
   }, [connected, loadDevices])
+
+  const goTab = (next: string) => {
+    setTab(next)
+    history.replaceState(null, "", `#${next}`)
+  }
 
   // The tabs this server can show. A link to one (#dictate, #stage...) waits for the server to say
   // which features it has.
@@ -428,13 +433,9 @@ export default function App() {
 
           <Tabs
             key={tabs} // new tabs register afresh, so the highlight follows a tab that appears with a link to it
-            className="mt-5"
+            className="mt-5 min-w-0"
             value={tab}
-            onValueChange={(v) => {
-              const next = String(v)
-              setTab(next)
-              history.replaceState(null, "", `#${next}`)
-            }}
+            onValueChange={(v) => goTab(String(v))}
           >
             <TabsList className="sticky top-2 z-20 h-auto max-w-full flex-wrap sm:static">
               <TabsTrigger value="calls">Calls</TabsTrigger>
@@ -445,11 +446,11 @@ export default function App() {
               {!hosted && <TabsTrigger value="journal">Journal</TabsTrigger>}
             </TabsList>
             <TabsContent value="calls">
-              <div className="grid grid-flow-row-dense gap-4 sm:gap-5 md:grid-cols-2 lg:grid-cols-3">
+              <div className="grid grid-flow-row-dense grid-cols-1 gap-4 sm:gap-5 md:grid-cols-2 lg:grid-cols-3">
             {/* Hero: orb, status, start */}
             <div id="hero" className="scroll-mt-4 md:col-span-2">
               <GlassCard tilt={0} className="h-full p-5 sm:p-8">
-                <div className="relative flex flex-col items-center gap-6 sm:flex-row sm:gap-10">
+                <div className="relative flex flex-col items-center gap-6 sm:h-full sm:flex-row sm:gap-10">
                   <VoiceOrb
                     signals={signals}
                     running={active}
@@ -505,6 +506,16 @@ export default function App() {
                         ))}
                       </ToggleGroup>
                       <p className="max-w-md text-[13px] leading-relaxed text-white/50">{modeHint(mode, detector)}</p>
+                      {!running && demos.samples.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => goTab("recordings")}
+                          className="mt-1 inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs text-white/70 transition-colors hover:border-sky-300/30 hover:text-sky-100"
+                        >
+                          <Play className="size-3 fill-current text-sky-300" />
+                          No mic handy? Hear it on real recordings
+                        </button>
+                      )}
                     </div>
                     <AnimatePresence initial={false}>
                       {!running && !demoOn && playback && (
@@ -582,7 +593,7 @@ export default function App() {
                   )}
                   <FormField>
                   <FieldLabel>Detector</FieldLabel>
-                  <ToggleGroup aria-label="Detector" value={[detector]} onValueChange={(v) => { const n = v[0] as DetectorKind | undefined; if (n) change({ detector: n }) }} variant="outline" spacing={1}>
+                  <ToggleGroup aria-label="Detector" className="flex-wrap" value={[detector]} onValueChange={(v) => { const n = v[0] as DetectorKind | undefined; if (n) change({ detector: n }) }} variant="outline" spacing={1}>
                     {detectorOptions(detectorList).map((d) => (
                       <ToggleGroupItem key={d.value} value={d.value}>{d.label}</ToggleGroupItem>
                     ))}
@@ -702,7 +713,7 @@ export default function App() {
               </div>
             </TabsContent>
 
-            <TabsContent value="recordings" className="grid gap-4 md:grid-cols-2">
+            <TabsContent value="recordings" className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <GlassCard tilt={0} className="flex flex-col gap-4 p-5 sm:p-6 md:col-span-2">
               <VoiceNoteCard
                 enabled={notesOn}
