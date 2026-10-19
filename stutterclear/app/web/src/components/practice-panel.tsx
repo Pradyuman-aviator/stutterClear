@@ -193,7 +193,7 @@ export function PracticePanel({
           >
             {running ? "Stop answering" : "Answer"}
           </Button>
-          <Button type="button" disabled={busy || !spoken()} onClick={next}>
+          <Button type="button" disabled={busy || running || !answer.trim()} onClick={next}>
             {history.length >= 4 ? "Finish" : "Next question"}
           </Button>
         </CardFooter>
