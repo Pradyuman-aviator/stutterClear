@@ -85,7 +85,7 @@ def _transcribe(note: dict):
             raise
     import torch
     torch.cuda.empty_cache()
-    note["status"] = "transcribing on the CPU"
+    note["slow"] = True  # the page says it will take longer
     return _crisper("cpu").transcribe(note["x"], sr=SR, language="en", word_timestamps=True)
 
 
@@ -147,7 +147,7 @@ def status(nid: str) -> dict | None:
     note = _notes.get(nid)
     if note is None:
         return None
-    return {"id": nid, "status": note["status"], "error": note["error"],
+    return {"id": nid, "status": note["status"], "error": note["error"], "slow": note.get("slow", False),
             "duration_s": round(len(note["x"]) / SR, 2)}
 
 

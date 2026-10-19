@@ -218,6 +218,7 @@ export interface NoteStatus {
   id: string
   status: "queued" | "listening" | "transcribing" | "done" | "error"
   error: string | null
+  slow?: boolean // the GPU was full: transcribing on the CPU, which takes longer
   duration_s: number
 }
 

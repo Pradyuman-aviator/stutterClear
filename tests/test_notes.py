@@ -27,7 +27,7 @@ def test_a_full_gpu_falls_back_to_the_cpu(monkeypatch):
                                                      "created": time.time(), "error": None}})
     notes._process("note-x")
     note = notes._notes["note-x"]
-    assert note["status"] == "done" and calls == ["auto", "cpu"]
+    assert note["status"] == "done" and calls == ["auto", "cpu"] and notes.status("note-x")["slow"]
     assert [t["label"] for t in note["toks"]] == ["repeat", "fluent"]
 
 

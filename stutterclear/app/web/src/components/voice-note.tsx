@@ -23,7 +23,7 @@ type Phase =
   | { kind: "idle" }
   | { kind: "recording"; started: number }
   | { kind: "preparing" }
-  | { kind: "cleaning"; step: NoteStatus["status"] }
+  | { kind: "cleaning"; step: NoteStatus["status"]; slow?: boolean }
   | { kind: "error"; message: string }
 
 // Record or upload a message; it is cleaned offline (teacher + word-aligned cuts) and opens in the
@@ -63,7 +63,7 @@ export function VoiceNoteCard({
           onReady(id, s.duration_s)
           return
         }
-        setPhase({ kind: "cleaning", step: s.status })
+        setPhase({ kind: "cleaning", step: s.status, slow: s.slow })
       }
     } catch (e) {
       setPhase({ kind: "error", message: (e as Error).message })
@@ -173,7 +173,11 @@ export function VoiceNoteCard({
               ) : working ? (
                 <span className="inline-flex items-center gap-2 text-white/70">
                   <LoaderCircle className="size-4 animate-spin text-sky-300" />
-                  {phase.kind === "preparing" ? "Preparing the audio…" : STEP[phase.step]}
+                  {phase.kind === "preparing"
+                    ? "Preparing the audio…"
+                    : phase.slow && phase.step === "transcribing"
+                      ? "Writing down every word (on the CPU: the GPU is busy, so this takes longer)…"
+                      : STEP[phase.step]}
                 </span>
               ) : phase.kind === "error" ? (
                 <span className="text-rose-300">{phase.message}</span>
