@@ -101,6 +101,23 @@ python scripts/run_app.py --no-browser --port 8766 --strict-port
 cloudflared tunnel --url http://localhost:8766      # prints an https://....trycloudflare.com link
 ```
 
+## Free backup: a Hugging Face Space (always on, CPU)
+
+When the laptop is off, a free Space keeps a link alive: live cleaning with the rule-based detector,
+the three synthetic demo clips (their caches are in git, so no GPU model runs), FastConformer
+captions on the CPU, and the Nemotron and Say it features from the Space's secrets. Voice notes,
+Dictate and Clean my video are off there (they need a GPU).
+
+1. On huggingface.co: New Space → name `stutterclear`, SDK **Docker**, template **Blank**, hardware
+   **CPU basic (free)**, public.
+2. Upload the two files in `deploy/hf-space/` (`Dockerfile` and `README.md`) to the Space's root.
+3. Settings → Variables and secrets: add the secrets `NEBIUS_API_KEY` and `NVIDIA_API_KEY` (never
+   in a file). The Dockerfile already sets `STUTTERCLEAR_HOSTED=1` and `STUTTERCLEAR_NOTES=0`.
+4. The Space builds from the GitHub repo (about 10 minutes). After a `git push`, use
+   Settings → Factory rebuild to update it.
+
+The UCLASS clips never go to the Space (research licence); `STUTTERCLEAR_UCLASS_DEMOS` stays unset.
+
 ## Switches for a public server
 
 | Variable | Effect |
