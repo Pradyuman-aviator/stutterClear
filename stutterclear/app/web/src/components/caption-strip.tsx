@@ -30,8 +30,7 @@ export function CaptionStrip({ caption, label, rescue }: { caption: Store<Captio
             type="button"
             onClick={rescue.onAsk}
             disabled={rescue.loading}
-            whileHover={{ y: -1 }}
-            whileTap={{ scale: 0.95 }}
+            whileTap={{ scale: 0.98 }}
             transition={SPRING.press}
             className="ml-auto inline-flex cursor-pointer items-center gap-1 rounded-full border border-violet-300/25 bg-violet-300/10 px-2 py-0.5 text-[10px] font-medium tracking-normal normal-case text-violet-200 hover:bg-violet-300/20 disabled:cursor-wait"
           >

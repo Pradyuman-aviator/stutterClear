@@ -109,6 +109,9 @@ export const getInfo = () =>
     hosted: boolean
     detectors: DetectorInfo[]
     recommended: DetectorKind
+    tts: boolean
+    interview: boolean
+    feedback: "browser" | "server"
   }>(fetch("/api/info"))
 
 // A random id for this page. On a public server a live session belongs to the page that started
@@ -166,6 +169,37 @@ export const getDemos = () => json<{ samples: DemoSample[]; credit: string }>(fe
 export const getDemo = (id: string, engine: DemoEngine) => json<DemoTimeline>(fetch(`/api/demo/${id}?engine=${engine}`))
 export const demoAudioUrl = (id: string, which: "original" | "clean", engine: DemoEngine) =>
   `/api/demo/${id}/${which}.wav?engine=${engine}`
+
+export const sayIt = async (text: string) => {
+  const r = await fetch("/api/tts", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text }),
+  })
+  if (!r.ok) {
+    const detail = await r.json().then((b) => b?.detail).catch(() => null)
+    throw new Error(typeof detail === "string" ? detail : `${r.status} ${r.statusText}`)
+  }
+  return { wav: await r.blob(), label: r.headers.get("X-Voice-Label") ?? "Synthetic voice" }
+}
+
+export interface InterviewTurn {
+  question: string
+  answer: string
+}
+
+const send = <T,>(path: string, body: unknown) =>
+  json<T>(fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }))
+
+export const interviewStart = (body: { role: string; company: string; posting?: string }) =>
+  send<{ card: string; question: string }>("/api/interview/start", body)
+export const interviewNext = (body: { role: string; company: string; card: string; history: InterviewTurn[] }) =>
+  send<{ question: string }>("/api/interview/next", body)
+export const interviewSummary = (body: { role: string; company: string; history: InterviewTurn[] }) =>
+  send<{ points: string[] }>("/api/interview/summary", body)
+
+export const sendFeedback = (body: Record<string, unknown>) =>
+  send<{ entry: Record<string, unknown>; stored: boolean }>("/api/feedback", body)
 
 // "Clean a voice note": the page uploads WAV, the server cleans it with the offline engines and the
 // result plays through the demo player under its note id.

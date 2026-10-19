@@ -25,8 +25,7 @@ export function InsightsPanel({ enabled, build }: { enabled: boolean; build: () 
           type="button"
           onClick={ask}
           disabled={state.loading}
-          whileHover={{ y: -1 }}
-          whileTap={{ scale: 0.96 }}
+          whileTap={{ scale: 0.98 }}
           transition={SPRING.press}
           className="inline-flex w-fit cursor-pointer items-center gap-1.5 rounded-full border border-violet-300/25 bg-violet-300/10 px-3 py-1.5 text-xs text-violet-100 hover:bg-violet-300/20 disabled:cursor-wait"
         >

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from "react"
 import { AnimatePresence, MotionConfig, motion, type Variants } from "motion/react"
-import { AudioLines, Check, Cpu, Headphones, Lock, Mic, Square } from "lucide-react"
+import { Check, Cpu, Lock, Mic, Square } from "lucide-react"
+import { IsoBadge, IsoContext, IsoLogo, IsoMirror, IsoSetup } from "@/components/iso-icon"
 
 import { CaptionStrip } from "@/components/caption-strip"
 import { DelayMatrix } from "@/components/delay-matrix"
@@ -8,15 +9,20 @@ import { DemoBar, DemoPicker } from "@/components/demo-player"
 import { HowItWorks } from "@/components/how-it-works"
 import { InsightsPanel } from "@/components/insights-panel"
 import { GlassCard } from "@/components/glass-card"
-import { LiquidBackground } from "@/components/liquid-background"
-import { LiquidSwitch } from "@/components/liquid-switch"
-import { MagneticButton } from "@/components/magnetic-button"
+import { Button } from "@/components/ui/button"
 import { COLORS, MirrorWaveform, type Layer } from "@/components/mirror-waveform"
 import { Playback } from "@/components/playback"
 import { RollingNumber } from "@/components/rolling-number"
-import { Segmented, type SegmentOption } from "@/components/segmented"
+import { CutReview } from "@/components/cut-review"
+import { PracticePanel } from "@/components/practice-panel"
+import { StagePanel } from "@/components/stage-panel"
+import { Field as FormField, FieldGroup, FieldLabel } from "@/components/ui/field"
+import { Slider } from "@/components/ui/slider"
+import { Switch } from "@/components/ui/switch"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Toaster } from "@/components/ui/sonner"
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { SessionToast, type ToastData } from "@/components/session-toast"
-import { ShimmeringText } from "@/components/ui/shimmering-text"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { VoiceNoteCard } from "@/components/voice-note"
 import { VoiceOrb } from "@/components/voice-orb"
@@ -33,7 +39,7 @@ import { useStore, type Store } from "@/lib/store"
 import { BrowserMic } from "@/lib/browser-mic"
 import { cn } from "@/lib/utils"
 
-const MODES: SegmentOption<Mode>[] = [
+const MODES: { value: Mode; label: string }[] = [
   { value: "off", label: "Off" },
   { value: "gentle", label: "Gentle" },
   { value: "strong", label: "Strong" },
@@ -97,6 +103,12 @@ export default function App() {
   const [rescueAvailable, setRescueAvailable] = useState(false)
   const [searchOn, setSearchOn] = useState(false)
   const [hosted, setHosted] = useState(false)
+  const [ttsOn, setTtsOn] = useState(false)
+  const [interviewOn, setInterviewOn] = useState(false)
+  const [feedbackBrowser, setFeedbackBrowser] = useState(false)
+  const [aidOn, setAidOn] = useState(() => stored("sc.aid", "") === "on")
+  const [aidMs, setAidMs] = useState(() => Number(stored("sc.aidms", "80")) || 80)
+  const [tab, setTab] = useState("calls")
   const [rescueOn, setRescueOn] = useState(() => stored("sc.rescue", "") === "on")
   const [rescue, setRescue] = useState<{ loading: boolean; words: string[]; error?: string }>({ loading: false, words: [] })
   const [noteSamples, setNoteSamples] = useState<DemoSample[]>([])
@@ -136,6 +148,9 @@ export default function App() {
         setRescueAvailable(i.nemotron)
         setSearchOn(i.search)
         setHosted(i.hosted)
+        setTtsOn(!!i.tts)
+        setInterviewOn(!!i.interview)
+        setFeedbackBrowser(i.feedback === "browser")
         setDetectorList(i.detectors)
         setRecommendedDet(i.recommended)
         // Use the best measured detector unless one was picked before (and is still available here).
@@ -148,6 +163,14 @@ export default function App() {
     getDemos().then(setDemos).catch(() => {})
     loadDevices()
   }, [connected, loadDevices])
+
+  useEffect(() => {
+    const fromHash = location.hash.replace("#", "")
+    const allowed = ["calls", "recordings", ...(ttsOn ? ["stage"] : []), ...(interviewOn ? ["practice"] : [])]
+    const next = allowed.includes(fromHash) ? fromHash : hosted ? "recordings" : "calls"
+    setTab(next)
+    if (location.hash !== `#${next}`) history.replaceState(null, "", `#${next}`)
+  }, [hosted, ttsOn, interviewOn])
 
   // A session can outlive the page (reload while talking): follow what the server says.
   useEffect(() => {
@@ -174,7 +197,7 @@ export default function App() {
           for (let attempt = 0; ; attempt++) {
             const mic = new BrowserMic()
             try {
-              const r = await mic.start({ mode: over.mode ?? mode, detector: over.detector ?? detector }, (end) => {
+              const r = await mic.start({ mode: over.mode ?? mode, detector: over.detector ?? detector, aidMs: aidOn ? aidMs : 0 }, (end) => {
                 if (browserMic.current !== mic) return
                 browserMic.current = null
                 mic.stop()
@@ -218,7 +241,7 @@ export default function App() {
         setStarting(false)
       }
     },
-    [mode, detector, save, inDev, outDev, reset, loadDevices]
+    [mode, detector, save, inDev, outDev, reset, loadDevices, aidOn, aidMs]
   )
 
   const stop = useCallback(async () => {
@@ -253,6 +276,7 @@ export default function App() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.code !== "Space" || e.repeat) return
+      if (tab === "stage" && !e.ctrlKey) return
       const el = document.activeElement
       if (el && el !== document.body && el.matches("input, textarea, select, button, [role=switch], [role=radio], [contenteditable]")) return
       e.preventDefault()
@@ -260,7 +284,7 @@ export default function App() {
     }
     addEventListener("keydown", onKey)
     return () => removeEventListener("keydown", onKey)
-  }, [toggle])
+  }, [toggle, tab])
 
   // Settings changed mid-session restart it, so you can flip Off / Gentle / Strong while talking.
   const change = (over: Partial<StartBody>) => {
@@ -329,41 +353,42 @@ export default function App() {
   return (
     <MotionConfig reducedMotion="user" transition={SPRING.glide}>
       <div className="relative min-h-dvh overflow-x-clip text-white">
-        <LiquidBackground signals={signals} />
-        <div className="grain" aria-hidden />
-
-        <motion.div
-          variants={page}
-          initial="hidden"
-          animate="show"
-          className="mx-auto max-w-6xl px-4 py-5 sm:px-6 sm:py-6 lg:py-8 2xl:max-w-7xl"
-        >
-          <motion.header variants={rise} className="flex items-center justify-between gap-3">
+        <div className="w-full px-4 py-5 sm:px-6 sm:py-6 lg:px-8 lg:py-8">
+          <header className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-3">
-              <motion.div
-                whileHover={{ rotate: -8, scale: 1.06 }}
-                whileTap={{ scale: 0.92 }}
-                transition={SPRING.press}
-                className="grid size-10 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-sky-300 via-indigo-300 to-teal-300 text-slate-950 shadow-[0_8px_30px_-8px_rgb(125_170_255/0.8)]"
-              >
-                <AudioLines className="size-5" strokeWidth={2.4} />
-              </motion.div>
+              <IsoBadge>
+                <IsoLogo />
+              </IsoBadge>
               <div className="min-w-0">
-                <div className="text-lg leading-tight font-semibold tracking-tight">
+                <div className="font-logo text-2xl leading-none tracking-tight">
                   Stutter<span className="text-gradient">Clear</span>
                 </div>
                 <div className="hidden text-xs text-white/45 min-[420px]:block">Your real voice, on your terms</div>
               </div>
             </div>
             <EnginePill connected={connected} running={running} demo={demoOn} detector={detName} stats={stats} />
-          </motion.header>
+          </header>
 
-          {/* Desktop: 3 columns. Tablet: 2 columns, packed densely so no cell is left empty.
-              Phone: one column. */}
-          <div className="mt-5 grid grid-flow-row-dense gap-4 sm:mt-6 sm:gap-5 md:grid-cols-2 lg:grid-cols-3">
+          <Tabs
+            className="mt-5"
+            value={tab}
+            onValueChange={(v) => {
+              const next = String(v)
+              setTab(next)
+              history.replaceState(null, "", `#${next}`)
+            }}
+          >
+            <TabsList className="sticky top-2 z-20 h-auto max-w-full flex-wrap sm:static">
+              <TabsTrigger value="calls">Calls</TabsTrigger>
+              <TabsTrigger value="recordings">Recordings</TabsTrigger>
+              {ttsOn && <TabsTrigger value="stage">On stage</TabsTrigger>}
+              {interviewOn && <TabsTrigger value="practice">Practice</TabsTrigger>}
+            </TabsList>
+            <TabsContent value="calls">
+              <div className="grid grid-flow-row-dense gap-4 sm:gap-5 md:grid-cols-2 lg:grid-cols-3">
             {/* Hero: orb, status, start */}
-            <motion.div variants={rise} id="hero" className="scroll-mt-4 md:col-span-2">
-              <GlassCard tilt={1.2} className="h-full p-5 sm:p-8">
+            <div id="hero" className="scroll-mt-4 md:col-span-2">
+              <GlassCard tilt={0} className="h-full p-5 sm:p-8">
                 <div className="relative flex flex-col items-center gap-6 sm:flex-row sm:gap-10">
                   <VoiceOrb
                     signals={signals}
@@ -386,38 +411,32 @@ export default function App() {
                       <span className="block text-white/45">The listener hears you, without the repeats.</span>
                     </h1>
                     <div className="flex flex-wrap items-center justify-center gap-4 sm:justify-start">
-                      <MagneticButton
+                      <Button
                         onClick={toggle}
                         disabled={!connected}
                         aria-label={running ? "Stop" : "Start listening"}
-                        fillClassName={running ? "bg-white/15" : "bg-white/40"}
                         className={cn(
-                          "h-12 w-48 text-[15px] font-semibold transition-[background-color,box-shadow,color] duration-500",
-                          running
-                            ? "bg-rose-500/85 text-white shadow-[0_12px_40px_-12px_rgb(244_63_94/0.9)]"
-                            : "bg-sky-300 text-slate-950 shadow-[0_12px_40px_-12px_rgb(125_211_252/0.9)]"
+                          "h-8 rounded-full px-3 text-sm [&_svg]:size-3.5",
+                          running ? "bg-rose-500 text-white hover:bg-rose-500/90" : "bg-sky-300 text-slate-950 hover:bg-sky-200"
                         )}
                       >
-                        <AnimatePresence mode="popLayout" initial={false}>
-                          <motion.span
-                            key={running ? "stop" : "start"}
-                            initial={{ y: 18, opacity: 0 }}
-                            animate={{ y: 0, opacity: 1 }}
-                            exit={{ y: -18, opacity: 0 }}
-                            transition={SPRING.glide}
-                            className="inline-flex items-center gap-2"
-                          >
-                            {running ? <Square className="size-4 fill-current" /> : <Mic className="size-4" />}
-                            {running ? "Stop" : "Start listening"}
-                          </motion.span>
-                        </AnimatePresence>
-                      </MagneticButton>
+                        {running ? <Square data-icon="inline-start" className="fill-current" /> : <Mic data-icon="inline-start" />}
+                        {running ? "Stop" : "Start listening"}
+                      </Button>
                       <span className="hidden items-center gap-1.5 text-xs text-white/35 [@media(hover:hover)]:sm:inline-flex">
                         or press
                         <kbd className="rounded-md border border-white/15 bg-white/5 px-1.5 py-0.5 font-sans text-[11px] text-white/60">
                           Space
                         </kbd>
                       </span>
+                    </div>
+                    <div className="flex w-full flex-col items-center gap-2 sm:items-start">
+                      <ToggleGroup aria-label="Correction" value={[mode]} onValueChange={(v) => { const n = v[0] as Mode | undefined; if (n) change({ mode: n }) }} variant="outline" spacing={1}>
+                        {MODES.map((m) => (
+                          <ToggleGroupItem key={m.value} value={m.value}>{m.label}</ToggleGroupItem>
+                        ))}
+                      </ToggleGroup>
+                      <p className="max-w-md text-[13px] leading-relaxed text-white/50">{modeHint(mode, detector)}</p>
                     </div>
                     <AnimatePresence initial={false}>
                       {!running && !demoOn && playback && (
@@ -430,7 +449,7 @@ export default function App() {
                           className="-my-1 w-full overflow-hidden py-1"
                         >
                           <div className="mb-2 text-xs font-medium text-white/50">
-                            Listen back · kept in memory until your next session
+                            Listen back
                           </div>
                           <Playback info={playback} version={playbackVersion} />
                           <div className="mt-2">
@@ -454,82 +473,18 @@ export default function App() {
                         </motion.div>
                       )}
                     </AnimatePresence>
-                    <AnimatePresence initial={false}>
-                      {!running && (
-                        <motion.div
-                          key={demoOn ? "demo-bar" : "demo-pick"}
-                          initial={{ opacity: 0, height: 0 }}
-                          animate={{ opacity: 1, height: "auto" }}
-                          exit={{ opacity: 0, height: 0 }}
-                          transition={SPRING.glide}
-                          className="-my-1 w-full overflow-hidden py-1"
-                        >
-                          {demo.state ? (
-                            <DemoBar
-                              state={demo.state}
-                              sample={[...demos.samples, ...noteSamples].find((s) => s.id === demo.state?.id)}
-                              credit={
-                                demo.state.id.startsWith("note-")
-                                  ? "Your recording stays on this computer and is forgotten within an hour."
-                                  : demos.credit
-                              }
-                              downloadUrl={
-                                demo.state.id.startsWith("note-")
-                                  ? `/api/demo/${demo.state.id}/clean.wav?engine=${demo.state.engine}`
-                                  : undefined
-                              }
-                              progress={demo.progress}
-                              onPlay={demo.play}
-                              onPause={demo.pause}
-                              onHear={demo.setHear}
-                              onEngine={demo.setEngine}
-                              onClose={demo.close}
-                              extra={
-                                demo.state.timeline && (
-                                  <InsightsPanel
-                                    key={`${demo.state.id}-${demo.state.engine}`}
-                                    enabled={rescueAvailable}
-                                    build={() => insightsFromTimeline(demo.state!.timeline!)}
-                                  />
-                                )
-                              }
-                            />
-                          ) : (
-                            <DemoPicker
-                              samples={demos.samples}
-                              onPick={(id) => demo.load(id, demos.samples.find((s) => s.id === id)?.engines[0] ?? "live")}
-                            />
-                          )}
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                    <div className="flex w-full flex-col items-center gap-2 sm:items-start">
-                      <Segmented label="Correction" value={mode} options={MODES} onChange={(m) => change({ mode: m })} />
-                      <div className="grid">
-                        <AnimatePresence initial={false}>
-                          <motion.p
-                            key={mode}
-                            initial={{ opacity: 0, y: 6 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: -6 }}
-                            transition={{ duration: 0.35, ease: EASE_OUT }}
-                            className="max-w-md text-[13px] text-white/50 [grid-area:1/1]"
-                          >
-                            {modeHint(mode, detector)}
-                          </motion.p>
-                        </AnimatePresence>
-                      </div>
-                    </div>
                   </div>
                 </div>
               </GlassCard>
-            </motion.div>
+            </div>
 
             {/* Setup */}
             <motion.div variants={rise}>
-              <GlassCard tilt={2} className="flex h-full flex-col gap-5 p-5 sm:p-6">
-                <CardTitle icon={<Headphones className="size-4" />}>Setup</CardTitle>
-                <Field label="Microphone">
+              <GlassCard tilt={0} className="flex h-full flex-col gap-5 p-5 sm:p-6">
+                <CardTitle icon={<IsoSetup />}>Setup</CardTitle>
+                <FieldGroup>
+                  <FormField>
+                  <FieldLabel>Microphone</FieldLabel>
                   <DeviceSelect
                     items={inItems}
                     value={inDev}
@@ -541,13 +496,10 @@ export default function App() {
                       if (running && !busy.current) start({ in_name: v })
                     }}
                   />
-                </Field>
-                {inDev === BROWSER_MIC ? (
-                  <div className="text-xs leading-relaxed text-white/45">
-                    Your browser streams the mic to StutterClear. Listen back with the play buttons after you stop.
-                  </div>
-                ) : (
-                  <Field label="Send the cleaned voice to">
+                  </FormField>
+                  {inDev === BROWSER_MIC ? null : (
+                  <FormField>
+                    <FieldLabel>Send the cleaned voice to</FieldLabel>
                     <DeviceSelect
                       items={outItems}
                       value={outDev}
@@ -558,18 +510,50 @@ export default function App() {
                         if (running && !busy.current) start({ out_name: v === NO_OUTPUT ? null : v })
                       }}
                     />
-                  </Field>
-                )}
-                <Field label="Detector">
-                  <Segmented
-                    label="Detector"
-                    className="w-full"
-                    value={detector}
-                    options={detectorOptions(detectorList)}
-                    onChange={(v) => change({ detector: v })}
-                  />
+                  </FormField>
+                  )}
+                  <FormField>
+                  <FieldLabel>Detector</FieldLabel>
+                  <ToggleGroup aria-label="Detector" value={[detector]} onValueChange={(v) => { const n = v[0] as DetectorKind | undefined; if (n) change({ detector: n }) }} variant="outline" spacing={1}>
+                    {detectorOptions(detectorList).map((d) => (
+                      <ToggleGroupItem key={d.value} value={d.value}>{d.label}</ToggleGroupItem>
+                    ))}
+                  </ToggleGroup>
                   <DetectorNote info={detectorList.find((d) => d.kind === detector)} recommended={recommendedDet} />
-                </Field>
+                  </FormField>
+                  {inDev === BROWSER_MIC && (
+                  <FormField>
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <FieldLabel>Fluency aid</FieldLabel>
+                        <p className="text-xs text-white/45">Use headphones. Many people find a short delay helps.</p>
+                      </div>
+                      <Switch
+                        checked={aidOn}
+                        onCheckedChange={(on) => {
+                          setAidOn(on)
+                          store("sc.aid", on ? "on" : "")
+                        }}
+                        aria-label="Hear your voice a little late"
+                      />
+                    </div>
+                    {aidOn && (
+                      <Slider
+                        min={50}
+                        max={200}
+                        step={10}
+                        value={[aidMs]}
+                        onValueChange={(v) => {
+                          const n = Array.isArray(v) ? v[0] : aidMs
+                          setAidMs(n)
+                          store("sc.aidms", String(n))
+                        }}
+                        aria-label="Fluency aid delay"
+                      />
+                    )}
+                  </FormField>
+                  )}
+                </FieldGroup>
                 <div
                   className={cn(
                     "mt-auto flex items-center justify-between gap-4 rounded-2xl border border-white/6 bg-white/[0.03] p-3.5",
@@ -578,18 +562,17 @@ export default function App() {
                 >
                   <div className="text-sm">
                     <div className="font-medium">Save this session</div>
-                    <div className="text-xs text-white/45">Off by default. Stays on this laptop.</div>
                   </div>
-                  <LiquidSwitch label="Save this session's audio" checked={save} onChange={setSave} />
+                  <Switch checked={save} onCheckedChange={setSave} aria-label="Save this session's audio" />
                 </div>
               </GlassCard>
             </motion.div>
 
             {/* Fluency Mirror */}
             <motion.div variants={rise} className="md:col-span-2">
-              <GlassCard tilt={0.6} className="flex h-full flex-col p-5 sm:p-6">
+              <GlassCard tilt={0} className="flex h-full flex-col p-5 sm:p-6">
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                  <CardTitle icon={<AudioLines className="size-4" />}>Fluency Mirror</CardTitle>
+                  <CardTitle icon={<IsoMirror />}>Fluency Mirror</CardTitle>
                   <div className="flex flex-wrap gap-1.5" onPointerLeave={() => setHighlight(null)}>
                     {(
                       [
@@ -606,8 +589,7 @@ export default function App() {
                         onFocus={() => setHighlight(layer)}
                         onBlur={() => setHighlight(null)}
                         onClick={() => setHighlight(hl === layer ? null : layer)} // tap to toggle on touch
-                        whileHover={{ y: -2 }}
-                        whileTap={{ scale: 0.95 }}
+                        whileTap={{ scale: 0.98 }}
                         transition={SPRING.press}
                         className={cn(
                           "inline-flex cursor-default items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-colors duration-500 hover:duration-100",
@@ -648,6 +630,12 @@ export default function App() {
                   store("sc.rescue", on ? "on" : "")
                 }}
               />
+            </motion.div>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="recordings" className="grid gap-4 md:grid-cols-2">
+            <GlassCard tilt={0} className="flex flex-col gap-4 p-5 sm:p-6 md:col-span-2">
               <VoiceNoteCard
                 enabled={notesOn}
                 busy={running}
@@ -657,11 +645,75 @@ export default function App() {
                     { id, title: "Your voice note", who: "you", duration_s: seconds, engines: ["natural", "thorough", "live"] },
                   ])
                   demo.load(id, "natural")
-                  document.getElementById("hero")?.scrollIntoView({ behavior: "smooth", block: "start" })
                 }}
               />
-            </motion.div>
-          </div>
+              {demo.state ? (
+                <DemoBar
+                  state={demo.state}
+                  sample={[...demos.samples, ...noteSamples].find((s) => s.id === demo.state?.id)}
+                  credit={
+                    demo.state.id.startsWith("note-")
+                      ? "Your recording stays on this computer and is forgotten within an hour."
+                      : demos.credit
+                  }
+                  downloadUrl={
+                    demo.state.id.startsWith("note-")
+                      ? `/api/demo/${demo.state.id}/clean.wav?engine=${demo.state.engine}`
+                      : `/api/demo/${demo.state.id}/clean.wav?engine=${demo.state.engine}`
+                  }
+                  progress={demo.progress}
+                  onPlay={demo.play}
+                  onPause={demo.pause}
+                  onHear={demo.setHear}
+                  onEngine={demo.setEngine}
+                  onClose={demo.close}
+                  extra={
+                    demo.state.timeline && (
+                      <>
+                        <InsightsPanel
+                          key={`${demo.state.id}-${demo.state.engine}`}
+                          enabled={rescueAvailable}
+                          build={() => insightsFromTimeline(demo.state!.timeline!)}
+                        />
+                        <CutReview
+                          id={demo.state.id}
+                          cuts={demo.state.timeline.cuts}
+                          at={demo.state.t}
+                          hear={demo.state.hear}
+                          lagS={demo.state.engine === "live" ? demo.state.timeline.lag_ms / 1000 : 0}
+                          browserStore={feedbackBrowser}
+                        />
+                      </>
+                    )
+                  }
+                />
+              ) : (
+                <DemoPicker
+                  samples={demos.samples}
+                  onPick={(id) => demo.load(id, demos.samples.find((s) => s.id === id)?.engines[0] ?? "live")}
+                />
+              )}
+            </GlassCard>
+            </TabsContent>
+            {ttsOn && (
+              <TabsContent value="stage">
+                <StagePanel running={running} caption={caption} data={data} onToggle={toggle} />
+              </TabsContent>
+            )}
+            {interviewOn && (
+              <TabsContent value="practice">
+                <PracticePanel
+                  running={running}
+                  caption={caption}
+                  playback={playback}
+                  playbackVersion={playbackVersion}
+                  insights={rescueAvailable}
+                  onStart={() => start()}
+                  onStop={() => stop()}
+                />
+              </TabsContent>
+            )}
+          </Tabs>
 
           <motion.div variants={rise} className="mt-4 sm:mt-5">
             <HowItWorks nemotron={rescueAvailable} />
@@ -676,9 +728,10 @@ export default function App() {
               ? "Audio is processed on StutterClear's server and is not stored. Recordings you clean are kept in memory for an hour, then forgotten. Live turns last up to 5 minutes, so everyone gets one."
               : "Audio is processed on this laptop. Nothing is recorded unless you switch saving on."}
           </motion.footer>
-        </motion.div>
+        </div>
 
         <SessionToast toast={toast} onClose={() => setToast(null)} />
+        <Toaster />
       </div>
     </MotionConfig>
   )
@@ -713,7 +766,7 @@ function StatusLine({
       const s = signals.current
       let next: { text: string; tone: Tone }
       if (!connected) next = { text: everConnected.current ? "Reconnecting to the engine…" : "Connecting…", tone: "warn" }
-      else if (!running) next = { text: "Tap the orb to start", tone: "idle" }
+      else if (!running) next = { text: "", tone: "idle" }
       else if (starting) next = { text: "Opening the microphone…", tone: "idle" }
       else if (!data.current.heardSound && performance.now() - data.current.lastSoundAt > 4000)
         next = { text: "Waiting for your voice… (nothing from the mic yet)", tone: "warn" }
@@ -729,27 +782,10 @@ function StatusLine({
     return () => window.clearInterval(id)
   }, [signals, data, running, starting, demo, connected, mode])
 
+  if (!status.text) return null
   return (
-    <div className="grid h-6 items-center">
-      <AnimatePresence initial={false}>
-        <motion.div
-          key={status.text}
-          className="[grid-area:1/1]"
-          initial={{ opacity: 0, y: 8, filter: "blur(4px)" }}
-          animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-          exit={{ opacity: 0, y: -8, filter: "blur(4px)" }}
-          transition={{ duration: 0.4, ease: EASE_OUT }}
-        >
-          <ShimmeringText
-            text={status.text}
-            className="text-sm font-medium"
-            duration={1.8}
-            startOnView={false}
-            color={TONE[status.tone].color}
-            shimmerColor={TONE[status.tone].shimmer}
-          />
-        </motion.div>
-      </AnimatePresence>
+    <div className="h-6 text-sm font-medium" style={{ color: TONE[status.tone].color }}>
+      {status.text}
     </div>
   )
 }
@@ -791,7 +827,7 @@ function SteadyDelay({ ms }: { ms: number | null }) {
 function CardTitle({ icon, children }: { icon: ReactNode; children: ReactNode }) {
   return (
     <h2 className="flex items-center gap-2 text-sm font-semibold tracking-wide text-white/85">
-      <span className="grid size-7 place-items-center rounded-xl bg-white/[0.06] text-sky-200">{icon}</span>
+      <IsoBadge>{icon}</IsoBadge>
       {children}
     </h2>
   )
@@ -826,12 +862,17 @@ function DeviceSelect({
       onValueChange={(v) => v != null && onChange(String(v))}
       onOpenChange={(open) => open && onOpen?.()}
     >
-      <SelectTrigger className="w-full min-w-0 cursor-pointer rounded-xl border-white/10 bg-white/[0.04] px-3 transition-[background-color,border-color,transform] duration-300 hover:border-white/20 hover:bg-white/[0.08] hover:duration-100 active:scale-[0.985] data-[size=default]:h-11 dark:bg-white/[0.04] dark:hover:bg-white/[0.08]">
+      <SelectTrigger className="h-8 w-full min-w-0 cursor-pointer rounded-lg border-white/10 bg-white/[0.04] px-2.5 text-sm transition-colors hover:border-white/20 hover:bg-white/[0.08] data-[size=default]:h-8 dark:bg-white/[0.04] dark:hover:bg-white/[0.08]">
         <SelectValue placeholder={placeholder} className="min-w-0 truncate" />
       </SelectTrigger>
-      <SelectContent className="glass-blur rounded-xl p-1">
+      <SelectContent
+        alignItemWithTrigger={false}
+        align="start"
+        sideOffset={6}
+        className="glass-blur rounded-lg border border-white/10 bg-[#10131c] p-1 shadow-lg"
+      >
         {items.map((it) => (
-          <SelectItem key={it.value} value={it.value} className="cursor-pointer rounded-lg py-2 transition-colors">
+          <SelectItem key={it.value} value={it.value} className="cursor-pointer rounded-md py-1.5 pr-7 text-sm whitespace-normal">
             {it.label}
           </SelectItem>
         ))}
@@ -855,8 +896,6 @@ function Stat({
 }) {
   return (
     <motion.div
-      whileHover={{ y: -3 }}
-      whileTap={{ scale: 0.98 }}
       transition={SPRING.press}
       className="tile relative overflow-hidden rounded-2xl p-3.5 sm:p-4"
     >
@@ -974,7 +1013,7 @@ function ContextCard({
   return (
     <GlassCard tilt={0} className="flex flex-col gap-3 p-5 sm:p-6">
       <div className="flex items-center justify-between">
-        <CardTitle icon={<Check className="size-4" />}>Context card</CardTitle>
+        <CardTitle icon={<IsoContext />}>Context card</CardTitle>
         <AnimatePresence>
           {saved && (
             <motion.span
@@ -1003,8 +1042,7 @@ function ContextCard({
               type="button"
               onClick={prepare}
               disabled={agent.loading || !situation.trim()}
-              whileHover={{ y: -1 }}
-              whileTap={{ scale: 0.95 }}
+              whileTap={{ scale: 0.98 }}
               transition={SPRING.press}
               className="inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-xl border border-violet-300/25 bg-violet-300/10 px-3 text-xs text-violet-100 hover:bg-violet-300/20 disabled:cursor-not-allowed disabled:opacity-50"
             >
@@ -1037,22 +1075,14 @@ function ContextCard({
               : "Needs NEBIUS_API_KEY set where the app runs."}
           </div>
         </div>
-        <LiquidSwitch label="Word rescue" checked={rescueOn && rescueAvailable} onChange={(v) => rescueAvailable && onRescue(v)} />
+        <Switch checked={rescueOn && rescueAvailable} onCheckedChange={(v) => rescueAvailable && onRescue(v)} aria-label="Word rescue" disabled={!rescueAvailable} />
       </div>
     </GlassCard>
   )
 }
 
 
-function detectorOptions(list: DetectorInfo[]): SegmentOption<DetectorKind>[] {
-  const avail = list.filter((d) => d.available)
-  return (avail.length ? avail : [{ kind: "heuristic", label: "Rule-based" } as DetectorInfo]).map((d) => ({
-    value: d.kind,
-    label: d.label,
-  }))
-}
-
-// What the chosen detector does, and how it measured on speakers it never trained on.
+// What each detector is and how it measured on held-out speakers: the page shows its evidence.
 function DetectorNote({ info, recommended }: { info: DetectorInfo | undefined; recommended: DetectorKind }) {
   if (!info) return null
   const q = info.quality
@@ -1082,4 +1112,12 @@ function DetectorNote({ info, recommended }: { info: DetectorInfo | undefined; r
       </AnimatePresence>
     </div>
   )
+}
+
+function detectorOptions(list: DetectorInfo[]): { value: DetectorKind; label: string }[] {
+  const avail = list.filter((d) => d.available)
+  return (avail.length ? avail : [{ kind: "heuristic", label: "Rule-based" } as DetectorInfo]).map((d) => ({
+    value: d.kind,
+    label: d.label,
+  }))
 }

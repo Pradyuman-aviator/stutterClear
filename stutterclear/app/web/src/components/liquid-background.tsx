@@ -149,30 +149,8 @@ export function LiquidBackground({ signals }: { signals: RefObject<Signals> }) {
       level: u("uLevel"), live: u("uLive"), cut: u("uCut"), block: u("uBlock"), ripples: u("uRipples"),
     }
 
-    const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches
-    const target = { x: 0.5, y: 0.6 }
-    const mouse = { x: 0.5, y: 0.6 }
-    let hover = 0
-    let hoverTarget = 0
     const ripples = new Float32Array(12).fill(-10)
-    let rippleIdx = 0
-    const t0 = performance.now()
-
-    const onMove = (e: PointerEvent) => {
-      target.x = e.clientX / innerWidth
-      target.y = 1 - e.clientY / innerHeight
-      hoverTarget = 1
-    }
-    const onLeave = () => (hoverTarget = 0)
-    const onDown = (e: PointerEvent) => {
-      ripples.set([e.clientX / innerWidth, 1 - e.clientY / innerHeight, (performance.now() - t0) / 1000], rippleIdx * 3)
-      rippleIdx = (rippleIdx + 1) % 4
-    }
-    addEventListener("pointermove", onMove)
-    addEventListener("pointerdown", onDown)
-    document.documentElement.addEventListener("pointerleave", onLeave)
-
-    let scale = 0.5
+    const scale = 0.5
     const resize = () => {
       canvas.width = Math.max(1, Math.round(innerWidth * scale))
       canvas.height = Math.max(1, Math.round(innerHeight * scale))
@@ -181,50 +159,23 @@ export function LiquidBackground({ signals }: { signals: RefObject<Signals> }) {
     resize()
     addEventListener("resize", resize)
 
-    let raf = 0
-    let last = performance.now()
-    let slow = 0 // smoothed frame time, s
-    let checkAt = performance.now() + 3000
-    const frame = (now: number) => {
-      const raw = (now - last) / 1000
-      const dt = Math.min(0.05, raw)
-      last = now
-      if (raw < 0.25) slow += (raw - slow) * 0.05 // ignore tab switches
-      if (now > checkAt) {
-        checkAt = now + 2000
-        if (slow > 1 / 45 && scale > 0.26) {
-          scale *= 0.75
-          resize()
-        }
-      }
-      // The bulge glides after the cursor; the gap between them is how fast it is moving.
-      const k = 1 - Math.exp(-dt * 5)
-      mouse.x += (target.x - mouse.x) * k
-      mouse.y += (target.y - mouse.y) * k
-      hover += (hoverTarget - hover) * (1 - Math.exp(-dt * 3))
-      const vel = Math.min(1, Math.hypot(target.x - mouse.x, target.y - mouse.y) * 5)
-      const s = signals.current
+    const draw = () => {
       gl.uniform2f(U.res, canvas.width, canvas.height)
-      gl.uniform1f(U.time, ((now - t0) / 1000) * (reduced ? 0.3 : 1))
-      gl.uniform2f(U.mouse, mouse.x, mouse.y)
-      gl.uniform1f(U.vel, reduced ? 0 : vel)
-      gl.uniform1f(U.hover, reduced ? 0 : hover)
-      gl.uniform1f(U.level, s.level)
-      gl.uniform1f(U.live, s.live)
-      gl.uniform1f(U.cut, s.cut)
-      gl.uniform1f(U.block, s.block)
+      gl.uniform1f(U.time, 0)
+      gl.uniform2f(U.mouse, 0.5, 0.5)
+      gl.uniform1f(U.vel, 0)
+      gl.uniform1f(U.hover, 0)
+      gl.uniform1f(U.level, 0)
+      gl.uniform1f(U.live, 0)
+      gl.uniform1f(U.cut, 0)
+      gl.uniform1f(U.block, 0)
       gl.uniform3fv(U.ripples, ripples)
       gl.drawArrays(gl.TRIANGLES, 0, 3)
-      raf = requestAnimationFrame(frame)
     }
-    raf = requestAnimationFrame(frame)
+    draw()
 
     return () => {
-      cancelAnimationFrame(raf)
-      removeEventListener("pointermove", onMove)
-      removeEventListener("pointerdown", onDown)
       removeEventListener("resize", resize)
-      document.documentElement.removeEventListener("pointerleave", onLeave)
     }
   }, [signals])
 

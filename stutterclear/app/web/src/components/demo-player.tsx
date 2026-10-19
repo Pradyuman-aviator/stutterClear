@@ -1,7 +1,8 @@
 import { type RefObject } from "react"
 import { AnimatePresence, motion } from "motion/react"
 import { AudioLines, Download, LoaderCircle, Pause, Play, ShieldCheck, X } from "lucide-react"
-import { Segmented } from "@/components/segmented"
+import { Button } from "@/components/ui/button"
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import type { DemoState, Hear } from "@/hooks/use-demo"
 import type { DemoEngine, DemoSample } from "@/lib/api"
 import { SPRING } from "@/lib/motion"
@@ -31,8 +32,7 @@ export function DemoPicker({ samples, onPick }: { samples: DemoSample[]; onPick:
             key={s.id}
             type="button"
             onClick={() => onPick(s.id)}
-            whileHover={{ y: -2 }}
-            whileTap={{ scale: 0.96 }}
+            whileTap={{ scale: 0.98 }}
             transition={SPRING.press}
             className="flex cursor-pointer items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] py-1.5 pr-3.5 pl-1.5 text-left transition-[background-color,border-color] duration-500 outline-none hover:border-white/20 hover:bg-white/[0.08] hover:duration-150 focus-visible:ring-2 focus-visible:ring-sky-300/60"
           >
@@ -87,8 +87,7 @@ export function DemoBar({
           onClick={state.playing ? onPause : onPlay}
           disabled={!tl}
           aria-label={state.playing ? "Pause the sample" : "Play the sample"}
-          whileHover={{ scale: 1.06 }}
-          whileTap={{ scale: 0.92 }}
+          whileTap={{ scale: 0.98 }}
           transition={SPRING.press}
           className="relative grid size-11 shrink-0 cursor-pointer place-items-center rounded-full bg-teal-300/15 text-teal-200 outline-none focus-visible:ring-2 focus-visible:ring-sky-300/60 disabled:cursor-wait"
         >
@@ -144,8 +143,7 @@ export function DemoBar({
           type="button"
           onClick={onClose}
           aria-label="Close the sample"
-          whileHover={{ scale: 1.12, rotate: 90 }}
-          whileTap={{ scale: 0.88 }}
+          whileTap={{ scale: 0.98 }}
           transition={SPRING.press}
           className="cursor-pointer rounded-full p-1.5 text-white/45 outline-none hover:bg-white/10 hover:text-white focus-visible:ring-2 focus-visible:ring-sky-300/60"
         >
@@ -153,28 +151,32 @@ export function DemoBar({
         </motion.button>
       </div>
       <div className="flex flex-wrap items-center justify-center gap-2 sm:justify-start">
-        <Segmented
-          label="Hear"
-          value={state.hear}
-          options={HEAR}
-          onChange={onHear}
-          className="text-xs"
-          pillClassName="bg-teal-300/20 shadow-[inset_0_1px_0_rgb(255_255_255/0.15),0_6px_20px_-8px_rgb(94_234_212/0.6)]"
-        />
+        <ToggleGroup aria-label="Hear" value={[state.hear]} onValueChange={(v) => v[0] && onHear(v[0] as Hear)} variant="outline" spacing={1}>
+          {HEAR.map((o) => (
+            <ToggleGroupItem key={o.value} value={o.value}>{o.label}</ToggleGroupItem>
+          ))}
+        </ToggleGroup>
         {sample && sample.engines.length > 1 && (
-          <Segmented label="Engine" value={state.engine} options={ENGINES.filter((e) => sample.engines.includes(e.value))} onChange={onEngine} />
+          <ToggleGroup aria-label="Engine" value={[state.engine]} onValueChange={(v) => v[0] && onEngine(v[0] as DemoEngine)} variant="outline" spacing={1}>
+            {ENGINES.filter((e) => sample.engines.includes(e.value)).map((o) => (
+              <ToggleGroupItem key={o.value} value={o.value}>{o.label}</ToggleGroupItem>
+            ))}
+          </ToggleGroup>
         )}
         {downloadUrl && tl && (
-          <motion.a
-            href={downloadUrl}
-            download="voice-note-clean.wav"
-            whileHover={{ y: -2 }}
-            whileTap={{ scale: 0.95 }}
-            transition={SPRING.press}
-            className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-white/75 transition-colors hover:bg-white/[0.08] hover:text-white"
-          >
-            <Download className="size-3.5" /> Download clean
-          </motion.a>
+          <Button variant="outline" size="sm" render={<a href={downloadUrl} download="voice-note-clean.wav" />}>
+            <Download data-icon="inline-start" /> Download clean
+          </Button>
+        )}
+        {tl && (
+          <>
+            <Button variant="outline" size="sm" render={<a href={`/api/demo/${state.id}/cuts.csv?engine=${state.engine}`} />}>
+              Timestamps
+            </Button>
+            <Button variant="outline" size="sm" render={<a href={`/api/demo/${state.id}/cuts.srt?engine=${state.engine}`} />}>
+              Subtitles
+            </Button>
+          </>
         )}
       </div>
       {tl?.guard && (
