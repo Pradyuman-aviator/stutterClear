@@ -7,6 +7,18 @@ import { sendFeedback, type Span } from "@/lib/api"
 
 const KEY = "sc.feedback"
 
+// The server reads a missed stutter's time on the original recording's clock. The cleaned track is
+// shorter by every cut before that point (and, from the live engine, starts its delay later).
+function originalTime(t: number, cuts: Span[], hear: "clean" | "original", lagS: number) {
+  if (hear === "original") return t
+  let o = Math.max(0, t - lagS)
+  for (const c of [...cuts].sort((a, b) => a.start - b.start)) {
+    if (c.start > o) break
+    o += c.end - c.start
+  }
+  return o
+}
+
 function keepLocal(entry: Record<string, unknown>) {
   try {
     const cur = JSON.parse(localStorage.getItem(KEY) || "[]") as unknown[]
@@ -21,11 +33,15 @@ export function CutReview({
   id,
   cuts,
   at,
+  hear,
+  lagS,
   browserStore,
 }: {
   id: string
   cuts: Span[]
-  at: number
+  at: number // playback position of the track being heard
+  hear: "clean" | "original"
+  lagS: number
   browserStore: boolean
 }) {
   const [done, setDone] = useState<Record<number, string>>({})
@@ -58,7 +74,7 @@ export function CutReview({
           </Button>
         </div>
       ))}
-      <Button size="xs" variant="outline" onClick={() => send({ source: "note", id, missed_at_s: at })}>
+      <Button size="xs" variant="outline" onClick={() => send({ source: "note", id, missed_at_s: Math.round(originalTime(at, cuts, hear, lagS) * 100) / 100 })}>
         This moment was a stutter
       </Button>
     </div>

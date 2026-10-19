@@ -667,7 +667,14 @@ export default function App() {
                           enabled={rescueAvailable}
                           build={() => insightsFromTimeline(demo.state!.timeline!)}
                         />
-                        <CutReview id={demo.state.id} cuts={demo.state.timeline.cuts} at={demo.state.t} browserStore={feedbackBrowser} />
+                        <CutReview
+                          id={demo.state.id}
+                          cuts={demo.state.timeline.cuts}
+                          at={demo.state.t}
+                          hear={demo.state.hear}
+                          lagS={demo.state.engine === "live" ? demo.state.timeline.lag_ms / 1000 : 0}
+                          browserStore={feedbackBrowser}
+                        />
                       </>
                     )
                   }
