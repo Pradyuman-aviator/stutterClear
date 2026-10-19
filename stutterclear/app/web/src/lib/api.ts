@@ -146,6 +146,13 @@ export interface DemoSample {
   engines: DemoEngine[]
 }
 
+// What was said, word by word, with what the cuts removed, and the cleaned text (offline engines).
+export interface Transcript {
+  words: { w: string; removed: boolean; label: "fluent" | "repeat" | "cutoff" | "filler" }[]
+  clean: string
+  said: string
+}
+
 export interface DemoTimeline {
   id: string
   engine: DemoEngine
@@ -161,6 +168,7 @@ export interface DemoTimeline {
   cuts: Span[]
   events: Span[]
   captions?: { original: CaptionWord[]; clean: CaptionWord[] } | null
+  text?: Transcript | null
   // Nemotron's review of each proposed cut (offline engines, when a key is set)
   guard?: { model: string; checked: number; kept: { word: string; context: string; reason: string }[]; error?: string } | null
 }

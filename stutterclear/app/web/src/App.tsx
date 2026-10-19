@@ -14,6 +14,8 @@ import { COLORS, MirrorWaveform, type Layer } from "@/components/mirror-waveform
 import { Playback } from "@/components/playback"
 import { RollingNumber } from "@/components/rolling-number"
 import { CutReview } from "@/components/cut-review"
+import { DictatePanel } from "@/components/dictate-panel"
+import { TranscriptView } from "@/components/transcript-view"
 import { PracticePanel } from "@/components/practice-panel"
 import { StagePanel } from "@/components/stage-panel"
 import { Field as FormField, FieldGroup, FieldLabel } from "@/components/ui/field"
@@ -167,11 +169,12 @@ export default function App() {
 
   useEffect(() => {
     const fromHash = location.hash.replace("#", "")
-    const allowed = ["calls", "recordings", ...(ttsOn ? ["stage"] : []), ...(interviewOn ? ["practice"] : [])]
+    const allowed = ["calls", "recordings", ...(notesOn ? ["dictate"] : []), ...(ttsOn ? ["stage"] : []),
+      ...(interviewOn ? ["practice"] : [])]
     const next = allowed.includes(fromHash) ? fromHash : hosted ? "recordings" : "calls"
     setTab(next)
     if (location.hash !== `#${next}`) history.replaceState(null, "", `#${next}`)
-  }, [hosted, ttsOn, interviewOn])
+  }, [hosted, ttsOn, interviewOn, notesOn])
 
   // A session can outlive the page (reload while talking): follow what the server says.
   useEffect(() => {
@@ -384,6 +387,7 @@ export default function App() {
             <TabsList className="sticky top-2 z-20 h-auto max-w-full flex-wrap sm:static">
               <TabsTrigger value="calls">Calls</TabsTrigger>
               <TabsTrigger value="recordings">Recordings</TabsTrigger>
+              {notesOn && <TabsTrigger value="dictate">Dictate</TabsTrigger>}
               {ttsOn && <TabsTrigger value="stage">On stage</TabsTrigger>}
               {interviewOn && <TabsTrigger value="practice">Practice</TabsTrigger>}
             </TabsList>
@@ -673,6 +677,12 @@ export default function App() {
                   extra={
                     demo.state.timeline && (
                       <>
+                        {demo.state.timeline.text && (
+                          <div className="flex flex-col gap-1.5">
+                            <span className="text-xs text-white/45">Transcript: struck-through words were removed</span>
+                            <TranscriptView text={demo.state.timeline.text} />
+                          </div>
+                        )}
                         <InsightsPanel
                           key={`${demo.state.id}-${demo.state.engine}`}
                           enabled={rescueAvailable}
@@ -698,6 +708,11 @@ export default function App() {
               )}
             </GlassCard>
             </TabsContent>
+            {notesOn && (
+              <TabsContent value="dictate">
+                <DictatePanel enabled={notesOn} busy={running} />
+              </TabsContent>
+            )}
             {ttsOn && (
               <TabsContent value="stage">
                 <StagePanel running={running} caption={caption} data={data} onToggle={toggle} />

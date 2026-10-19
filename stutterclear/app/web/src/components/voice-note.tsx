@@ -32,10 +32,14 @@ export function VoiceNoteCard({
   enabled,
   busy,
   onReady,
+  title = "Clean a voice note",
+  blurb = "Record or upload a message. Repeated and broken-off words are removed between words, in your own voice, and nothing is saved.",
 }: {
   enabled: boolean
   busy: boolean // a live session owns the mic
   onReady: (id: string, seconds: number) => void
+  title?: string
+  blurb?: string
 }) {
   const [phase, setPhase] = useState<Phase>({ kind: "idle" })
   const [elapsed, setElapsed] = useState(0)
@@ -128,12 +132,9 @@ export function VoiceNoteCard({
         <IsoBadge>
           <IsoNote />
         </IsoBadge>
-        Clean a voice note
+        {title}
       </h2>
-      <p className="text-xs leading-relaxed text-white/50">
-        Record or upload a message. Repeated and broken-off words are removed between words, in your own voice,
-        and nothing is saved.
-      </p>
+      <p className="text-xs leading-relaxed text-white/50">{blurb}</p>
       <div className="flex items-center gap-4">
         <motion.button
           type="button"
