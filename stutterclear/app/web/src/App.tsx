@@ -15,6 +15,7 @@ import { Playback } from "@/components/playback"
 import { RollingNumber } from "@/components/rolling-number"
 import { CutReview } from "@/components/cut-review"
 import { DictatePanel } from "@/components/dictate-panel"
+import { JournalPanel } from "@/components/journal-panel"
 import { TranscriptView } from "@/components/transcript-view"
 import { PracticePanel } from "@/components/practice-panel"
 import { StagePanel } from "@/components/stage-panel"
@@ -103,6 +104,7 @@ export default function App() {
   const [detectorList, setDetectorList] = useState<DetectorInfo[]>([])
   const [recommendedDet, setRecommendedDet] = useState<DetectorKind>("heuristic")
   const [notesOn, setNotesOn] = useState(false)
+  const [infoReady, setInfoReady] = useState(false)
   const [captionsOn, setCaptionsOn] = useState(false)
   const [rescueAvailable, setRescueAvailable] = useState(false)
   const [searchOn, setSearchOn] = useState(false)
@@ -147,6 +149,7 @@ export default function App() {
     if (!connected) return
     getInfo()
       .then((i) => {
+        setInfoReady(true)
         setNotesOn(i.notes)
         setCaptionsOn(i.captions)
         setRescueAvailable(i.nemotron)
@@ -168,14 +171,17 @@ export default function App() {
     loadDevices()
   }, [connected, loadDevices])
 
+  // The tabs this server can show. A link to one (#dictate, #stage...) waits for the server to say
+  // which features it has.
+  const tabs = ["calls", "recordings", ...(notesOn ? ["dictate"] : []), ...(ttsOn ? ["stage"] : []),
+    ...(interviewOn ? ["practice"] : []), ...(!hosted ? ["journal"] : [])].join(",")
   useEffect(() => {
+    if (!infoReady) return
     const fromHash = location.hash.replace("#", "")
-    const allowed = ["calls", "recordings", ...(notesOn ? ["dictate"] : []), ...(ttsOn ? ["stage"] : []),
-      ...(interviewOn ? ["practice"] : [])]
-    const next = allowed.includes(fromHash) ? fromHash : hosted ? "recordings" : "calls"
+    const next = tabs.split(",").includes(fromHash) ? fromHash : hosted ? "recordings" : "calls"
     setTab(next)
     if (location.hash !== `#${next}`) history.replaceState(null, "", `#${next}`)
-  }, [hosted, ttsOn, interviewOn, notesOn])
+  }, [infoReady, hosted, tabs])
 
   // A session can outlive the page (reload while talking): follow what the server says.
   useEffect(() => {
@@ -418,6 +424,7 @@ export default function App() {
           </header>
 
           <Tabs
+            key={tabs} // new tabs register afresh, so the highlight follows a tab that appears with a link to it
             className="mt-5"
             value={tab}
             onValueChange={(v) => {
@@ -432,6 +439,7 @@ export default function App() {
               {notesOn && <TabsTrigger value="dictate">Dictate</TabsTrigger>}
               {ttsOn && <TabsTrigger value="stage">On stage</TabsTrigger>}
               {interviewOn && <TabsTrigger value="practice">Practice</TabsTrigger>}
+              {!hosted && <TabsTrigger value="journal">Journal</TabsTrigger>}
             </TabsList>
             <TabsContent value="calls">
               <div className="grid grid-flow-row-dense gap-4 sm:gap-5 md:grid-cols-2 lg:grid-cols-3">
@@ -779,6 +787,11 @@ export default function App() {
                   onStart={() => start()}
                   onStop={() => stop()}
                 />
+              </TabsContent>
+            )}
+            {!hosted && (
+              <TabsContent value="journal">
+                <JournalPanel nemotron={rescueAvailable} visible={tab === "journal"} />
               </TabsContent>
             )}
           </Tabs>
