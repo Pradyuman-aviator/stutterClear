@@ -21,24 +21,32 @@ document supersedes it where they differ.
 2. **Before/after voice in the video**: a consenting person who stutters, or the synthetic clip (labelled).
 3. **Accounts**: NVIDIA API key (build.nvidia.com, free) for Magpie TTS; Tailscale (free) for the stable link; Hugging Face (free) for the backup Space.
 
-## Status and hand-off (18 Oct)
+## Status (19 Oct)
 
-The backend of Part A is built and tested; the pages are open for teammates. Every endpoint is in
-the README's HTTP API table. The frontend is `stutterclear/app/web` (Vite + React; `npm run build`
-refreshes `static/`); API calls go through `src/lib/api.ts`; features show only when `GET /api/info`
-says they are available.
+Everything in Part A is built except the video (A9), and the features that need keys are waiting for
+them: Nemotron (`NEBIUS_API_KEY`) and Magpie TTS (`NVIDIA_API_KEY`). The frontend is
+`stutterclear/app/web` (Vite + React; `npm run build` refreshes `static/`); every endpoint is in the
+README's HTTP API table.
 
-| Item | Done (backend) | Left (open for a teammate) |
-|---|---|---|
-| A1 Tabs | nothing needed | Split `App.tsx` into `tabs/*.tsx` + `useHashTab()` |
-| A2 On stage + Say it | `POST /api/tts` (Magpie over gRPC, capped when hosted), `info.tts`, `scripts/check_tts.py` | `tabs/stage.tsx`, `lib/script-follow.ts`, block trigger, Say it button (fallback: `speechSynthesis`); phase 2 for calls (`Splicer.insert`, `LiveSession.say`) |
-| A3 Practice | `POST /api/interview/start`, `/next`, `/summary`, `info.interview` | `tabs/practice.tsx`: question card (spoken with `/api/tts`), Answer = a browser-mic session, captions as the answer, summary at the end |
-| A4 Fluency aid | nothing needed | DelayNode branch in `lib/browser-mic.ts`, switch + slider in Setup |
-| A5 Feedback loop | `/api/feedback` (log, summary, forget), multipliers applied live and to voice notes, `info.feedback` | Review UI on the voice-note player (keep / undo each cut, tap a missed stutter); when `info.feedback == "browser"`: keep entries in localStorage, send `adjust` in the `/ws/mic` settings, summary via `POST /api/feedback/summary`; offer auto mode when `auto_ready` |
-| A6 Timestamps | `GET /api/demo/{id}/cuts.csv` / `.srt` | Button next to Download clean |
-| A7 Safe demo clips | `source` per clip, `data/demo_clips`, UCLASS off on public servers (`STUTTERCLEAR_UCLASS_DEMOS`) | `scripts/make_synthetic_demo.py` (needs `NVIDIA_API_KEY`): Magpie sentences, inserted stutters, `.crisper.json` + `.teacher.npy`, entries with `source: "synthetic"` |
-| A8 Free deployment | **Done:** `scripts/serve_public.ps1` (Tailscale Funnel), `--strict-port`, `STUTTERCLEAR_NOTES=0`, `docs/DEPLOY.md` | Owner: install Tailscale and test the link. Optional: Hugging Face Space backup (CPU torch, `STUTTERCLEAR_NOTES=0`) |
-| A9 Video | n/a | Everything (Remotion) |
+| Item | State |
+|---|---|
+| A1 Tabs | **Done** (PR #1 + fixes): Calls, Recordings, Dictate, On stage, Practice, Journal; links like `#dictate` wait for the server's features |
+| A2 On stage + Say it | **Done**: script following (fillers and caption errors no longer derail it), next words on a block or a pause, Say it (Magpie, browser voice as fallback); **Say it in the call** mixes the word into the live output (`POST /api/say`) |
+| A3 Practice | **Done**: spoken questions, answers by voice (every caption line kept) or typed, three practice points |
+| A4 Fluency aid | **Done**: 50-200 ms in headphones, with a headphones warning |
+| A5 Feedback loop | **Done**: good cut / undo / missed stutter on voice notes; local log or the browser's own on a public server (sent with each live session); auto mode offered at 95% agreement |
+| A6 Timestamps | **Done**: CSV and SRT next to Download, plus the transcript with removed words struck through |
+| A7 Safe demo clips | **Done**: three LibriSpeech read-aloud clips (CC BY 4.0) with synthetic stutters, in git (`scripts/make_synthetic_demo.py`) |
+| A8 Free deployment | **Done**: laptop + Tailscale Funnel (`scripts/serve_public.ps1`), Hugging Face Space backup (`deploy/hf-space/`) |
+| A9 Video | **Open**: Remotion; needs the before/after voice decision |
+| New: Dictate | **Done**: speak, get the clean text, copy it (the Wispr challenge entry) |
+| New: Clean my video | **Done**: stutters cut from picture and sound together (ffmpeg via imageio-ffmpeg) |
+| New: Fluency journal | **Done**: opt-in, local only, stutters a minute by day, hardest words and first sounds |
+| New: Esc pauses cleaning | **Done** |
+
+Performance on the 6 GB laptop GPU: CrisperWhisper's encoder now runs without attention maps (4.0 GB
+peak instead of 6.8, same words), and voice notes and the live teacher take turns on the GPU, so a
+31 s voice note is cleaned in about 20 s instead of spilling into system memory for minutes.
 
 Student v2 (5.2M parameters) was benchmarked and is not shipped: Strong 40.8% removed / 7.85% words
 lost (score 17.3, rule-based 5.9), Gentle 33.4% / 12.24% (score −3.3). Next for it: calibrate its
