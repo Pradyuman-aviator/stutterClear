@@ -1,6 +1,10 @@
 // Follow a pasted script from live captions. Words match if they are equal, if one is a prefix
-// of the other, or if their edit similarity is at least 0.75. The pointer never jumps more than
-// 30 words.
+// of the other (3 letters or more: a cut-off "w" would match half the script), or if their edit
+// similarity is at least 0.75. Heard words that are not in the script (a filler, a caption error,
+// an aside) are skipped. The pointer moves only on two matched words in order, at most MAX_GAP
+// script words apart, and never more than 30 words.
+
+const MAX_GAP = 3 // script words a caption may have missed between two matched words
 
 function tokens(text: string) {
   return text
@@ -23,7 +27,8 @@ export function sentenceEnds(text: string): boolean[] {
 }
 
 function similar(a: string, b: string) {
-  if (a === b || a.startsWith(b) || b.startsWith(a)) return true
+  if (a === b) return true
+  if (Math.min(a.length, b.length) >= 3 && (a.startsWith(b) || b.startsWith(a))) return true
   const n = a.length
   const m = b.length
   if (!n || !m) return false
@@ -47,20 +52,23 @@ export function followScript(script: string[], spoken: string[], pointer: number
   if (!heard.length) return pointer
   let bestAt = pointer
   let best = 0
+  // An alignment starts on script[start]; each later heard word may skip up to MAX_GAP script words.
   for (let start = from; start < to; start++) {
     let matched = 0
     let j = start
     for (const word of heard) {
-      while (j < to && !similar(script[j], word)) j++
-      if (j >= to) break
+      const limit = Math.min(to, matched ? j + MAX_GAP + 1 : start + 1)
+      let k = j
+      while (k < limit && !similar(script[k], word)) k++
+      if (k >= limit) continue // not here: skip the heard word, keep the place
       matched++
-      j++
+      j = k + 1
     }
     if (matched > best) {
       best = matched
-      bestAt = j
+      bestAt = j // just after the last matched word
     }
   }
-  if (best === 0) return pointer
+  if (best < Math.min(2, heard.length)) return pointer
   return Math.min(bestAt, pointer + 30)
 }
