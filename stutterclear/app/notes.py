@@ -58,10 +58,14 @@ def decode(data: bytes) -> np.ndarray:
     if sr != SR:
         g = gcd(SR, sr)
         x = resample_poly(x, SR // g, sr // g).astype(np.float32)
+    return check_length(x)
+
+
+def check_length(x: np.ndarray) -> np.ndarray:
     if len(x) < SR:
         raise NoteError("That recording is shorter than a second.")
     if len(x) > MAX_S * SR:
-        raise NoteError(f"Voice notes can be up to {MAX_S // 60} minutes long.")
+        raise NoteError(f"Recordings can be up to {MAX_S // 60} minutes long.")
     return x
 
 
@@ -211,10 +215,24 @@ def _process(nid: str):
 
 
 def submit(data: bytes) -> str:
+    """A recording as uploaded (any format soundfile reads)."""
+    _make_room()
+    return _add(decode(data))
+
+
+def submit_audio(x: np.ndarray) -> str:
+    """Audio already at 16 kHz mono (a video's soundtrack)."""
+    _make_room()
+    return _add(check_length(np.asarray(x, np.float32)))
+
+
+def _make_room():
     expire()
     if sum(n["status"] not in ("done", "error") for n in _notes.values()) >= MAX_WAITING:
         raise NoteBusy("Several voice notes are being cleaned right now. Try again in a minute.")
-    x = decode(data)
+
+
+def _add(x: np.ndarray) -> str:
     finished = [k for k, v in _notes.items() if v["status"] in ("done", "error")]  # oldest first
     for nid in finished[:max(0, len(_notes) + 1 - MAX_KEPT)]:
         _notes.pop(nid, None)
