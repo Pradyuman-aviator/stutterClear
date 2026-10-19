@@ -67,3 +67,14 @@ def test_public_servers_leave_uclass_clips_out(tmp_path, monkeypatch):
     assert demo.credit(demo.available()).startswith("Synthetic") and "UCLASS" not in demo.credit(demo.available())
     monkeypatch.setenv("STUTTERCLEAR_UCLASS_DEMOS", "1")  # private judging
     assert ids() == ["u", "s"] and "UCLASS" in demo.credit(demo.available())
+
+
+def test_transcript_marks_removed_words_and_cleans_the_text():
+    from stutterclear.silver import label_tokens, word_cuts
+    said = ["So", "I", "I", "w-", "[UM]", "want", "to", "go.", "it", "is", "fine"]
+    toks = label_tokens([{"w": w, "s": 0.5 * i, "e": 0.5 * i + 0.4} for i, w in enumerate(said)])
+    t = demo.transcript(toks, word_cuts(toks))  # Natural: the repeat and the broken-off start go
+    assert [w["w"] for w in t["words"] if w["removed"]] == ["I", "w-"]
+    assert t["words"][4] == {"w": "um", "removed": False, "label": "filler"}
+    assert t["said"] == "So I I w- um want to go. It is fine"
+    assert t["clean"] == "So I want to go. It is fine"  # text never keeps a filler

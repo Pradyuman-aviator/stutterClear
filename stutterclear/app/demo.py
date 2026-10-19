@@ -17,6 +17,7 @@ import csv
 import io
 import json
 import os
+import re
 import time
 from functools import lru_cache
 from pathlib import Path
@@ -162,10 +163,12 @@ def _render(sid: str, engine: str) -> dict:
         cuts, guard = guarded_cuts(toks, stutter, cut_fillers=thorough, cut_phrases=thorough,  # Nemotron checks each cut
                                    confirm=confirm)
         label = f"{'Thorough' if thorough else 'Natural'} · offline model"
+        text = transcript(toks, cuts)
         y = render_edited(x, cuts, NATURAL_JOIN)
         cuts = [{"kind": c["kind"], "start": c["start"], "end": c["end"],
                  "word": " ".join(toks[i]["w"] for i in c["tokens"])} for c in cuts]
-        events, meta = [], {"detector": "teacher", "label": label, "lag_ms": 0, "detect_ms": 0.0, "guard": guard}
+        events, meta = [], {"detector": "teacher", "label": label, "lag_ms": 0, "detect_ms": 0.0, "guard": guard,
+                            "text": text}
     elif engine == "live":
         x = _source(sid)[0] if sid.startswith("note-") else _excerpt(sid)
         from ..live import delay_overrides
@@ -178,7 +181,7 @@ def _render(sid: str, engine: str) -> dict:
         summary = pipe.summary()
         from ..live import LABELS
         meta = {"detector": name, "label": f"Live · {LABELS.get(name, 'rule-based')}, Gentle",
-                "lag_ms": summary["lag_ms"]["p50"], "detect_ms": 0.0, "guard": None}
+                "lag_ms": summary["lag_ms"]["p50"], "detect_ms": 0.0, "guard": None, "text": None}
     else:
         raise KeyError(engine)
     timeline = {
@@ -189,6 +192,27 @@ def _render(sid: str, engine: str) -> dict:
         "captions": _captions(x, y),
     }
     return {"timeline": timeline, "original": x, "clean": y}
+
+
+SPOKEN_FILLER = {"[UM]": "um", "[UH]": "uh"}
+
+
+def _tidy(text: str) -> str:
+    """Spacing before punctuation, and a capital at the start of each sentence."""
+    text = re.sub(r"\s+([,.!?;:])", r"\1", " ".join(text.split())).strip(" ,;:")
+    text = re.sub(r"(^|[.!?]\s+)([a-z])", lambda m: m.group(1) + m.group(2).upper(), text)
+    return text
+
+
+def transcript(toks: list, cuts: list) -> dict:
+    """What was said, word by word, with what the cuts removed, and the cleaned text. The text also
+    leaves out fillers and broken-off words a cut kept (text readers never want "um" or "b-"):
+    dictation copies it as it is."""
+    gone = {i for c in cuts for i in c["tokens"]}
+    words = [{"w": SPOKEN_FILLER.get(t["w"].upper(), t["w"]), "removed": i in gone, "label": t["label"]}
+             for i, t in enumerate(toks)]
+    keep = [w["w"] for w in words if not w["removed"] and w["label"] not in ("filler", "cutoff")]
+    return {"words": words, "clean": _tidy(" ".join(keep)), "said": _tidy(" ".join(w["w"] for w in words))}
 
 
 KIND_NAMES = {"sound_rep": "broken-off start", "word_rep": "repeated word", "prolongation": "stretched sound",
