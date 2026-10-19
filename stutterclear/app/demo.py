@@ -37,7 +37,8 @@ SAMPLES = {s["id"]: s for s in json.loads(Path(__file__).with_name("demo_samples
 CREDIT = ("Recordings: UCLASS, University College London (Howell, Davis & Bartrip, 2009). "
           "Data collection was supported by the Wellcome Trust.")
 SOURCE_CREDIT = {"uclass": CREDIT,
-                 "synthetic": "Synthetic examples: an NVIDIA Magpie TTS voice with stutters inserted by StutterClear.",
+                 "synthetic": ("Read aloud: LibriSpeech (Panayotov et al., 2015; CC BY 4.0), with synthetic stutters "
+                               "inserted by StutterClear."),
                  "consented": "Real recordings shared with consent for this demo."}
 TEACHER_FRAME = 320  # 20 ms frames in the cached teacher probabilities
 

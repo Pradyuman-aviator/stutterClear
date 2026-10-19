@@ -64,7 +64,7 @@ def test_public_servers_leave_uclass_clips_out(tmp_path, monkeypatch):
     assert ids() == ["u", "s"]
     monkeypatch.setenv("STUTTERCLEAR_HOSTED", "1")
     assert ids() == ["s"]
-    assert demo.credit(demo.available()).startswith("Synthetic") and "UCLASS" not in demo.credit(demo.available())
+    assert "LibriSpeech" in demo.credit(demo.available()) and "UCLASS" not in demo.credit(demo.available())
     monkeypatch.setenv("STUTTERCLEAR_UCLASS_DEMOS", "1")  # private judging
     assert ids() == ["u", "s"] and "UCLASS" in demo.credit(demo.available())
 

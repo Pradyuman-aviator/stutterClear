@@ -25,5 +25,32 @@
     "start": 75.94,
     "end": 107.48,
     "source": "uclass"
+  },
+  {
+    "id": "read-1",
+    "title": "Read aloud",
+    "who": "woman, synthetic stutters",
+    "file": "read-1.wav",
+    "start": 0.0,
+    "end": 35.0,
+    "source": "synthetic"
+  },
+  {
+    "id": "read-2",
+    "title": "Read aloud",
+    "who": "man, synthetic stutters",
+    "file": "read-2.wav",
+    "start": 0.0,
+    "end": 36.18,
+    "source": "synthetic"
+  },
+  {
+    "id": "read-3",
+    "title": "Read aloud",
+    "who": "woman, synthetic stutters",
+    "file": "read-3.wav",
+    "start": 0.0,
+    "end": 34.79,
+    "source": "synthetic"
   }
 ]
