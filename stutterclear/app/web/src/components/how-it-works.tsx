@@ -1,28 +1,29 @@
 import { useState } from "react"
 import { AnimatePresence, motion } from "motion/react"
-import { AudioLines, Ear, Scissors, ShieldCheck } from "lucide-react"
+import { ShieldCheck } from "lucide-react"
+import { IsoBadge, IsoCut, IsoGuard, IsoHear, IsoListen } from "@/components/iso-icon"
 import { GlassCard } from "@/components/glass-card"
 import { checkGuard, type GuardWord } from "@/lib/api"
 import { SPRING } from "@/lib/motion"
 
 const STEPS = [
   {
-    icon: AudioLines,
+    icon: IsoHear,
     title: "Hears the stutter",
     text: "A WavLM model trained on real stuttered speech spots repeats, broken-off starts and blocks. Live, it runs on the GPU about half a second behind you.",
   },
   {
-    icon: Scissors,
+    icon: IsoCut,
     title: "Cuts between words",
     text: "Recordings are cut only at word boundaries, so no real word is clipped. Joins get a breath of your own room tone, never silence.",
   },
   {
-    icon: ShieldCheck,
+    icon: IsoGuard,
     title: "Nemotron checks",
     text: "NVIDIA Nemotron on Nebius keeps repeats you meant (\"that that is true\"), suggests words when you're stuck, and prepares names before you speak.",
   },
   {
-    icon: Ear,
+    icon: IsoListen,
     title: "They hear you",
     text: "Your own voice, without the repeats. Live captions by NVIDIA FastConformer show what the listener hears.",
   },
@@ -64,8 +65,7 @@ function GuardTry({ available }: { available: boolean }) {
           type="button"
           onClick={check}
           disabled={!available || state.loading || !text.trim()}
-          whileHover={{ y: -1 }}
-          whileTap={{ scale: 0.95 }}
+          whileTap={{ scale: 0.98 }}
           transition={SPRING.press}
           className="inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-xl border border-violet-300/25 bg-violet-300/10 px-3 text-xs text-violet-100 hover:bg-violet-300/20 disabled:cursor-not-allowed disabled:opacity-50"
         >
@@ -113,20 +113,19 @@ function GuardTry({ available }: { available: boolean }) {
 
 export function HowItWorks({ nemotron }: { nemotron: boolean }) {
   return (
-    <GlassCard tilt={0.5} className="p-5 sm:p-6">
+    <GlassCard className="p-5 sm:p-6">
       <div className="mb-4 text-sm font-semibold tracking-wide text-white/85">How StutterClear works</div>
       <ol className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {STEPS.map(({ icon: Icon, title, text }, i) => (
           <motion.li
             key={title}
-            whileHover={{ y: -3 }}
             transition={SPRING.press}
             className="tile relative flex flex-col gap-2 rounded-2xl p-4"
           >
             <div className="flex items-center gap-2">
-              <span className="grid size-8 place-items-center rounded-xl bg-white/[0.06] text-sky-200">
-                <Icon className="size-4" />
-              </span>
+              <IsoBadge>
+                <Icon />
+              </IsoBadge>
               <span className="text-[11px] font-semibold text-white/35 tabular-nums">0{i + 1}</span>
             </div>
             <div className="text-sm font-medium text-white/90">{title}</div>

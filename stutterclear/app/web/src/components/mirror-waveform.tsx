@@ -108,7 +108,7 @@ export function MirrorWaveform({
         ctx.fillStyle = g
         ctx.fillRect(0, 0, w * 0.08, h)
         ctx.restore()
-        ctx.font = "600 10px 'Geist Variable', system-ui, sans-serif"
+        ctx.font = "600 10px 'Inter Variable', system-ui, sans-serif"
         ctx.fillStyle = "rgba(255,255,255,0.42)"
         ctx.letterSpacing = "1.2px"
         ctx.fillText("YOU SAID", 2, 12)
@@ -143,7 +143,7 @@ export function MirrorWaveform({
           ctx.stroke()
         }
         ctx.fillStyle = "rgba(255,255,255,0.5)"
-        ctx.font = "500 13px 'Geist Variable', system-ui, sans-serif"
+        ctx.font = "500 13px 'Inter Variable', system-ui, sans-serif"
         // Narrow screens: right-align, so it clears the lane name on the left.
         const narrow = w < 520
         ctx.textAlign = narrow ? "right" : "center"
@@ -197,7 +197,7 @@ export function MirrorWaveform({
         ctx.lineWidth = 1
         ctx.stroke()
         const label = KIND_LABEL[cut.kind] ?? cut.kind
-        ctx.font = "600 10px 'Geist Variable', system-ui, sans-serif"
+        ctx.font = "600 10px 'Inter Variable', system-ui, sans-serif"
         if (ctx.measureText(label).width + 10 < x1 - x0) {
           ctx.fillStyle = rgba(COLORS.cut, 0.95)
           ctx.fillText(label, x0 + 5, top1 + 13)
@@ -278,7 +278,7 @@ export function MirrorWaveform({
             : th > latest
               ? "now"
               : `${Math.max(0, clock - th).toFixed(1)} s ago`
-        ctx.font = "600 11px 'Geist Variable', system-ui, sans-serif"
+        ctx.font = "600 11px 'Inter Variable', system-ui, sans-serif"
         const tw = ctx.measureText(what).width + 16
         const lx = Math.min(Math.max(hoverX - tw / 2, 0), w - tw)
         const ly = c1 + laneH / 2 + 4

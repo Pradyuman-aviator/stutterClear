@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 import { AnimatePresence, motion } from "motion/react"
 import { Download, Pause, Play } from "lucide-react"
+import { Button } from "@/components/ui/button"
 import { playbackUrl, type PlaybackInfo } from "@/lib/api"
 import { SPRING } from "@/lib/motion"
 import { cn } from "@/lib/utils"
@@ -90,17 +91,16 @@ export function Playback({ info, version }: { info: PlaybackInfo; version: numbe
             type="button"
             onClick={() => toggle(which)}
             aria-label={`${on ? "Pause" : "Play"} ${label.toLowerCase()}`}
-            whileHover={{ y: -2 }}
-            whileTap={{ scale: 0.96 }}
+            whileTap={{ scale: 0.98 }}
             transition={SPRING.press}
             className={cn(
-              "group/play flex cursor-pointer items-center gap-3 rounded-full border py-1.5 pr-4 pl-1.5 text-left",
+              "group/play flex h-8 cursor-pointer items-center gap-2 rounded-full border pr-3 pl-1 text-left text-sm",
               "transition-[background-color,border-color] duration-500 hover:duration-150",
               "outline-none focus-visible:ring-2 focus-visible:ring-sky-300/60",
               on ? "border-white/20 bg-white/10" : "border-white/10 bg-white/[0.04] hover:bg-white/[0.08]"
             )}
           >
-            <span className="relative grid size-10 place-items-center rounded-full" style={{ background: ring }}>
+            <span className="relative grid size-6 place-items-center rounded-full" style={{ background: ring }}>
               <svg viewBox="0 0 40 40" className="absolute inset-0 -rotate-90" aria-hidden>
                 <circle cx="20" cy="20" r="18" fill="none" stroke="rgb(255 255 255 / 0.08)" strokeWidth="2.5" />
                 <circle
@@ -130,30 +130,26 @@ export function Playback({ info, version }: { info: PlaybackInfo; version: numbe
                   transition={SPRING.press}
                   style={{ color }}
                 >
-                  {on ? <Pause className="size-4 fill-current" /> : <Play className="size-4 translate-x-px fill-current" />}
+                  {on ? <Pause className="size-3 fill-current" /> : <Play className="size-3 translate-x-px fill-current" />}
                 </motion.span>
               </AnimatePresence>
             </span>
-            <span className="flex flex-col leading-tight">
-              <span className="text-sm font-medium text-white/90">{label}</span>
-              <span className="text-[11px] text-white/45 tabular-nums">
-                {on || elapsed[which] > 0 ? `${clock(elapsed[which])} / ` : ""}
-                {clock(total)}
-              </span>
+            <span className="font-medium text-white/90">{label}</span>
+            <span className="text-xs text-white/45 tabular-nums">
+              {on || elapsed[which] > 0 ? `${clock(elapsed[which])} / ` : ""}
+              {clock(total)}
             </span>
           </motion.button>
         )
       })}
-      <motion.a
-        href={playbackUrl("clean", version)}
-        download="stutterclear-clean.wav"
-        whileHover={{ y: -2 }}
-        whileTap={{ scale: 0.95 }}
-        transition={SPRING.press}
-        className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-white/75 transition-colors hover:bg-white/[0.08] hover:text-white"
+      <Button
+        variant="outline"
+        className="h-8 rounded-full border-white/15 bg-transparent px-3 text-sm text-white/80 hover:bg-white/10 hover:text-white [&_svg]:size-3.5"
+        render={<a href={playbackUrl("clean", version)} download="stutterclear-clean.wav" />}
       >
-        <Download className="size-3.5" /> Download clean
-      </motion.a>
+        <Download data-icon="inline-start" />
+        Download clean
+      </Button>
     </div>
   )
 }

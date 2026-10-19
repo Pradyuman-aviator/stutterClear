@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 import { AnimatePresence, motion } from "motion/react"
-import { FileAudio, LoaderCircle, Mic, Square } from "lucide-react"
+import { LoaderCircle, Mic, Square } from "lucide-react"
+import { IsoBadge, IsoNote } from "@/components/iso-icon"
 import { GlassCard } from "@/components/glass-card"
 import { createNote, getNote, type NoteStatus } from "@/lib/api"
 import { openMic } from "@/lib/browser-mic"
@@ -122,11 +123,11 @@ export function VoiceNoteCard({
   const disabled = !enabled || busy || working
 
   return (
-    <GlassCard tilt={2} className="flex flex-1 flex-col gap-4 p-5 sm:p-6">
+    <GlassCard className="flex flex-1 flex-col gap-4 p-5 sm:p-6">
       <h2 className="flex items-center gap-2 text-sm font-semibold tracking-wide text-white/85">
-        <span className="grid size-7 place-items-center rounded-xl bg-white/[0.06] text-sky-200">
-          <FileAudio className="size-4" />
-        </span>
+        <IsoBadge>
+          <IsoNote />
+        </IsoBadge>
         Clean a voice note
       </h2>
       <p className="text-xs leading-relaxed text-white/50">
@@ -139,8 +140,7 @@ export function VoiceNoteCard({
           onClick={recording ? stop : record}
           disabled={disabled && !recording}
           aria-label={recording ? "Stop recording" : "Record a voice note"}
-          whileHover={disabled && !recording ? undefined : { scale: 1.06 }}
-          whileTap={disabled && !recording ? undefined : { scale: 0.92 }}
+          whileTap={disabled && !recording ? undefined : { scale: 0.98 }}
           transition={SPRING.press}
           className={cn(
             "relative grid size-14 shrink-0 cursor-pointer place-items-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-sky-300/60 disabled:cursor-not-allowed disabled:opacity-40",

@@ -89,11 +89,15 @@ export class BrowserMic {
   private pending: Float32Array[] = []
   private pendingLen = 0
   private stopping = false
+  private aid: DelayNode | null = null
 
   // onEnd: the server ended the session itself (time limit, no audio) and sent its result, or the
   // connection dropped mid-session (network, server restart) and there is none (null). Not called
   // after stop().
-  async start(settings: { mode: string; detector: string }, onEnd?: (r: MicEnd | null) => void): Promise<{ detector: string }> {
+  async start(
+    settings: { mode: string; detector: string; aidMs?: number },
+    onEnd?: (r: MicEnd | null) => void,
+  ): Promise<{ detector: string }> {
     this.stream = await openMic()
     const proto = location.protocol === "https:" ? "wss" : "ws"
     const ws = new WebSocket(`${proto}://${location.host}/ws/mic`)
@@ -130,6 +134,14 @@ export class BrowserMic {
     const tap = new AudioWorkletNode(this.ctx, "tap")
     tap.port.onmessage = (e) => this.push(e.data as Float32Array)
     source.connect(tap)
+    // Fluency aid: the speaker hears their own voice a little late. The detector still gets the raw mic.
+    const aidMs = settings.aidMs ?? 0
+    if (aidMs > 0) {
+      this.aid = this.ctx.createDelay(0.5)
+      this.aid.delayTime.value = aidMs / 1000
+      source.connect(this.aid)
+      this.aid.connect(this.ctx.destination)
+    }
     return info
   }
 

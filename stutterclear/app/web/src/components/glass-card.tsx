@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils"
 export function GlassCard({
   className,
   children,
-  tilt = 2,
+  tilt = 0,
   ...props
 }: HTMLMotionProps<"div"> & { tilt?: number }) {
   const ref = useRef<HTMLDivElement>(null)
