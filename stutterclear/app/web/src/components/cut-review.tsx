@@ -67,10 +67,10 @@ export function CutReview({
             {c.word || "cut"} · {c.start.toFixed(1)}s
           </span>
           <Button size="xs" variant="outline" disabled={!!done[i]} onClick={() => send({ source: "note", id, verdict: "accept", cut: { start: c.start, end: c.end, kind: c.kind, words: c.word ?? "" } }, () => setDone((d) => ({ ...d, [i]: "accept" })))}>
-            Keep
+            Good cut
           </Button>
           <Button size="xs" variant="ghost" disabled={!!done[i]} onClick={() => send({ source: "note", id, verdict: "reject", cut: { start: c.start, end: c.end, kind: c.kind, words: c.word ?? "" } }, () => setDone((d) => ({ ...d, [i]: "reject" })))}>
-            Undo
+            Undo cut
           </Button>
         </div>
       ))}
