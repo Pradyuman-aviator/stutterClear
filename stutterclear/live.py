@@ -157,11 +157,15 @@ def make_detector(kind: str, mode: str, student_path=None, adjust: dict | None =
         if live_capable():
             det, name = TeacherDetector(TEACHER_LOOKAHEAD_MS[mode], cut_cfg=teacher_cut_config(cuts),
                                         cut_interjections=cuts == "strong"), "teacher"
-    if det is None and kind == "student" and path.exists() and cuts:
-        from .student_runtime import LIVE_CUTS, StudentDetector
-        det, name = StudentDetector(path, lookahead_ms, path.with_name("student_test_report.json"),
-                                    cut_interjections=cuts == "strong",
-                                    cut_cfg=LIVE_CUTS if cuts == "gentle" else STRONG_CUTS), "student"
+    if det is None and kind == "student" and cuts:
+        from .student_onnx import onnx_available_for_path
+        use_onnx = onnx_available_for_path(path)
+        if use_onnx or path.exists():
+            from .student_runtime import LIVE_CUTS, StudentDetector
+            det, name = StudentDetector(path, lookahead_ms, path.with_name("student_test_report.json"),
+                                        cut_interjections=cuts == "strong",
+                                        cut_cfg=LIVE_CUTS if cuts == "gentle" else STRONG_CUTS,
+                                        use_onnx=use_onnx), "student"
     if det is None:
         return None, "rule-based"  # Pipeline falls back to the heuristic detector
     if adjust:

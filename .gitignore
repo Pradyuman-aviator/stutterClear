@@ -2,7 +2,7 @@ __pycache__/
 *.pyc
 .pytest_cache/
 .venv/
-.agents/
+.agents/skills/
 skills-lock.json
 # personal voice recordings never leave this machine
 sessions/
@@ -25,5 +25,3 @@ stutterclear/app/web/dist/
 .env
 stutterclear_assets.tar
 stutterclear_demos.tar
-.codebase-memory/
-.cbmignore

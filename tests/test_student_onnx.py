@@ -3,7 +3,15 @@ import numpy as np
 import pytest
 import torch
 
-from stutterclear.student import CausalStudent, ONNXStudent, export_onnx, N_MELS
+pytest.importorskip("onnx")
+
+from stutterclear.student import CausalStudent, N_MELS
+from stutterclear.student_onnx import (
+    ONNXStudent,
+    export_onnx,
+    find_exported_student,
+    onnx_available_for_path,
+)
 from stutterclear.student_runtime import StudentDetector, StudentStream, load_student, LIVE_CUTS
 from stutterclear.synth import CLASSES
 
@@ -48,21 +56,66 @@ def test_onnx_student_parity(tiny_student_checkpoint, tmp_path):
         x, _ = model.trunk(dummy_mel)
         pt_logits = torch.stack([hd(x) for hd in model.heads], dim=2).numpy()
 
-    # ONNX FP32
+    # ONNX FP32 logits parity
     fp32_logits = onnx_fp32.forward_mel(dummy_mel)
     max_diff_fp32 = np.max(np.abs(pt_logits - fp32_logits))
     assert max_diff_fp32 < 1e-4
 
-    # ONNX INT8
+    # ONNX INT8 logits parity
     int8_logits = onnx_int8.forward_mel(dummy_mel)
     max_diff_int8 = np.max(np.abs(pt_logits - int8_logits))
     assert max_diff_int8 < 0.15
 
 
-def test_onnx_student_stream(tiny_student_checkpoint):
-    pt_path, _ = tiny_student_checkpoint
-    onnx_model = load_student(pt_path, use_onnx=True, quantize_int8=True)
-    assert isinstance(onnx_model, ONNXStudent)
+def test_onnx_student_int8_prob_parity(tiny_student_checkpoint, tmp_path):
+    """Verify INT8 dynamic quantization stays within 0.05 max probability difference."""
+    pt_path, model = tiny_student_checkpoint
+    paths = export_onnx(model, tmp_path / "model_int8.onnx", quantize_int8=True, export_step=True)
+    onnx_int8 = ONNXStudent(paths["sequence_int8"])
+
+    rng = np.random.default_rng(123)
+    for _ in range(5):
+        random_audio = (rng.standard_normal(16000) * 0.1).astype(np.float32)
+
+        with torch.no_grad():
+            pt_heads = model(torch.from_numpy(random_audio))
+            pt_probs = torch.stack([torch.sigmoid(h) for h in pt_heads], dim=2).numpy()
+
+        onnx_probs = onnx_int8.predict_probs(random_audio)
+        max_prob_diff = np.max(np.abs(pt_probs - onnx_probs))
+        assert max_prob_diff < 0.05, f"INT8 probability diff {max_prob_diff} exceeded 0.05 threshold"
+
+
+def test_missing_metadata_raises_error(tiny_student_checkpoint, tmp_path):
+    """Ensure ONNXStudent raises FileNotFoundError instead of guessing model dimensions."""
+    pt_path, model = tiny_student_checkpoint
+    paths = export_onnx(model, tmp_path / "model_nometa.onnx", quantize_int8=False, export_step=False)
+
+    # Delete metadata file
+    paths["meta"].unlink()
+
+    with pytest.raises(FileNotFoundError, match="Metadata file .* not found"):
+        ONNXStudent(paths["sequence_fp32"])
+
+
+def test_missing_step_file_raises_error(tiny_student_checkpoint, tmp_path):
+    """Ensure StudentStream raises RuntimeError if step model is missing when using ONNX."""
+    pt_path, model = tiny_student_checkpoint
+    paths = export_onnx(model, tmp_path / "model_nostep.onnx", quantize_int8=False, export_step=False)
+
+    onnx_student = ONNXStudent(paths["sequence_fp32"])
+    assert onnx_student.step_session is None
+
+    with pytest.raises(RuntimeError, match="requires a streaming step model"):
+        StudentStream(onnx_student)
+
+
+def test_onnx_student_stream(tiny_student_checkpoint, tmp_path):
+    pt_path, model = tiny_student_checkpoint
+    paths = export_onnx(model, tmp_path / "model_stream.onnx", quantize_int8=True, export_step=True)
+
+    onnx_model = ONNXStudent(paths["sequence_int8"])
+    assert onnx_model.step_session is not None
 
     stream = StudentStream(onnx_model)
     assert stream.is_onnx is True
@@ -80,8 +133,13 @@ def test_onnx_student_stream(tiny_student_checkpoint):
     assert total_frames > 0
 
 
-def test_student_detector_with_onnx(tiny_student_checkpoint):
-    pt_path, _ = tiny_student_checkpoint
+def test_student_detector_with_onnx(tiny_student_checkpoint, tmp_path):
+    pt_path, model = tiny_student_checkpoint
+    export_onnx(model, tmp_path / "student.onnx", quantize_int8=True, export_step=True)
+
+    # Pre-exported files exist beside checkpoint
+    assert onnx_available_for_path(pt_path) is True
+
     det = StudentDetector(pt_path, lookahead_ms=200, cut_cfg=LIVE_CUTS, use_onnx=True)
     assert isinstance(det.model, ONNXStudent)
 

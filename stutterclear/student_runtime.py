@@ -5,7 +5,7 @@ and GRU state, and matches the whole-clip forward pass exactly.
 StudentDetector turns its per-frame probabilities into cut updates for the splicer, with the
 same process() interface as HeuristicDetector.
 """
-import json
+import logging
 from pathlib import Path
 
 import numpy as np
@@ -16,22 +16,31 @@ from .config import SAMPLE_RATE
 from .detector import CutUpdate, DetectorEvent
 from .features import FeatureStream
 from .segments import BALANCED_CUTS, CutConfig
-from .student import N_MELS, CausalStudent, ONNXStudent
+from .student import N_MELS, CausalStudent
+from .student_onnx import ONNXStudent, find_exported_student
 from .synth import CLASSES, FRAME
+
+logger = logging.getLogger(__name__)
 
 REMOVABLE = ("sound_rep", "word_rep", "prolongation")
 
 
 def load_student(path, use_onnx: bool = False, quantize_int8: bool = True):
     path = Path(path)
-    if path.suffix == ".onnx" or use_onnx:
-        try:
-            if path.suffix == ".onnx":
-                return ONNXStudent(path)
-            return ONNXStudent.from_checkpoint(path, quantize_int8=quantize_int8)
-        except Exception:
-            if path.suffix == ".onnx":
-                raise
+    if path.suffix == ".onnx":
+        return ONNXStudent(path)
+
+    if use_onnx:
+        found = find_exported_student(path, prefer_int8=quantize_int8)
+        if found is not None:
+            seq_path, step_path, meta_path = found
+            try:
+                return ONNXStudent(seq_path, step_model_path=step_path, meta_path=meta_path)
+            except Exception as e:
+                logger.warning("Failed to load exported ONNX model from %s (%s); falling back to PyTorch.", seq_path, e)
+        else:
+            logger.warning("No pre-exported ONNX student files found for %s; falling back to PyTorch.", path)
+
     ckpt = torch.load(path, map_location="cpu", weights_only=False)
     model = CausalStudent(lookaheads=ckpt["lookaheads"], **ckpt.get("arch", {}))
     model.load_state_dict(ckpt["state_dict"])
@@ -41,9 +50,16 @@ def load_student(path, use_onnx: bool = False, quantize_int8: bool = True):
 class StudentStream:
     def __init__(self, model):
         self.m = model
-        self.is_onnx = hasattr(model, "step_session") and model.step_session is not None
+        self.is_onnx = isinstance(model, ONNXStudent)
         self.features = FeatureStream(n_mels=N_MELS)
+
         if self.is_onnx:
+            if model.step_session is None:
+                stem = model.model_path.stem.replace(".quant", "")
+                raise RuntimeError(
+                    f"ONNXStudent requires a streaming step model ({stem}_step.onnx) for StudentStream. "
+                    "Export both sequence and step models using scripts/export_student_onnx.py."
+                )
             self.buf1_np = np.zeros((1, N_MELS, model.k1), dtype=np.float32)
             self.buf2_np = np.zeros((1, model.conv_channels, model.k2), dtype=np.float32)
             self.h_np = np.zeros((model.layers, 1, model.hidden), dtype=np.float32)
