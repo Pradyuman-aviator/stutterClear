@@ -23,6 +23,8 @@ imageio-ffmpeg>=0.5
 
 # Live captions: NVIDIA NeMo streaming FastConformer through sherpa-onnx (CPU)
 sherpa-onnx==1.13.8
+onnx>=1.16
+onnxruntime>=1.18
 
 # Training data loading
 pyarrow>=15

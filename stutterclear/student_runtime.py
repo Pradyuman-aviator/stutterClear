@@ -16,13 +16,22 @@ from .config import SAMPLE_RATE
 from .detector import CutUpdate, DetectorEvent
 from .features import FeatureStream
 from .segments import BALANCED_CUTS, CutConfig
-from .student import N_MELS, CausalStudent
+from .student import N_MELS, CausalStudent, ONNXStudent
 from .synth import CLASSES, FRAME
 
 REMOVABLE = ("sound_rep", "word_rep", "prolongation")
 
 
-def load_student(path) -> CausalStudent:
+def load_student(path, use_onnx: bool = False, quantize_int8: bool = True):
+    path = Path(path)
+    if path.suffix == ".onnx" or use_onnx:
+        try:
+            if path.suffix == ".onnx":
+                return ONNXStudent(path)
+            return ONNXStudent.from_checkpoint(path, quantize_int8=quantize_int8)
+        except Exception:
+            if path.suffix == ".onnx":
+                raise
     ckpt = torch.load(path, map_location="cpu", weights_only=False)
     model = CausalStudent(lookaheads=ckpt["lookaheads"], **ckpt.get("arch", {}))
     model.load_state_dict(ckpt["state_dict"])
@@ -30,13 +39,20 @@ def load_student(path) -> CausalStudent:
 
 
 class StudentStream:
-    def __init__(self, model: CausalStudent):
+    def __init__(self, model):
         self.m = model
+        self.is_onnx = hasattr(model, "step_session") and model.step_session is not None
         self.features = FeatureStream(n_mels=N_MELS)
-        k1, k2 = model.conv1.conv.kernel_size[0], model.conv2.conv.kernel_size[0]
-        self.buf1 = torch.zeros(1, N_MELS, k1)  # zeros = the causal left padding
-        self.buf2 = torch.zeros(1, model.conv1.conv.out_channels, k2)
-        self.h = None
+        if self.is_onnx:
+            self.buf1_np = np.zeros((1, N_MELS, model.k1), dtype=np.float32)
+            self.buf2_np = np.zeros((1, model.conv_channels, model.k2), dtype=np.float32)
+            self.h_np = np.zeros((model.layers, 1, model.hidden), dtype=np.float32)
+            self.pending_row = None
+        else:
+            k1, k2 = model.conv1.conv.kernel_size[0], model.conv2.conv.kernel_size[0]
+            self.buf1 = torch.zeros(1, N_MELS, k1)  # zeros = the causal left padding
+            self.buf2 = torch.zeros(1, model.conv1.conv.out_channels, k2)
+            self.h = None
         self.n_feat = 0
         self.n_out = 0
 
@@ -45,6 +61,27 @@ class StudentStream:
         """Returns (index of first new output frame, [n, heads, classes] probabilities)."""
         first = self.n_out
         _, _, logmel, _ = self.features.push(x)
+        if not len(logmel):
+            num_heads = len(self.m.lookaheads) if self.is_onnx else len(self.m.heads)
+            return first, np.zeros((0, num_heads, len(CLASSES)), dtype=np.float32)
+
+        if self.is_onnx:
+            rows = []
+            for row in logmel:
+                if self.pending_row is None:
+                    self.pending_row = row.astype(np.float32)
+                else:
+                    mel_pair = np.stack([self.pending_row, row.astype(np.float32)], axis=0)
+                    probs, self.buf1_np, self.buf2_np, self.h_np = self.m.step(
+                        mel_pair, self.buf1_np, self.buf2_np, self.h_np
+                    )
+                    rows.append(probs)
+                    self.n_out += 1
+                    self.pending_row = None
+                self.n_feat += 1
+            probs = np.stack(rows, axis=0) if rows else np.zeros((0, len(self.m.lookaheads), len(CLASSES)), dtype=np.float32)
+            return first, probs
+
         rows = []
         for row in logmel:
             v = self.m.norm(torch.from_numpy((row.astype(np.float32) + 40.0) / 20.0))
@@ -73,8 +110,8 @@ class StudentDetector:
     MIN_CUT_THRESHOLD = 0.2  # tuned thresholds can be tiny for rare classes; never cut on that
 
     def __init__(self, ckpt_path, lookahead_ms: float, report_path=None, cut_interjections: bool = False,
-                 cut_cfg: CutConfig = LIVE_CUTS):
-        self.model = load_student(ckpt_path)
+                 cut_cfg: CutConfig = LIVE_CUTS, use_onnx: bool = False, quantize_int8: bool = True):
+        self.model = load_student(ckpt_path, use_onnx=use_onnx, quantize_int8=quantize_int8)
         las = list(self.model.lookaheads)
         self.head = int(np.argmin([abs(la * 20 - lookahead_ms) for la in las]))
         self.lookahead = las[self.head]
