@@ -150,3 +150,27 @@ def test_student_detector_with_onnx(tiny_student_checkpoint, tmp_path):
         updates_count += len(updates)
 
     assert det.decided_samples() > 0
+
+
+def test_missing_step_file_live_fallback(tiny_student_checkpoint, tmp_path):
+    """When only sequence ONNX model exists, live detection falls back to PyTorch with no crash."""
+    from stutterclear.live import make_detector
+
+    pt_path, model = tiny_student_checkpoint
+    export_onnx(model, tmp_path / "student.onnx", quantize_int8=True, export_step=False)
+
+    # Sequence model exists, but step model does not
+    assert onnx_available_for_path(pt_path, require_step=False) is True
+    assert onnx_available_for_path(pt_path, require_step=True) is False
+
+    det, name = make_detector("student", "gentle", pt_path)
+    assert name == "student"
+    assert det is not None
+    assert isinstance(det.model, CausalStudent)
+
+    # Verify audio streaming functions without RuntimeError
+    x = (np.random.default_rng(2).standard_normal(16000) * 0.1).astype(np.float32)
+    for i in range(0, len(x), 160):
+        list(det.process(x[i : i + 160]))
+    assert det.decided_samples() > 0
+

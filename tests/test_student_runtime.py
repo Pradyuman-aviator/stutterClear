@@ -37,3 +37,27 @@ def test_streams_audio_without_errors(tmp_path):
     x = (np.random.default_rng(0).standard_normal(16000 * 2) * 0.1).astype(np.float32)
     for i in range(0, len(x), 160):
         list(det.process(x[i:i + 160]))
+
+
+def test_make_detector_with_report_file(tmp_path):
+    import json
+    from stutterclear.live import make_detector
+
+    model = CausalStudent(hidden=16, conv=16, layers=1)
+    path = tmp_path / "student.pt"
+    torch.save({"state_dict": model.state_dict(), "lookaheads": model.lookaheads, "arch": model.arch}, path)
+
+    report_path = tmp_path / "student_test_report.json"
+    custom_thresholds = [0.45, 0.42, 0.48, 0.55, 0.40]
+    report_path.write_text(json.dumps({
+        "200ms": {
+            "thresholds": custom_thresholds,
+            "test": {"macro_f1": 0.82}
+        }
+    }))
+
+    det, name = make_detector("student", "gentle", path)
+    assert name == "student"
+    assert det is not None
+    assert np.allclose(det.thresholds, custom_thresholds)
+

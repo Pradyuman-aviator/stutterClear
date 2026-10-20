@@ -159,13 +159,26 @@ def make_detector(kind: str, mode: str, student_path=None, adjust: dict | None =
                                         cut_interjections=cuts == "strong"), "teacher"
     if det is None and kind == "student" and cuts:
         from .student_onnx import onnx_available_for_path
-        use_onnx = onnx_available_for_path(path)
+        use_onnx = onnx_available_for_path(path, require_step=True)
         if use_onnx or path.exists():
             from .student_runtime import LIVE_CUTS, StudentDetector
-            det, name = StudentDetector(path, lookahead_ms, path.with_name("student_test_report.json"),
-                                        cut_interjections=cuts == "strong",
-                                        cut_cfg=LIVE_CUTS if cuts == "gentle" else STRONG_CUTS,
-                                        use_onnx=use_onnx), "student"
+            try:
+                det, name = StudentDetector(path, lookahead_ms, path.with_name("student_test_report.json"),
+                                            cut_interjections=cuts == "strong",
+                                            cut_cfg=LIVE_CUTS if cuts == "gentle" else STRONG_CUTS,
+                                            use_onnx=use_onnx), "student"
+            except Exception as e:
+                if use_onnx and path.exists():
+                    import logging
+                    logging.getLogger(__name__).warning(
+                        "Failed to initialize ONNX student detector (%s); falling back to PyTorch.", e
+                    )
+                    det, name = StudentDetector(path, lookahead_ms, path.with_name("student_test_report.json"),
+                                                cut_interjections=cuts == "strong",
+                                                cut_cfg=LIVE_CUTS if cuts == "gentle" else STRONG_CUTS,
+                                                use_onnx=False), "student"
+                else:
+                    raise
     if det is None:
         return None, "rule-based"  # Pipeline falls back to the heuristic detector
     if adjust:

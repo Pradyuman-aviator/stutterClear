@@ -5,6 +5,7 @@ and GRU state, and matches the whole-clip forward pass exactly.
 StudentDetector turns its per-frame probabilities into cut updates for the splicer, with the
 same process() interface as HeuristicDetector.
 """
+import json
 import logging
 from pathlib import Path
 
@@ -25,13 +26,13 @@ logger = logging.getLogger(__name__)
 REMOVABLE = ("sound_rep", "word_rep", "prolongation")
 
 
-def load_student(path, use_onnx: bool = False, quantize_int8: bool = True):
+def load_student(path, use_onnx: bool = False, quantize_int8: bool = True, require_step: bool = False):
     path = Path(path)
     if path.suffix == ".onnx":
         return ONNXStudent(path)
 
     if use_onnx:
-        found = find_exported_student(path, prefer_int8=quantize_int8)
+        found = find_exported_student(path, prefer_int8=quantize_int8, require_step=require_step)
         if found is not None:
             seq_path, step_path, meta_path = found
             try:
@@ -39,7 +40,11 @@ def load_student(path, use_onnx: bool = False, quantize_int8: bool = True):
             except Exception as e:
                 logger.warning("Failed to load exported ONNX model from %s (%s); falling back to PyTorch.", seq_path, e)
         else:
-            logger.warning("No pre-exported ONNX student files found for %s; falling back to PyTorch.", path)
+            logger.warning(
+                "No pre-exported ONNX student files%s found for %s; falling back to PyTorch.",
+                " (with step model)" if require_step else "",
+                path,
+            )
 
     ckpt = torch.load(path, map_location="cpu", weights_only=False)
     model = CausalStudent(lookaheads=ckpt["lookaheads"], **ckpt.get("arch", {}))
@@ -127,7 +132,8 @@ class StudentDetector:
 
     def __init__(self, ckpt_path, lookahead_ms: float, report_path=None, cut_interjections: bool = False,
                  cut_cfg: CutConfig = LIVE_CUTS, use_onnx: bool = False, quantize_int8: bool = True):
-        self.model = load_student(ckpt_path, use_onnx=use_onnx, quantize_int8=quantize_int8)
+        ckpt_path = Path(ckpt_path)
+        self.model = load_student(ckpt_path, use_onnx=use_onnx, quantize_int8=quantize_int8, require_step=use_onnx)
         las = list(self.model.lookaheads)
         self.head = int(np.argmin([abs(la * 20 - lookahead_ms) for la in las]))
         self.lookahead = las[self.head]
@@ -147,7 +153,15 @@ class StudentDetector:
         self.tail = int(round(cut_cfg.prolong_tail_ms * SAMPLE_RATE / 1000 / FRAME))
         self.cooldown = False  # after a cancelled over-long cut, wait for the score to drop
         self.block_idx = CLASSES.index("block")
-        self.stream = StudentStream(self.model)
+        try:
+            self.stream = StudentStream(self.model)
+        except RuntimeError as e:
+            if use_onnx and ckpt_path.suffix != ".onnx" and ckpt_path.exists():
+                logger.warning("Failed to initialize ONNX student stream (%s); falling back to PyTorch.", e)
+                self.model = load_student(ckpt_path, use_onnx=False)
+                self.stream = StudentStream(self.model)
+            else:
+                raise
         self.events: list[DetectorEvent] = []
         self.next_id = 0
         self.cut = None  # open cut: dict(id, start, first, last, strict_last, below, kind, peak)

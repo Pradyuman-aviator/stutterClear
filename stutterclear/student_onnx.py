@@ -166,11 +166,12 @@ def export_onnx(
 
 
 def find_exported_student(
-    path: str | Path, prefer_int8: bool = True
+    path: str | Path, prefer_int8: bool = True, require_step: bool = False
 ) -> Optional[Tuple[Path, Optional[Path], Path]]:
     """Locates pre-exported ONNX files for a given student model path without writing to disk.
 
     Returns (seq_model_path, step_model_path_or_None, meta_path) or None if files don't exist.
+    If require_step is True, returns None unless a step model file also exists.
     """
     path = Path(path)
     parent = path.parent
@@ -207,17 +208,26 @@ def find_exported_student(
         if cand.exists():
             step_path = cand
 
+    if require_step and step_path is None:
+        return None
+
     return seq_path, step_path, meta_path
 
 
-def onnx_available_for_path(path: str | Path, prefer_int8: bool = True) -> bool:
-    """Returns True if onnxruntime is installed and exported ONNX model files exist for path."""
+def onnx_available_for_path(
+    path: str | Path, prefer_int8: bool = True, require_step: bool = True
+) -> bool:
+    """Returns True if onnxruntime is installed and exported ONNX model files exist for path.
+
+    When require_step=True (the default for live streaming sessions), also requires
+    the streaming step model file.
+    """
     try:
         import onnxruntime  # noqa: F401
     except ImportError:
         return False
 
-    return find_exported_student(path, prefer_int8=prefer_int8) is not None
+    return find_exported_student(path, prefer_int8=prefer_int8, require_step=require_step) is not None
 
 
 class ONNXStudent:
