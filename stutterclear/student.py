@@ -8,6 +8,7 @@ The head choice is the latency dial: L frames of 20 ms is the detection delay.
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import numpy as np
 
 from .features import FeatureStream, mel_filterbank
 from .synth import CLASSES, SR
@@ -63,6 +64,8 @@ class CausalStudent(nn.Module):
 
     def forward(self, wave: torch.Tensor) -> list:
         """Returns one [B, T, classes] logit tensor per lookahead head; row j of head L is frame j - L."""
+        if wave.ndim == 1:
+            wave = wave.unsqueeze(0)
         x, _ = self.trunk(self.logmel(wave))
         return [head(x) for head in self.heads]
 
@@ -85,3 +88,4 @@ def distill_loss(heads_logits, lookaheads, soft, hard=None, mask=None, hard_weig
                 lg, hd, reduction="none").mean(-1)
         total = total + (loss * m).sum() / m.sum().clamp(min=1.0)
     return total / len(lookaheads)
+

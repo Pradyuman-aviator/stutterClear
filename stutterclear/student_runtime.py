@@ -6,6 +6,7 @@ StudentDetector turns its per-frame probabilities into cut updates for the splic
 same process() interface as HeuristicDetector.
 """
 import json
+import logging
 from pathlib import Path
 
 import numpy as np
@@ -17,12 +18,34 @@ from .detector import CutUpdate, DetectorEvent
 from .features import FeatureStream
 from .segments import BALANCED_CUTS, CutConfig
 from .student import N_MELS, CausalStudent
+from .student_onnx import ONNXStudent, find_exported_student
 from .synth import CLASSES, FRAME
+
+logger = logging.getLogger(__name__)
 
 REMOVABLE = ("sound_rep", "word_rep", "prolongation")
 
 
-def load_student(path) -> CausalStudent:
+def load_student(path, use_onnx: bool = False, quantize_int8: bool = True, require_step: bool = False):
+    path = Path(path)
+    if path.suffix == ".onnx":
+        return ONNXStudent(path)
+
+    if use_onnx:
+        found = find_exported_student(path, prefer_int8=quantize_int8, require_step=require_step)
+        if found is not None:
+            seq_path, step_path, meta_path = found
+            try:
+                return ONNXStudent(seq_path, step_model_path=step_path, meta_path=meta_path)
+            except Exception as e:
+                logger.warning("Failed to load exported ONNX model from %s (%s); falling back to PyTorch.", seq_path, e)
+        else:
+            logger.warning(
+                "No pre-exported ONNX student files%s found for %s; falling back to PyTorch.",
+                " (with step model)" if require_step else "",
+                path,
+            )
+
     ckpt = torch.load(path, map_location="cpu", weights_only=False)
     model = CausalStudent(lookaheads=ckpt["lookaheads"], **ckpt.get("arch", {}))
     model.load_state_dict(ckpt["state_dict"])
@@ -30,13 +53,27 @@ def load_student(path) -> CausalStudent:
 
 
 class StudentStream:
-    def __init__(self, model: CausalStudent):
+    def __init__(self, model):
         self.m = model
+        self.is_onnx = isinstance(model, ONNXStudent)
         self.features = FeatureStream(n_mels=N_MELS)
-        k1, k2 = model.conv1.conv.kernel_size[0], model.conv2.conv.kernel_size[0]
-        self.buf1 = torch.zeros(1, N_MELS, k1)  # zeros = the causal left padding
-        self.buf2 = torch.zeros(1, model.conv1.conv.out_channels, k2)
-        self.h = None
+
+        if self.is_onnx:
+            if model.step_session is None:
+                stem = model.model_path.stem.replace(".quant", "")
+                raise RuntimeError(
+                    f"ONNXStudent requires a streaming step model ({stem}_step.onnx) for StudentStream. "
+                    "Export both sequence and step models using scripts/export_student_onnx.py."
+                )
+            self.buf1_np = np.zeros((1, N_MELS, model.k1), dtype=np.float32)
+            self.buf2_np = np.zeros((1, model.conv_channels, model.k2), dtype=np.float32)
+            self.h_np = np.zeros((model.layers, 1, model.hidden), dtype=np.float32)
+            self.pending_row = None
+        else:
+            k1, k2 = model.conv1.conv.kernel_size[0], model.conv2.conv.kernel_size[0]
+            self.buf1 = torch.zeros(1, N_MELS, k1)  # zeros = the causal left padding
+            self.buf2 = torch.zeros(1, model.conv1.conv.out_channels, k2)
+            self.h = None
         self.n_feat = 0
         self.n_out = 0
 
@@ -45,6 +82,27 @@ class StudentStream:
         """Returns (index of first new output frame, [n, heads, classes] probabilities)."""
         first = self.n_out
         _, _, logmel, _ = self.features.push(x)
+        if not len(logmel):
+            num_heads = len(self.m.lookaheads) if self.is_onnx else len(self.m.heads)
+            return first, np.zeros((0, num_heads, len(CLASSES)), dtype=np.float32)
+
+        if self.is_onnx:
+            rows = []
+            for row in logmel:
+                if self.pending_row is None:
+                    self.pending_row = row.astype(np.float32)
+                else:
+                    mel_pair = np.stack([self.pending_row, row.astype(np.float32)], axis=0)
+                    probs, self.buf1_np, self.buf2_np, self.h_np = self.m.step(
+                        mel_pair, self.buf1_np, self.buf2_np, self.h_np
+                    )
+                    rows.append(probs)
+                    self.n_out += 1
+                    self.pending_row = None
+                self.n_feat += 1
+            probs = np.stack(rows, axis=0) if rows else np.zeros((0, len(self.m.lookaheads), len(CLASSES)), dtype=np.float32)
+            return first, probs
+
         rows = []
         for row in logmel:
             v = self.m.norm(torch.from_numpy((row.astype(np.float32) + 40.0) / 20.0))
@@ -73,8 +131,9 @@ class StudentDetector:
     MIN_CUT_THRESHOLD = 0.2  # tuned thresholds can be tiny for rare classes; never cut on that
 
     def __init__(self, ckpt_path, lookahead_ms: float, report_path=None, cut_interjections: bool = False,
-                 cut_cfg: CutConfig = LIVE_CUTS):
-        self.model = load_student(ckpt_path)
+                 cut_cfg: CutConfig = LIVE_CUTS, use_onnx: bool = False, quantize_int8: bool = True):
+        ckpt_path = Path(ckpt_path)
+        self.model = load_student(ckpt_path, use_onnx=use_onnx, quantize_int8=quantize_int8, require_step=use_onnx)
         las = list(self.model.lookaheads)
         self.head = int(np.argmin([abs(la * 20 - lookahead_ms) for la in las]))
         self.lookahead = las[self.head]
@@ -94,7 +153,15 @@ class StudentDetector:
         self.tail = int(round(cut_cfg.prolong_tail_ms * SAMPLE_RATE / 1000 / FRAME))
         self.cooldown = False  # after a cancelled over-long cut, wait for the score to drop
         self.block_idx = CLASSES.index("block")
-        self.stream = StudentStream(self.model)
+        try:
+            self.stream = StudentStream(self.model)
+        except RuntimeError as e:
+            if use_onnx and ckpt_path.suffix != ".onnx" and ckpt_path.exists():
+                logger.warning("Failed to initialize ONNX student stream (%s); falling back to PyTorch.", e)
+                self.model = load_student(ckpt_path, use_onnx=False)
+                self.stream = StudentStream(self.model)
+            else:
+                raise
         self.events: list[DetectorEvent] = []
         self.next_id = 0
         self.cut = None  # open cut: dict(id, start, first, last, strict_last, below, kind, peak)
