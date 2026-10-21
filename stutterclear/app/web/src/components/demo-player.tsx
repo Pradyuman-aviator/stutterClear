@@ -14,9 +14,16 @@ const HEAR = [
   { value: "original" as Hear, label: "Original" },
   { value: "clean" as Hear, label: "Clean voice" },
 ]
+// Pause cuts only shorten a silence: they are counted apart from the stutters.
+function summary(cuts: { kind: string }[]) {
+  const stutters = cuts.filter((c) => c.kind !== "pause").length
+  const pauses = cuts.length - stutters
+  return `${stutters} stutter${stutters === 1 ? "" : "s"} removed` + (pauses ? `, ${pauses} long pause${pauses === 1 ? "" : "s"} shortened` : "")
+}
+
 const ENGINES: { value: DemoEngine; label: string; hint: string }[] = [
   { value: "natural", label: "Natural", hint: "Repeated and broken-off words go, cut only between words; um and uh stay." },
-  { value: "thorough", label: "Thorough", hint: "Natural, plus um, uh and repeated phrases." },
+  { value: "thorough", label: "Thorough", hint: "Natural, plus um, uh and repeated phrases; long pauses shrink to under half a second." },
   { value: "live", label: "Live", hint: "Exactly what a call hears, decided in real time." },
 ]
 
@@ -196,7 +203,7 @@ export function DemoBar({
       {tl && (
         <div className={cn("text-[11px] leading-relaxed text-white/40")}>
           <span className="text-white/60">{ENGINES.find((e) => e.value === state.engine)?.hint}</span>{" "}
-          {tl.cuts.length} stutter{tl.cuts.length === 1 ? "" : "s"} removed, {tl.removed_s.toFixed(1)} s shorter.{" "}
+          {summary(tl.cuts)}, {tl.removed_s.toFixed(1)} s shorter.{" "}
           {credit}
         </div>
       )}
