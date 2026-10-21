@@ -99,6 +99,41 @@ def word_cuts(toks: list, probs=None, cut_fillers: bool = False, confirm=0.3,
     return cuts
 
 
+def tighten_pauses(toks: list, cuts: list, max_pause: float = 0.6, keep: float = 0.4, edge: float = 0.05) -> list:
+    """Extra cuts that shorten the silence left between two kept words to `keep` seconds when it is
+    longer than `max_pause`: a silent block or a long hesitation, which a recording can give back
+    (live, that time is already gone). They only cut silence: `edge` seconds stay next to each word,
+    and the existing cuts are taken into account. Kind "pause", no tokens."""
+    gone = {i for c in cuts for i in c["tokens"]}
+    kept = [t for i, t in enumerate(toks) if i not in gone]
+    spans = sorted((c["start"], c["end"]) for c in cuts)
+    extra = []
+    for a, b in zip(kept, kept[1:]):
+        lo, hi = a["e"] + edge, b["s"] - edge
+        if hi - lo <= max_pause:
+            continue
+        free, pos = [], lo  # the silence the existing cuts leave between the two words
+        for s, e in spans:
+            if e <= pos or s >= hi:
+                continue
+            if s > pos:
+                free.append((pos, s))
+            pos = max(pos, e)
+        if pos < hi:
+            free.append((pos, hi))
+        excess = sum(e - s for s, e in free) - keep
+        if excess <= max_pause - keep:
+            continue
+        for s, e in sorted(free, key=lambda f: f[0] - f[1]):  # longest stretch first
+            take = min(e - s, excess)
+            if take <= 0.02:
+                break
+            mid = (s + e) / 2
+            extra.append({"kind": "pause", "start": round(mid - take / 2, 3), "end": round(mid + take / 2, 3), "tokens": []})
+            excess -= take
+    return extra
+
+
 def _overlap(s, e, cuts) -> float:
     return sum(max(0.0, min(e, c["end"]) - max(s, c["start"])) for c in cuts) / max(1e-3, e - s)
 

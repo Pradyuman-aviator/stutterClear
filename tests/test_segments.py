@@ -70,3 +70,23 @@ def test_teacher_uses_its_calibration_when_present():
     assert cfg.thresholds == (0.4, 0.6, 0.5, 0.5, 0.7) and cfg.merge_gap == 3
     assert cfg.prolong_keep_ms == STRONG_CUTS.prolong_keep_ms  # everything else stays
     assert teacher_cut_config("gentle", calib) == BALANCED_CUTS  # only the calibrated mode changes
+
+
+
+def test_long_silences_between_kept_words_shrink():
+    from stutterclear.silver import label_tokens, tighten_pauses, word_cuts
+    words = [("we", 0.0, 0.3), ("came", 1.8, 2.1), ("home", 2.4, 2.7), ("and", 2.9, 3.0), ("and", 4.0, 4.2), ("ate", 4.3, 4.5)]
+    toks = label_tokens([{"w": w, "s": s, "e": e} for w, s, e in words])
+    cuts = word_cuts(toks)  # the first "and" is a repeat: cut on its own (the next word is 1 s away)
+    extra = tighten_pauses(toks, cuts)
+    assert [c["kind"] for c in extra] == ["pause", "pause"]  # "we ... came" and "home ... and" were long
+
+    def silence_left(lo, hi):
+        removed = sum(max(0.0, min(hi, c["end"]) - max(lo, c["start"])) for c in cuts + extra)
+        return (hi - lo) - removed
+
+    assert abs(silence_left(0.3, 1.8) - 0.5) < 0.01  # 0.4 s kept plus 50 ms next to each word
+    assert abs(silence_left(2.7, 4.0) - 0.5) < 0.01  # the repeat's own cut counts toward it: no double cut
+    assert all(c["start"] >= 0.35 for c in extra) and not any(c["start"] < 2.75 < c["end"] for c in extra)
+    assert abs(silence_left(2.1, 2.4) - 0.3) < 1e-9  # a short pause stays as it was
+    assert not tighten_pauses(toks, cuts, max_pause=2.0)
