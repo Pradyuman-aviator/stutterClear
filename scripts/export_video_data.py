@@ -1,12 +1,16 @@
-"""Everything the demo video shows, from the real pipeline: a before/after clip with its real cuts and
-transcript, the meaning guard's and word rescue's real Nemotron answers, the measured numbers, and
-the narration (NVIDIA Magpie TTS with NVIDIA_API_KEY; otherwise a placeholder Windows voice).
+"""Everything the demo film shows, from the real pipeline, and its narration from the storyboard.
 
     python scripts/export_video_data.py            # writes video/public/generated/
-    cd video && npm run render                      # then render the video
+    python scripts/make_video_sound.py             # music and sound effects (once)
+    cd video && npm run render                      # renders out/stutterclear.mp4
 
-Needs NEBIUS_API_KEY for the Nemotron scenes. The clip is LibriSpeech read speech (CC BY 4.0) with
-synthetic stutters, labelled as such in the video.
+The clip is Alex's voice in the film: a real recording of a 20-year-old man who stutters, from
+UCLASS (research and teaching use; credit UCLASS and the Wellcome Trust; it is read from the local
+download in data/external and never committed). It is cleaned by the Thorough recordings engine,
+exactly as the app does: the teacher's probabilities, CrisperWhisper's verbatim words, cuts between
+words, the meaning guard (NVIDIA Nemotron), long silent pauses shortened. Word rescue and the meaning
+guard scenes show Nemotron's real answers. Narration: NVIDIA Magpie TTS with NVIDIA_API_KEY,
+otherwise a placeholder Windows voice. Needs NEBIUS_API_KEY and the GPU-free cached probabilities.
 """
 import json
 import subprocess
@@ -22,32 +26,49 @@ from stutterclear import guard, nemotron, rescue, tts  # noqa: E402
 from stutterclear.audio import load_wav, save_wav  # noqa: E402
 from stutterclear.config import HOP, SAMPLE_RATE as SR  # noqa: E402
 from stutterclear.segments import NATURAL_JOIN, render_edited  # noqa: E402
-from stutterclear.silver import label_tokens  # noqa: E402
+from stutterclear.silver import label_tokens, score_cuts, tighten_pauses  # noqa: E402
+from stutterclear.teacher_runtime import RECORDINGS_CKPT, calibration  # noqa: E402
 
 OUT = ROOT / "video" / "public" / "generated"
-CLIP, CLIP_END_S = ROOT / "data" / "demo_clips" / "read-3.wav", 13.4  # "...out of the the the mist"
+STORYBOARD = ROOT / "video" / "storyboard.json"
+CLIP = ROOT / "data" / "external" / "uclass_eval" / "monologue" / "M_0065_20y1m_1.wav"
+WINDOW = (48.85, 68.30)  # "It is because they they they have it ... in Roman l- l- l- letters"
+CREDIT = ("Alex is fictional. His voice is a real recording of a 20-year-old man who stutters, from UCLASS, "
+          "University College London (Howell, Davis & Bartrip, 2009); data collection supported by the Wellcome Trust.")
+CLASSES = ["sound repetition", "word repetition", "prolongation", "block", "filler"]
 NARRATION_SR = 44100
+# The meaning guard on a sentence in Alex's story (not one of the examples in its prompt), and word
+# rescue where the real recording gets stuck ("in Roman l- l- l- letters"): his app teaches
+# travellers to read Japanese train signs (kanji, and romaji: Japanese in Roman letters).
+GUARD_SENTENCE = "I I know that that sign means the exit, and it is very very easy to miss."  # judged alike 5 times in 5
+RESCUE_SAID = "It is because they have it in their Chinese writing there, and some and sometimes in Roman"
+RESCUE_CONTEXT = "Demo day pitch for my app: it teaches travellers to read Japanese train signs."
+SAY_WORD = "letters"  # the suggestion Alex taps
 
-NARRATION = [
-    ("hook", "About one in a hundred people stutter. On a call, every repeat is something the listener has to wait through."),
-    ("intro", "StutterClear is a voice filter for people who stutter. You speak the way you speak. "
-              "The listener hears your own voice, without the repeats."),
-    ("before", "Here is read speech, with stutters."),
-    ("after", "And here is what the listener hears."),
-    ("how", "A WavLM model, trained on real stuttered speech, listens about half a second behind you, on the GPU. "
-            "Each cut lands between words, and the join is filled with your own room tone."),
-    ("guard", "But not every repeat is a stutter. NVIDIA Nemotron, on Nebius Token Factory, reads each cut in its "
-              "sentence. That that, is grammar. Very very, is emphasis. So both stay."),
-    ("calls", "In Zoom, Meet or Teams, it works as a virtual microphone, with live captions from NVIDIA's streaming "
-              "FastConformer."),
-    ("rescue", "When you are stuck on a word, Nemotron suggests what you mean, from your context. Tap one, and a "
-               "synthetic voice says it, only when you choose."),
-    ("app", "It also cleans voice notes and videos, turns speech into clean text, and learns from your feedback. "
-            "Nothing is saved unless you choose."),
-    ("numbers", "On speakers it never trained on, it removes sixty five percent of stutters live, and ninety one "
-                "percent in recordings, cutting only between words."),
-    ("end", "StutterClear. Your real voice, on your terms."),
-]
+
+def guard_demo(text: str, runs: int = 3) -> dict:
+    """The meaning guard's real exchange with Nemotron for a typed sentence: what is sent (text,
+    candidates marked) and the JSON that comes back, with each word's verdict. Nemotron does not
+    always give the same verdict twice, so it is asked `runs` times and a real reply carrying the
+    most common verdict is shown (with the tally)."""
+    words = text.split()
+    toks = label_tokens([{"w": guard.TYPED_FILLERS.get(w.lower().strip(",.!?;:"), w), "s": 0.4 * i, "e": 0.4 * i + 0.3}
+                         for i, w in enumerate(words)])
+    candidates = {i for i, t in enumerate(toks) if t["label"] != "fluent"}
+    request = guard.marked_transcript(toks, candidates)
+    replies = []
+    for _ in range(runs):
+        reply = nemotron.chat([{"role": "system", "content": guard.SYSTEM}, {"role": "user", "content": request}],
+                              max_tokens=4000, temperature=0.0, timeout=90.0, think=True)
+        replies.append((tuple(sorted(guard._verdict(reply, candidates))), reply))
+    verdicts = [v for v, _ in replies]
+    best = max(set(verdicts), key=verdicts.count)
+    reply = next(r for v, r in replies if v == best)
+    keep = guard._verdict(reply, candidates)
+    return {"model": nemotron.MODEL, "request": request, "reply": json.dumps(nemotron.last_json(reply, "{")),
+            "agreed": f"{verdicts.count(best)} of {runs}",
+            "words": [{"w": w, "candidate": i in candidates, "kept": i in keep, "reason": keep.get(i, "")}
+                      for i, w in enumerate(words)]}
 
 
 def envelope(x: np.ndarray) -> list:
@@ -56,24 +77,40 @@ def envelope(x: np.ndarray) -> list:
 
 
 def clip() -> dict:
-    """The before/after: the Thorough engine (repeats, broken-off starts, fillers, repeated phrases)
-    with the meaning guard, exactly as a recording is cleaned in the app."""
-    x = load_wav(CLIP)[: int(CLIP_END_S * SR)]
-    words = [w for w in json.loads(CLIP.with_suffix(".crisper.json").read_text()) if w["e"] <= CLIP_END_S]
+    a, b = WINDOW
+    x = load_wav(CLIP)[int(a * SR):int(b * SR)]
+    words = [dict(w, s=round(w["s"] - a, 3), e=round(w["e"] - a, 3))
+             for w in json.loads(CLIP.with_suffix(".crisper.json").read_text()) if w["s"] >= a and w["e"] <= b]
     toks = label_tokens(words)
-    probs = np.load(CLIP.with_suffix(".teacher.npy"))[: len(x) // 320, [0, 1, 2, 4]]
-    cuts, report = guard.guarded_cuts(toks, probs, cut_fillers=True, cut_phrases=True)
-    y = render_edited(x, cuts, NATURAL_JOIN)
+    f0 = int(round(a * SR / 320))  # 20 ms frames, sliced as the app slices them
+    probs = np.load(CLIP.with_suffix(".teacher.npy"))[f0: f0 + len(x) // 320]
+    confirm = calibration(RECORDINGS_CKPT).get("confirm", 0.3)
+    cuts, report = guard.guarded_cuts(toks, probs[:, [0, 1, 2, 4]], cut_fillers=True, cut_phrases=True, confirm=confirm)
+    pauses = tighten_pauses(toks, cuts)
+    allc = sorted(cuts + pauses, key=lambda c: c["start"])
+    y = render_edited(x, allc, NATURAL_JOIN)
     save_wav(OUT / "before.wav", x)
     save_wav(OUT / "after.wav", y)
     from stutterclear.app.demo import transcript
     text = transcript(toks, cuts)
+    score = score_cuts(toks, allc)
+
+    def after_time(t):  # a time on the original clock, on the cleaned clock (joins rescale the rest)
+        removed = sum(max(0.0, min(t, c["end"]) - c["start"]) for c in allc)
+        return (t - removed) * len(y) / (len(x) - sum(c["end"] - c["start"] for c in allc) * SR)
+
+    after_words = [{"w": w["w"], "s": round(after_time(t["s"]), 3), "e": round(after_time(t["e"]), 3)}
+                   for w, t in zip(text["words"], toks) if not w["removed"]]
     return {"before_s": round(len(x) / SR, 2), "after_s": round(len(y) / SR, 2),
             "env_before": envelope(x), "env_after": envelope(y),
-            "cuts": [{"start": c["start"], "end": c["end"], "kind": c["kind"]} for c in cuts],
+            "cuts": [{"start": c["start"], "end": c["end"], "kind": c["kind"],
+                      "words": " ".join(toks[i]["w"] for i in c["tokens"])} for c in allc],
             "words": [dict(w, s=t["s"], e=t["e"]) for w, t in zip(text["words"], toks)],
-            "clean": text["clean"], "guard": report,
-            "credit": "Read speech from LibriSpeech (CC BY 4.0) with synthetic stutters"}
+            "after_words": after_words,
+            "clean": text["clean"], "said": text["said"], "guard": report,
+            "probs": np.round(probs, 3).tolist(), "classes": CLASSES, "frame_ms": 20,
+            "removed_pct": score["stutter_removed_pct"], "lost_pct": score["words_lost_pct"],
+            "credit": CREDIT}
 
 
 def numbers() -> dict:
@@ -84,69 +121,103 @@ def numbers() -> dict:
             "live_gentle_removed": live[("teacher", "gentle")]["stutter_removed_pct"],
             "live_gentle_lost": live[("teacher", "gentle")]["words_lost_pct"],
             "rec_thorough_removed": rec["thorough"]["stutter_removed_pct"],
-            "rec_thorough_lost": rec["thorough"]["words_lost_pct"], "speakers": 7}
+            "rec_thorough_lost": rec["thorough"]["words_lost_pct"], "speakers": 7, "f1_sep28k": 0.618}
 
 
-def say_magpie(text: str, path: Path):
-    reply = tts._call(tts.request(text, tts.VOICE, sr=NARRATION_SR), timeout=60.0)
+def say_magpie(text: str, path: Path, voice: str = tts.VOICE):
+    reply = tts._call(tts.request(text, voice, sr=NARRATION_SR), timeout=60.0)
     pcm = tts.audio_field(reply)
-    y = np.frombuffer(pcm[: len(pcm) // 2 * 2], np.int16).astype(np.float32) / 32768.0
-    save_wav(path, y, NARRATION_SR)
+    save_wav(path, np.frombuffer(pcm[: len(pcm) // 2 * 2], np.int16).astype(np.float32) / 32768.0, NARRATION_SR)
 
 
-def say_windows(text: str, path: Path):
-    """Placeholder until NVIDIA_API_KEY is set: the Windows speech voice."""
-    script = Path(tempfile.mkdtemp()) / "say.ps1"
-    script.write_text(
+def trim(path: Path, pad: float = 0.06, floor_db: float = -40.0) -> float:
+    """Cut the silence a voice engine leaves before and after a line; returns the new length (s)."""
+    from scipy.io import wavfile
+    sr, y = wavfile.read(path)
+    a = np.abs(y.astype(np.float32))
+    loud = np.flatnonzero(a > a.max() * 10 ** (floor_db / 20))
+    if len(loud):
+        y = y[max(0, loud[0] - int(pad * sr)): loud[-1] + int(pad * sr)]
+        wavfile.write(path, sr, y)
+    return round(len(y) / sr, 2)
+
+
+def say_windows(text: str, path: Path, voice: str = "Microsoft Zira Desktop", rate: int = 1):
+    """Placeholder until NVIDIA_API_KEY is set: a Windows speech voice (rate -10..10)."""
+    work = Path(tempfile.mkdtemp())
+    (work / "say.txt").write_text(text, encoding="utf-8")
+    (work / "say.ps1").write_text(
         "Add-Type -AssemblyName System.Speech\n"
         "$s = New-Object System.Speech.Synthesis.SpeechSynthesizer\n"
-        "$s.SelectVoice('Microsoft Zira Desktop')\n$s.Rate = 0\n"
+        f"$s.SelectVoice('{voice}')\n$s.Rate = {rate}\n"
         f"$f = New-Object System.Speech.AudioFormat.SpeechAudioFormatInfo({NARRATION_SR}, "
         "[System.Speech.AudioFormat.AudioBitsPerSample]::Sixteen, [System.Speech.AudioFormat.AudioChannel]::Mono)\n"
-        f"$s.SetOutputToWaveFile('{path}', $f)\n$s.Speak([IO.File]::ReadAllText('{script.with_suffix('.txt')}'))\n"
-        "$s.Dispose()\n", encoding="utf-8")
-    script.with_suffix(".txt").write_text(text, encoding="utf-8")
-    subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script)], check=True)
+        f"$s.SetOutputToWaveFile('{path}', $f)\n$s.Speak([IO.File]::ReadAllText('{work / 'say.txt'}'))\n$s.Dispose()\n",
+        encoding="utf-8")
+    subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(work / "say.ps1")], check=True)
 
 
-def narration() -> tuple:
-    from scipy.io import wavfile
+def narration(board: dict) -> tuple:
+    """One file per narrator line of the storyboard, named <scene>-<n>, trimmed of the engine's silence."""
     magpie = tts.available()
     (OUT / "narration").mkdir(parents=True, exist_ok=True)
     lines = []
-    for key, text in NARRATION:
-        path = OUT / "narration" / f"{key}.wav"
-        (say_magpie if magpie else say_windows)(text, path)
-        sr, y = wavfile.read(path)
-        lines.append({"id": key, "text": text, "file": f"generated/narration/{key}.wav", "seconds": round(len(y) / sr, 2)})
-        print(f"  {key}: {lines[-1]['seconds']} s", flush=True)
-    label = ("Narration: NVIDIA Magpie TTS (synthetic voice)" if magpie
-             else "Narration: placeholder synthetic voice (Windows)")
+    for scene in board["scenes"]:
+        k = 0
+        for step in scene["steps"]:
+            if "line" not in step:
+                continue
+            key = f"{scene['id']}-{k}"
+            k += 1
+            path = OUT / "narration" / f"{key}.wav"
+            (say_magpie if magpie else say_windows)(step.get("say", step["line"]), path)  # say: how to pronounce it
+            lines.append({"id": key, "text": step["line"], "file": f"generated/narration/{key}.wav", "seconds": trim(path)})
+    label = "Narrator: NVIDIA Magpie TTS (synthetic voice)" if magpie else "Narrator: placeholder synthetic voice (Windows)"
+    print(f"  {len(lines)} lines, {sum(n['seconds'] for n in lines):.1f} s of narration ({label})", flush=True)
     return lines, label
+
+
+def say_it(word: str) -> dict:
+    """The rescued word as Say it speaks it: NVIDIA Magpie, as in the app, or (without a key) a
+    labelled placeholder in another voice than the narrator's."""
+    path = OUT / "say.wav"
+    if tts.available():
+        say_magpie(word, path)
+        label = "Say it · NVIDIA Magpie TTS · synthetic voice"
+    else:
+        say_windows(word, path, "Microsoft David Desktop", rate=0)
+        label = "Say it · placeholder synthetic voice (the app uses NVIDIA Magpie TTS)"
+    return {"word": word, "file": "generated/say.wav", "seconds": trim(path), "label": label}
 
 
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
     if not nemotron.available():
-        sys.exit("Set NEBIUS_API_KEY: the meaning guard and word rescue scenes show Nemotron's real answers.")
+        sys.exit("Set NEBIUS_API_KEY: the word rescue and meaning guard scenes show Nemotron's real answers.")
+    board = json.loads(STORYBOARD.read_text(encoding="utf-8"))
     print("clip…", flush=True)
     data = {"clip": clip()}
-    print(f"  {data['clip']['before_s']} s -> {data['clip']['after_s']} s, {len(data['clip']['cuts'])} cuts; "
-          f"guard kept {[k['word'] for k in (data['clip']['guard'] or {}).get('kept', [])]}", flush=True)
-    print("meaning guard and word rescue (Nemotron)…", flush=True)
-    data["guard"] = guard.check_text("I I I think that that plan is very very good")
-    context = "Demo day at the Nebius and NVIDIA Global AI Hackathon. Our project: StutterClear."
-    said = "Thank you all for coming. Today I want to show you what we built for the"
-    data["rescue"] = {"said": said, "onset": "h", "context": context,
-                      "suggestions": rescue.suggest(said, context, "h")}
-    print("  guard:", [(w["w"], w["reason"]) for w in data["guard"]["words"] if w["kept"]],
-          "| rescue:", data["rescue"]["suggestions"], flush=True)
+    c = data["clip"]
+    print(f"  {c['before_s']} s -> {c['after_s']} s, {len(c['cuts'])} cuts, removed {c['removed_pct']}%, lost {c['lost_pct']}%\n"
+          f"  clean: {c['clean']}", flush=True)
+    print("Nemotron: meaning guard and word rescue…", flush=True)
+    data["guard"] = guard_demo(GUARD_SENTENCE)
+    for _ in range(3):  # the film shows Alex tapping SAY_WORD: only with a real answer that offers it
+        suggestions = rescue.suggest(RESCUE_SAID, RESCUE_CONTEXT, "l")
+        if SAY_WORD in suggestions:
+            break
+    else:
+        sys.exit(f"Nemotron did not suggest {SAY_WORD!r} in three tries ({suggestions}): change the rescue scene.")
+    data["rescue"] = {"said": RESCUE_SAID, "onset": "l", "context": RESCUE_CONTEXT, "suggestions": suggestions}
+    print("  guard:", data["guard"]["request"], "->", data["guard"]["reply"], "| rescue:", data["rescue"]["suggestions"], flush=True)
     data["numbers"] = numbers()
     data["model"] = nemotron.MODEL
     print("narration…", flush=True)
-    data["narration"], data["voice_label"] = narration()
-    (OUT / "data.json").write_text(json.dumps(data, indent=1))
-    print(f"wrote {OUT}")
+    data["narration"], data["voice_label"] = narration(board)
+    data["say"] = say_it(SAY_WORD)
+    data["board"] = board
+    (OUT / "data.json").write_text(json.dumps(data))
+    print(f"wrote {OUT / 'data.json'}")
 
 
 if __name__ == "__main__":
