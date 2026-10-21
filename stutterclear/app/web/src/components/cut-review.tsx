@@ -89,7 +89,7 @@ export function CutReview({
           </Button>
         </div>
       )}
-      {cuts.map((c, i) => (
+      {cuts.filter((c) => c.kind !== "pause").map((c, i) => (
         <div key={`${c.start}-${c.end}`} className="flex flex-wrap items-center gap-2">
           <Badge variant="secondary">{c.kind}</Badge>
           <span className="text-xs text-muted-foreground">
