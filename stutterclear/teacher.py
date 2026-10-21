@@ -3,12 +3,22 @@
 Outputs per-frame logits (20 ms frames) for CLASSES. It is non-causal and large; it only
 labels data and teaches the small causal student that runs live.
 """
+import threading
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from transformers import AutoFeatureExtractor, AutoModel
 
 from .synth import CLASSES
+
+# The last encoder layer's raw output, kept per thread: the app runs one model from several threads
+# at once (a live session, a demo render, a voice note), and a call must never read another's.
+_last = threading.local()
+
+
+def _keep_last(mod, args, out):  # returns None, so the layer's own output is untouched
+    _last.out = out[0] if isinstance(out, tuple) else out
 
 
 class FrameTeacher(nn.Module):
@@ -27,6 +37,9 @@ class FrameTeacher(nn.Module):
         self.proj = nn.Linear(self.ssl.config.hidden_size, hidden)
         self.rnn = nn.GRU(hidden, hidden, num_layers=2, batch_first=True, bidirectional=True, dropout=0.1)
         self.out = nn.Linear(2 * hidden, len(CLASSES))
+        # One hook for the model's life: adding and removing one per call let concurrent calls read
+        # each other's output (a crash on different lengths, mixed audio on equal ones).
+        self.ssl.encoder.layers[-1].register_forward_hook(_keep_last)
 
     def forward(self, wave: torch.Tensor) -> torch.Tensor:
         if self.normalize:
@@ -34,17 +47,9 @@ class FrameTeacher(nn.Module):
         # The last hidden state must be the last layer's raw output: that is what current transformers
         # (where the models were trained, on Kaggle) returns, while older versions return it after
         # the final layer norm, a 160x smaller tensor. Taken from a hook, it is the same either way.
-        raw = {}
-
-        def keep(mod, args, out):  # returns None, so the layer's own output is untouched
-            raw.setdefault("last", out[0] if isinstance(out, tuple) else out)
-
-        hook = self.ssl.encoder.layers[-1].register_forward_hook(keep)
-        try:
-            hidden = list(self.ssl(wave, output_hidden_states=True).hidden_states)
-        finally:
-            hook.remove()
-        hidden[-1] = raw["last"]
+        _last.out = None
+        hidden = list(self.ssl(wave, output_hidden_states=True).hidden_states)
+        hidden[-1] = _last.out
         w = torch.softmax(self.layer_weights, dim=0)
         # strict: a transformers version returning a different number of layers must fail loudly,
         # not silently drop a layer weight
