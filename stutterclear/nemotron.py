@@ -18,6 +18,10 @@ class NemotronError(RuntimeError):
     pass
 
 
+class NoAnswer(NemotronError):
+    """The reply was all reasoning: the token budget ran out before the answer."""
+
+
 def available() -> bool:
     return bool(os.environ.get("NEBIUS_API_KEY"))
 
@@ -81,7 +85,7 @@ def chat(messages: list, max_tokens: int = 400, temperature: float = 0.2, timeou
     msg = reply["choices"][0]["message"]
     text = re.sub(r"<think>.*?</think>", "", msg.get("content") or "", flags=re.S).strip()
     if not text:
-        raise NemotronError("Nemotron spent its whole reply reasoning; no answer came back.")
+        raise NoAnswer("Nemotron spent its whole reply reasoning; no answer came back.")
     return text
 
 

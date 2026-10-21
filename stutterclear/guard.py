@@ -51,10 +51,15 @@ def _verdict(reply: str, candidates: set) -> dict:
 
 def review(toks: list, candidates: set) -> dict:
     """Nemotron's verdicts: {token index: reason} for the candidates to keep. Temperature 0 and worked
-    examples in the prompt: the same sentence should get the same verdict every time."""
-    reply = nemotron.chat([{"role": "system", "content": SYSTEM},
-                           {"role": "user", "content": marked_transcript(toks, candidates)}],
-                          max_tokens=4000, temperature=0.0, timeout=90.0, think=True)  # a judgement call: let it reason
+    examples in the prompt: the same sentence should get the same verdict every time. It reasons
+    first (a judgement call), with more room for more candidates; if the reasoning still runs out
+    before the answer (a long recording), it is asked once more to answer directly."""
+    msgs = [{"role": "system", "content": SYSTEM}, {"role": "user", "content": marked_transcript(toks, candidates)}]
+    budget = min(12000, 3000 + 250 * len(candidates))
+    try:
+        reply = nemotron.chat(msgs, max_tokens=budget, temperature=0.0, timeout=45.0 + budget / 80, think=True)
+    except nemotron.NoAnswer:
+        reply = nemotron.chat(msgs, max_tokens=800, temperature=0.0, timeout=60.0, think=False)
     return _verdict(reply, candidates)
 
 

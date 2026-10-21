@@ -41,6 +41,22 @@ def test_without_a_key_or_an_answer_the_cuts_stand(monkeypatch):
     assert len(cuts) == 3 and "timeout" in report["error"]
 
 
+def test_answers_directly_when_the_reasoning_runs_out(monkeypatch):
+    asked = []
+
+    def chat(msgs, think=False, **k):
+        asked.append((think, k["max_tokens"]))
+        if think:
+            raise nemotron.NoAnswer("all reasoning")
+        return '{"keep": [{"id": 5, "reason": "grammatical: that that"}]}'
+
+    monkeypatch.setenv("NEBIUS_API_KEY", "test")
+    monkeypatch.setattr(nemotron, "chat", chat)
+    cuts, report = guard.guarded_cuts(toks())
+    assert [k["word"] for k in report["kept"]] == ["that"] and "error" not in report
+    assert asked == [(True, 3750), (False, 800)]  # reasoning room grows with the 3 candidates
+
+
 def test_check_text_marks_candidates_and_verdicts(monkeypatch):
     from stutterclear import guard, nemotron
     monkeypatch.setattr(nemotron, "chat", lambda msgs, **k: '{"keep": [{"id": 6, "reason": "emphasis"}]}')
