@@ -1,19 +1,27 @@
-"""Live captions of what the listener hears, with NVIDIA's streaming FastConformer (NeMo
-stt_en_fastconformer_hybrid_large_streaming, 480 ms chunks, int8 ONNX via sherpa-onnx, runs on CPU).
+"""Live captions of what the listener hears.
 
-Model files go in models/asr/ (scripts/download_asr.py); without them captions are simply off.
+Supports two engines:
+1. WhisperFlow (default): Streaming Whisper (faster-whisper, CTranslate2, int8 on CPU/CUDA),
+   providing high-accuracy real-time transcription and word-level timestamps without manual setup.
+2. NVIDIA streaming FastConformer: NeMo transducer via sherpa-onnx (int8 ONNX on CPU) in models/asr/.
+
+Engine selection can be forced with STUTTERCLEAR_ASR_ENGINE ("whisperflow" or "fastconformer").
 """
+import os
 from pathlib import Path
+from typing import List, Dict, Any, Optional
 
 import numpy as np
 
 from .config import SAMPLE_RATE
+from . import whisper_flow
 
 MODEL_DIR = Path(__file__).resolve().parents[1] / "models" / "asr" / \
     "sherpa-onnx-nemo-streaming-fast-conformer-transducer-en-480ms-int8"
 
 
-def available(model_dir: Path = MODEL_DIR) -> bool:
+def fastconformer_available(model_dir: Path = MODEL_DIR) -> bool:
+    """Whether sherpa-onnx and the FastConformer ONNX checkpoint exist."""
     try:
         import sherpa_onnx  # noqa: F401
     except ImportError:
@@ -21,7 +29,44 @@ def available(model_dir: Path = MODEL_DIR) -> bool:
     return (Path(model_dir) / "encoder.int8.onnx").exists()
 
 
+def engine_name() -> str:
+    """The active ASR engine: 'whisperflow', 'fastconformer', or '' if none available."""
+    forced = os.environ.get("STUTTERCLEAR_ASR_ENGINE", "").lower().strip()
+    if forced:
+        if forced in ("off", "none", "0"):
+            return ""
+        if forced == "whisperflow":
+            return "whisperflow" if whisper_flow.available() else ""
+        if forced == "fastconformer":
+            return "fastconformer" if fastconformer_available() else ""
+        return ""
+
+    # Auto priority: WhisperFlow first, then FastConformer
+    if whisper_flow.available():
+        return "whisperflow"
+    if fastconformer_available():
+        return "fastconformer"
+    return ""
+
+
+def engine_label() -> str:
+    """User-facing label for the active captions engine."""
+    eng = engine_name()
+    if eng == "whisperflow":
+        m = os.environ.get("STUTTERCLEAR_WHISPER_MODEL", "tiny.en")
+        return f"WhisperFlow ({m})"
+    if eng == "fastconformer":
+        return "NVIDIA FastConformer"
+    return "Captions off"
+
+
+def available(model_dir: Path = MODEL_DIR) -> bool:
+    """Whether any captioning engine is available."""
+    return bool(engine_name())
+
+
 def recognizer(model_dir: Path = MODEL_DIR, threads: int = 2):
+    """FastConformer sherpa-onnx recognizer."""
     import sherpa_onnx
     d = Path(model_dir)
     return sherpa_onnx.OnlineRecognizer.from_transducer(
@@ -33,8 +78,8 @@ def recognizer(model_dir: Path = MODEL_DIR, threads: int = 2):
     )
 
 
-class Captioner:
-    """Feed audio, read lines: finished lines (ended at a pause) plus the line being spoken."""
+class FastConformerCaptioner:
+    """FastConformer captioner feeding audio chunks to sherpa-onnx."""
 
     def __init__(self, model_dir: Path = MODEL_DIR):
         self.rec = recognizer(model_dir)
@@ -84,10 +129,25 @@ def _words(tokens, times, t0) -> list:
     return [w for w in out if w["w"]]
 
 
-def caption_audio(x: np.ndarray) -> list:
+def Captioner(model_dir: Path = MODEL_DIR):
+    """Instantiate the active streaming Captioner (WhisperFlow or FastConformer)."""
+    eng = engine_name()
+    if eng == "whisperflow":
+        return whisper_flow.WhisperFlowCaptioner()
+    if eng == "fastconformer":
+        return FastConformerCaptioner(model_dir)
+    raise RuntimeError("No captioning engine is available.")
+
+
+def caption_audio(x: np.ndarray) -> List[Dict[str, Any]]:
     """Words with start times for a whole recording (used for demo samples and voice notes)."""
-    c = Captioner()
-    for i in range(0, len(x), SAMPLE_RATE // 10):
-        c.feed(x[i:i + SAMPLE_RATE // 10])
-    c.close()
-    return c.words
+    eng = engine_name()
+    if eng == "whisperflow":
+        return whisper_flow.caption_audio(x)
+    if eng == "fastconformer":
+        c = FastConformerCaptioner()
+        for i in range(0, len(x), SAMPLE_RATE // 10):
+            c.feed(x[i:i + SAMPLE_RATE // 10])
+        c.close()
+        return c.words
+    return []

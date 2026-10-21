@@ -108,6 +108,7 @@ export default function App() {
   const [infoReady, setInfoReady] = useState(false)
   const [videoOn, setVideoOn] = useState(false)
   const [captionsOn, setCaptionsOn] = useState(false)
+  const [captionEngine, setCaptionEngine] = useState("")
   const [rescueAvailable, setRescueAvailable] = useState(false)
   const [searchOn, setSearchOn] = useState(false)
   const [hosted, setHosted] = useState(false)
@@ -155,6 +156,7 @@ export default function App() {
         setNotesOn(i.notes)
         setVideoOn(!!i.video)
         setCaptionsOn(i.captions)
+        setCaptionEngine(i.caption_engine || "")
         setRescueAvailable(i.nemotron)
         setSearchOn(i.search)
         setHosted(i.hosted)
@@ -692,6 +694,7 @@ export default function App() {
                     caption={caption}
                     rescue={{ enabled: rescueOn && rescueAvailable, loading: rescue.loading, words: rescue.words, error: rescue.error, onAsk: askForWord, onSay: ttsOn ? sayWord : undefined }}
                     label={demoOn ? `Captions · ${demo.state?.hear === "original" ? "original" : "clean voice"}` : "Live captions · what the listener hears"}
+                    engine={captionEngine}
                   />
                 )}
                 <StatsRow stats={stats} running={active} />

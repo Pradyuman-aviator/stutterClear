@@ -140,7 +140,7 @@ def info():
     # page recommend it only when it is actually better.
     from .. import captions, context_agent, tts
     return {"student": DEFAULT_STUDENT.exists(), "student_eval": student_eval(), "notes": notes.available(),
-            "captions": captions.available(), "rescue": nemotron.available(), "nemotron": nemotron.available(),
+            "captions": captions.available(), "caption_engine": captions.engine_label(), "rescue": nemotron.available(), "nemotron": nemotron.available(),
             "search": context_agent.search_available(), "model": nemotron.MODEL, "hosted": HOSTED,
             "tts": tts.available(), "tts_voice": tts.VOICE, "tts_label": tts.LABEL, "interview": nemotron.available(),
             "feedback": "browser" if HOSTED else "server", "uclass_demos": demo.uclass_enabled(),
