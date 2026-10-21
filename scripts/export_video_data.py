@@ -13,6 +13,7 @@ guard scenes show Nemotron's real answers. Narration: NVIDIA Magpie TTS with NVI
 otherwise a placeholder Windows voice. Needs NEBIUS_API_KEY and the GPU-free cached probabilities.
 """
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -37,6 +38,8 @@ CREDIT = ("Alex is fictional. His voice is a real recording of a 20-year-old man
           "University College London (Howell, Davis & Bartrip, 2009); data collection supported by the Wellcome Trust.")
 CLASSES = ["sound repetition", "word repetition", "prolongation", "block", "filler"]
 NARRATION_SR = 44100
+# The narrator speaks with another Magpie voice than Say it (the app's Aria), so the two never mix up.
+NARRATOR_VOICE = os.environ.get("MAGPIE_NARRATOR", "Magpie-Multilingual.EN-US.Mia")
 # The meaning guard on a sentence in Alex's story (not one of the examples in its prompt), and word
 # rescue where the real recording gets stuck ("in Roman l- l- l- letters"): his app teaches
 # travellers to read Japanese train signs (kanji, and romaji: Japanese in Roman letters).
@@ -149,14 +152,23 @@ def say_magpie(text: str, path: Path, voice: str = tts.VOICE):
 
 
 def trim(path: Path, pad: float = 0.06, floor_db: float = -40.0) -> float:
-    """Cut the silence a voice engine leaves before and after a line; returns the new length (s)."""
+    """Cut the silence a voice engine leaves before and after a line and bring its speech to the
+    clip's level (CLIP_SPEECH_DB), so narration, Say it and the real voice sound equally loud;
+    returns the new length (s)."""
     from scipy.io import wavfile
     sr, y = wavfile.read(path)
-    a = np.abs(y.astype(np.float32))
+    y = y.astype(np.float32) / (32768.0 if y.dtype == np.int16 else 1.0)
+    a = np.abs(y)
     loud = np.flatnonzero(a > a.max() * 10 ** (floor_db / 20))
     if len(loud):
         y = y[max(0, loud[0] - int(pad * sr)): loud[-1] + int(pad * sr)]
-        wavfile.write(path, sr, y)
+    n = int(0.05 * sr)
+    r = np.sqrt((y[: len(y) // n * n].reshape(-1, n) ** 2).mean(1))
+    speech = r[r > np.abs(y).max() * 10 ** (-30 / 20)]  # frames within 30 dB of the line's peak
+    if len(speech):
+        g = min(10 ** ((CLIP_SPEECH_DB - 20 * np.log10(np.sqrt((speech ** 2).mean()))) / 20), 0.89 / np.abs(y).max())
+        y = y * g
+    wavfile.write(path, sr, (np.clip(y, -1, 1) * 32767).astype(np.int16))
     return round(len(y) / sr, 2)
 
 
@@ -190,7 +202,11 @@ def narration(board: dict) -> tuple:
             key = f"{scene['id']}-{k}"
             k += 1
             path = OUT / "narration" / f"{key}.wav"
-            (say_magpie if magpie else say_windows)(step.get("say", step["line"]), path)  # say: how to pronounce it
+            text = step.get("say", step["line"])  # say: how to pronounce it
+            if magpie:
+                say_magpie(text, path, NARRATOR_VOICE)
+            else:
+                say_windows(text, path)
             lines.append({"id": key, "text": step["line"], "file": f"generated/narration/{key}.wav", "seconds": trim(path)})
     label = "Narrator: NVIDIA Magpie TTS (synthetic voice)" if magpie else "Narrator: placeholder synthetic voice (Windows)"
     print(f"  {len(lines)} lines, {sum(n['seconds'] for n in lines):.1f} s of narration ({label})", flush=True)
@@ -236,7 +252,9 @@ def main():
     data["narration"], data["voice_label"] = narration(board)
     data["say"] = say_it(SAY_WORD)
     data["board"] = board
-    (OUT / "data.json").write_text(json.dumps(data))
+    tmp = OUT / "data.json.tmp"  # replaced in one step: previews may be reading it
+    tmp.write_text(json.dumps(data))
+    os.replace(tmp, OUT / "data.json")
     print(f"wrote {OUT / 'data.json'}")
 
 
