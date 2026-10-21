@@ -71,6 +71,23 @@ def guard_demo(text: str, runs: int = 3) -> dict:
                       for i, w in enumerate(words)]}
 
 
+CLIP_SPEECH_DB = -21.0  # the narration's speech level: the real voice must be heard as clearly
+
+
+def speech_db(x: np.ndarray) -> float:
+    """Loudness of the speech in a clip (RMS of its 50 ms frames above -45 dBFS)."""
+    n = int(0.05 * SR)
+    r = np.sqrt((x[: len(x) // n * n].reshape(-1, n) ** 2).mean(1))
+    return float(20 * np.log10(np.sqrt((r[r > 10 ** (-45 / 20)] ** 2).mean())))
+
+
+def level(x: np.ndarray, y: np.ndarray) -> tuple:
+    """The same gain for both versions of the clip (so they compare fairly), up to the narration's
+    level and without clipping."""
+    g = min(10 ** ((CLIP_SPEECH_DB - speech_db(x)) / 20), 0.89 / max(np.abs(x).max(), np.abs(y).max()))
+    return x * g, y * g
+
+
 def envelope(x: np.ndarray) -> list:
     n = len(x) // HOP
     return np.round(np.abs(x[: n * HOP]).reshape(n, HOP).max(1), 4).tolist()
@@ -89,6 +106,7 @@ def clip() -> dict:
     pauses = tighten_pauses(toks, cuts)
     allc = sorted(cuts + pauses, key=lambda c: c["start"])
     y = render_edited(x, allc, NATURAL_JOIN)
+    x, y = level(x, y)
     save_wav(OUT / "before.wav", x)
     save_wav(OUT / "after.wav", y)
     from stutterclear.app.demo import transcript
@@ -161,6 +179,8 @@ def narration(board: dict) -> tuple:
     """One file per narrator line of the storyboard, named <scene>-<n>, trimmed of the engine's silence."""
     magpie = tts.available()
     (OUT / "narration").mkdir(parents=True, exist_ok=True)
+    for old in (OUT / "narration").glob("*.wav"):  # lines of an earlier storyboard
+        old.unlink()
     lines = []
     for scene in board["scenes"]:
         k = 0

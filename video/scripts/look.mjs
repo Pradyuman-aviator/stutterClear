@@ -1,6 +1,6 @@
 // Stills of one scene, for checking it by eye: a contact sheet of nine moments and any frames asked for.
 //   node scripts/look.mjs <scene-id> [frame ...] [--sheet=f1,f2,...] [--no-sheet]
-// Writes out/look/<scene-id>/sheet.png and f<frame>.png and prints their paths. Only two renders run
+// Writes out/look/<scene-id>/sheet.png and f<frame>.png and prints their paths. Only three renders run
 // at once on this machine (the rest wait for a slot), so several can be asked for together.
 import { bundle } from "@remotion/bundler"
 import { openBrowser, renderStill, selectComposition } from "@remotion/renderer"
@@ -9,7 +9,7 @@ import path from "node:path"
 import { fileURLToPath } from "node:url"
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
-const SLOTS = 2
+const SLOTS = 3
 const LOCKS = path.join(ROOT, ".locks")
 
 async function acquire() {
