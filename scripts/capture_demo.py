@@ -219,6 +219,18 @@ def load(path: Path, sr: int = SR) -> np.ndarray:
     return resample_poly(y, sr, r) if r != sr else y
 
 
+def level(y: np.ndarray, speech_db: float = -21.0) -> np.ndarray:
+    """Speech at the film's level (as export_video_data.py sets narration and the clip): the app
+    plays recordings at their own, much quieter, level."""
+    n = int(0.05 * SR)
+    r = np.sqrt((y[: len(y) // n * n].reshape(-1, n) ** 2).mean(1))
+    loud = r[r > max(1e-6, np.abs(y).max()) * 10 ** (-30 / 20)]
+    if not len(loud):
+        return y
+    g = min(10 ** ((speech_db - 20 * np.log10(np.sqrt((loud ** 2).mean()))) / 20), 0.89 / np.abs(y).max())
+    return (y * g).astype(np.float32)
+
+
 def build(work: Path, out: Path):
     from scipy.io import wavfile
     from scipy.signal import correlate
@@ -268,6 +280,7 @@ def build(work: Path, out: Path):
             idx = np.arange(n) + lo
             ok = (idx >= 0) & (idx < len(src))
             seg[ok] = src[idx[ok]]
+            seg = level(seg)
             f = int(0.015 * SR)
             seg[:f] *= np.linspace(0, 1, f)
             seg[-f:] *= np.linspace(1, 0, f)
