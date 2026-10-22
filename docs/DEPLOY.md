@@ -101,9 +101,35 @@ python scripts/run_app.py --no-browser --port 8766 --strict-port
 cloudflared tunnel --url http://localhost:8766      # prints an https://....trycloudflare.com link
 ```
 
+## Always on, free for students: a small Azure server (CPU)
+
+The public demo runs here: https://stutterclear-demo.centralindia.cloudapp.azure.com. An Azure for
+Students subscription ($100 credit, no card) pays for a Standard_B2s VM (2 vCPU, 4 GB, about $30 a
+month), with the same CPU build as the Hugging Face Space below, behind Caddy for HTTPS
+(`deploy/azure/`).
+
+```
+az login --use-device-code                      # the account with the student subscription
+az group create -n stutterclear -l centralindia
+az vm create -g stutterclear -n stutterclear --image Ubuntu2204 --size Standard_B2s \
+  --admin-username stutter --ssh-key-values ~/.ssh/<key>.pub --public-ip-sku Standard \
+  --public-ip-address-dns-name stutterclear-demo --os-disk-size-gb 64
+az vm open-port -g stutterclear -n stutterclear --port 80,443 --priority 1010
+```
+
+On the VM: install Docker (`curl -fsSL https://get.docker.com | sudo sh`), add a 4 GB swap file,
+copy `deploy/azure/*` to `~/stutterclear/`, write `~/stutterclear/.env` there (`DOMAIN=<the VM's
+name>.centralindia.cloudapp.azure.com`, `NEBIUS_API_KEY`, `NVIDIA_API_KEY`; chmod 600), then
+`sudo docker compose up -d --build`. Update after a `git push`: `sudo docker compose build --no-cache
+app && sudo docker compose up -d`. Stop paying: delete the resource group `stutterclear`.
+
 ## Free backup: a Hugging Face Space (always on, CPU)
 
-When the laptop is off, a free Space keeps a link alive: live cleaning with the rule-based detector,
+Since 2026 a Docker Space on free CPU needs a Hugging Face PRO subscription ("Static Spaces are free
+for everyone, but hosting Gradio and Docker Spaces on free cpu-basic requires a PRO subscription").
+With PRO, `python scripts/deploy_hf_space.py` creates it.
+
+A Space keeps a link alive: live cleaning with the rule-based detector,
 the three synthetic demo clips (their caches are in git, so no GPU model runs), FastConformer
 captions on the CPU, and the Nemotron and Say it features from the Space's secrets. Voice notes,
 Dictate and Clean my video are off there (they need a GPU).

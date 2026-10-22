@@ -1,0 +1,25 @@
+# The always-on demo on a small CPU server (Azure for Students): the app image built from GitHub
+# (the same CPU build as deploy/hf-space), behind Caddy for automatic HTTPS (browsers only allow the
+# microphone on HTTPS pages). DOMAIN and the keys come from .env, which stays on the server.
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+
+  caddy:
+    image: caddy:2.8
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+    depends_on:
+      - app
+
+volumes:
+  caddy-data:
