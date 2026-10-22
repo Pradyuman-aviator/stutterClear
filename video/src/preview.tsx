@@ -1,7 +1,7 @@
 import { Composition } from "remotion"
 
 import type { Data } from "./data"
-import { FPS, timeline } from "./data"
+import { boardOf, FPS, timeline } from "./data"
 import type { SceneComponent } from "./stage"
 import { loadData, ScenePreview, SceneSheet } from "./stage"
 
@@ -25,7 +25,7 @@ export function sceneCompositions(id: string, View: SceneComponent) {
   const { Preview, Sheet } = views(id, View)
   const meta = async () => {
     const data = await loadData()
-    const s = timeline(data).find((x) => x.id === id)
+    const s = timeline(data, boardOf(id)).find((x) => x.id === id)
     return { data, frames: s ? s.frames : FPS * 5 }
   }
   return [

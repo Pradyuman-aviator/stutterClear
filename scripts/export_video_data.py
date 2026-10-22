@@ -1,6 +1,7 @@
 """Everything the demo film shows, from the real pipeline, and its narration from the storyboard.
 
     python scripts/export_video_data.py            # writes video/public/generated/
+    python scripts/export_video_data.py --narration-only   # only new lines and the demo cut
     python scripts/make_video_sound.py             # music and sound effects (once)
     cd video && npm run render                      # renders out/stutterclear.mp4
 
@@ -187,28 +188,40 @@ def say_windows(text: str, path: Path, voice: str = "Microsoft Zira Desktop", ra
     subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(work / "say.ps1")], check=True)
 
 
-def narration(board: dict) -> tuple:
-    """One file per narrator line of the storyboard, named <scene>-<n>, trimmed of the engine's silence."""
+def narration(boards: list, previous: list = ()) -> tuple:
+    """One file per narrator line of the storyboards (the film, and the cut with the live demo),
+    named <scene>-<n>, trimmed of the engine's silence. A line whose text and voice did not change
+    keeps its file, so a new scene does not re-voice (and re-time) the others."""
     magpie = tts.available()
-    (OUT / "narration").mkdir(parents=True, exist_ok=True)
-    for old in (OUT / "narration").glob("*.wav"):  # lines of an earlier storyboard
-        old.unlink()
-    lines = []
-    for scene in board["scenes"]:
-        k = 0
-        for step in scene["steps"]:
-            if "line" not in step:
-                continue
-            key = f"{scene['id']}-{k}"
-            k += 1
-            path = OUT / "narration" / f"{key}.wav"
-            text = step.get("say", step["line"])  # say: how to pronounce it
-            if magpie:
-                say_magpie(text, path, NARRATOR_VOICE)
-            else:
-                say_windows(text, path)
-            lines.append({"id": key, "text": step["line"], "file": f"generated/narration/{key}.wav", "seconds": trim(path)})
     label = "Narrator: NVIDIA Magpie TTS (synthetic voice)" if magpie else "Narrator: placeholder synthetic voice (Windows)"
+    old = {n["id"]: n for n in previous if n.get("voice") == label}
+    (OUT / "narration").mkdir(parents=True, exist_ok=True)
+    lines, seen = [], set()
+    for board in boards:
+        for scene in board["scenes"]:
+            k = 0
+            for step in scene["steps"]:
+                if "line" not in step:
+                    continue
+                key = f"{scene['id']}-{k}"
+                k += 1
+                if key in seen:
+                    continue
+                seen.add(key)
+                path = OUT / "narration" / f"{key}.wav"
+                if key in old and old[key]["text"] == step["line"] and path.exists():
+                    lines.append(old[key])
+                    continue
+                text = step.get("say", step["line"])  # say: how to pronounce it
+                if magpie:
+                    say_magpie(text, path, NARRATOR_VOICE)
+                else:
+                    say_windows(text, path)
+                lines.append({"id": key, "text": step["line"], "file": f"generated/narration/{key}.wav", "seconds": trim(path),
+                              "voice": label})
+    for f in (OUT / "narration").glob("*.wav"):  # lines no storyboard has any more
+        if f.stem not in seen:
+            f.unlink()
     print(f"  {len(lines)} lines, {sum(n['seconds'] for n in lines):.1f} s of narration ({label})", flush=True)
     return lines, label
 
@@ -226,8 +239,31 @@ def say_it(word: str) -> dict:
     return {"word": word, "file": "generated/say.wav", "seconds": trim(path), "label": label}
 
 
+def boards() -> list:
+    return [json.loads(p.read_text(encoding="utf-8")) for p in (STORYBOARD, STORYBOARD.with_name("storyboard-demo.json")) if p.exists()]
+
+
+def demo() -> dict | None:
+    """The live demo cut (scripts/capture_demo.py), if it was recorded."""
+    p = OUT / "demo" / "demo.json"
+    return json.loads(p.read_text()) if p.exists() else None
+
+
+def write(data: dict):
+    tmp = OUT / "data.json.tmp"  # replaced in one step: previews may be reading it
+    tmp.write_text(json.dumps(data))
+    os.replace(tmp, OUT / "data.json")
+    print(f"wrote {OUT / 'data.json'}")
+
+
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
+    if "--narration-only" in sys.argv:  # new or changed lines, and the demo cut; the rest stays as exported
+        data = json.loads((OUT / "data.json").read_text())
+        data["narration"], data["voice_label"] = narration(boards(), data.get("narration", []))
+        data["demo"] = demo()
+        write(data)
+        return
     if not nemotron.available():
         sys.exit("Set NEBIUS_API_KEY: the word rescue and meaning guard scenes show Nemotron's real answers.")
     board = json.loads(STORYBOARD.read_text(encoding="utf-8"))
@@ -249,13 +285,11 @@ def main():
     data["numbers"] = numbers()
     data["model"] = nemotron.MODEL
     print("narration…", flush=True)
-    data["narration"], data["voice_label"] = narration(board)
+    data["narration"], data["voice_label"] = narration(boards())
     data["say"] = say_it(SAY_WORD)
+    data["demo"] = demo()
     data["board"] = board
-    tmp = OUT / "data.json.tmp"  # replaced in one step: previews may be reading it
-    tmp.write_text(json.dumps(data))
-    os.replace(tmp, OUT / "data.json")
-    print(f"wrote {OUT / 'data.json'}")
+    write(data)
 
 
 if __name__ == "__main__":

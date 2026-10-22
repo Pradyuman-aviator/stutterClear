@@ -1,6 +1,7 @@
 // The film's data comes from scripts/export_video_data.py (real pipeline output) and its script from
 // storyboard.json. The timeline sizes every scene to its narration, so a new voice re-times the film.
 import board from "../storyboard.json"
+import boardDemo from "../storyboard-demo.json"
 
 export interface Narration {
   id: string
@@ -61,10 +62,12 @@ export interface Data {
   voice_label: string
   // "Say it": the rescued word in a synthetic voice (NVIDIA Magpie with a key, else a labelled placeholder)
   say: { word: string; file: string; seconds: number; label: string }
+  // a screen recording of the real app, cut to ~30 s (scripts/capture_demo.py): only the demo cut uses it
+  demo?: { video: string; audio: string; seconds: number; cut: { from: number; to: number; label: string }[]; summary: string; mode: string }
 }
 
 export type Step = { line: string } | { audio: AudioKey } | { gap: number }
-export type AudioKey = "before" | "after" | "say"
+export type AudioKey = "before" | "after" | "say" | "demo"
 export type TransitionKind = "fade" | "slide" | "slide-up" | "wipe" | "push" | "iris" | "flip" | "clock" | "zoom" | "none"
 
 export interface BoardScene {
@@ -87,8 +90,12 @@ export const NV_ITEMS: { key: NvKey; label: string }[] = [
   { key: "magpie", label: "Magpie TTS" },
 ]
 
-export const BOARD = board as unknown as { title: string; scenes: BoardScene[] }
-export const SCENE_IDS = BOARD.scenes.map((s) => s.id)
+export type Board = { title: string; scenes: BoardScene[] }
+export const BOARD = board as unknown as Board // the film (storyboard.json)
+export const BOARD_DEMO = boardDemo as unknown as Board // the film with the live demo (storyboard-demo.json)
+export const SCENE_IDS = [...new Set([...BOARD.scenes, ...BOARD_DEMO.scenes].map((s) => s.id))]
+// The cut a scene belongs to (scenes in both use the film's timing in previews).
+export const boardOf = (id: string): Board => (BOARD.scenes.some((s) => s.id === id) ? BOARD : BOARD_DEMO)
 
 export const FPS = 30
 export const TRANSITION = 20 // frames two scenes overlap
@@ -123,11 +130,11 @@ export interface SceneProps {
   scene: Scene
 }
 
-export function timeline(d: Data): Scene[] {
+export function timeline(d: Data, board: Board = BOARD): Scene[] {
   const byId = new Map(d.narration.map((n) => [n.id, n]))
   const scenes: Scene[] = []
   let from = 0
-  BOARD.scenes.forEach((b, index) => {
+  board.scenes.forEach((b, index) => {
     const transition: TransitionKind = index === 0 ? "none" : b.transition ?? "fade"
     if (transition !== "none") from -= TRANSITION
     let t = b.lead ?? LEAD_S
@@ -143,8 +150,8 @@ export function timeline(d: Data): Scene[] {
         k++
         t += n.seconds
       } else {
-        const s = st.audio === "before" ? d.clip.before_s : st.audio === "after" ? d.clip.after_s : d.say.seconds
-        const file = st.audio === "say" ? d.say.file : `generated/${st.audio}.wav`
+        const s = { before: d.clip.before_s, after: d.clip.after_s, say: d.say.seconds, demo: d.demo?.seconds ?? 0 }[st.audio]
+        const file = st.audio === "say" ? d.say.file : st.audio === "demo" ? d.demo?.audio ?? "" : `generated/${st.audio}.wav`
         cues.push({ kind: "audio", id: st.audio, k: -1, at: sec(t), frames: sec(s), file })
         t += s
       }

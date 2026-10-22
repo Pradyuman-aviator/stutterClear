@@ -16,6 +16,7 @@
   "include": [
     "src",
     "remotion.config.ts",
-    "storyboard.json"
+    "storyboard.json",
+    "storyboard-demo.json"
   ]
 }

@@ -7,7 +7,10 @@ import path from "node:path"
 import { fileURLToPath } from "node:url"
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
-const board = JSON.parse(fs.readFileSync(path.join(ROOT, "storyboard.json"), "utf8"))
+const boards = ["storyboard.json", "storyboard-demo.json"]
+  .filter((f) => fs.existsSync(path.join(ROOT, f)))
+  .map((f) => JSON.parse(fs.readFileSync(path.join(ROOT, f), "utf8")))
+const board = { scenes: [...new Map(boards.flatMap((b) => b.scenes).map((s) => [s.id, s])).values()] } // every scene of every cut
 const ids = board.scenes.map((s) => s.id)
 const scenes = path.join(ROOT, "src", "scenes")
 const entries = path.join(ROOT, "src", "entries")

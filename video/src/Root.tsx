@@ -1,7 +1,7 @@
 import { AbsoluteFill, Composition, Freeze } from "remotion"
 
 import type { Data } from "./data"
-import { filmFrames, FPS, timeline } from "./data"
+import { BOARD_DEMO, filmFrames, FPS, timeline } from "./data"
 import { sceneCompositions } from "./preview"
 import { VIEWS } from "./scenes/registry"
 import { Film, loadData } from "./stage"
@@ -9,6 +9,11 @@ import { MONO } from "./theme"
 
 function FilmView({ data }: { data: Data | null }) {
   return <Film data={data} views={VIEWS} />
+}
+
+// The film with a 30-second screen recording of the real app (storyboard-demo.json).
+function FilmDemoView({ data }: { data: Data | null }) {
+  return <Film data={data} views={VIEWS} board={BOARD_DEMO} />
 }
 
 // Sixteen moments of the whole film on one image (or the frames passed as inputProps.frames), for
@@ -53,6 +58,19 @@ export function Root() {
         calculateMetadata={async () => {
           const data = await loadData()
           return { durationInFrames: filmFrames(timeline(data)), props: { data } }
+        }}
+      />
+      <Composition
+        id="StutterClearDemo"
+        component={FilmDemoView}
+        width={1920}
+        height={1080}
+        fps={FPS}
+        durationInFrames={FPS * 10}
+        defaultProps={{ data: null as Data | null }}
+        calculateMetadata={async () => {
+          const data = await loadData()
+          return { durationInFrames: filmFrames(timeline(data, BOARD_DEMO)), props: { data } }
         }}
       />
       <Composition

@@ -2,8 +2,8 @@ import type { ComponentType } from "react"
 import { linearTiming, TransitionSeries } from "@remotion/transitions"
 import { AbsoluteFill, Freeze, Html5Audio, interpolate, Sequence, staticFile, useCurrentFrame } from "remotion"
 
-import type { Data, Scene, SceneProps } from "./data"
-import { filmFrames, FPS, musicVolume, speechSpans, timeline, TRANSITION } from "./data"
+import type { Board, Data, Scene, SceneProps } from "./data"
+import { BOARD, boardOf, filmFrames, FPS, musicVolume, speechSpans, timeline, TRANSITION } from "./data"
 import { Backdrop, clamp, Credit, ease, Note, NvTracker, Sfx, Subtitle } from "./kit"
 import { C, MONO, SANS } from "./theme"
 import { presentation } from "./transitions"
@@ -31,7 +31,7 @@ export function SceneOverlay({ d, scene, first }: { d: Data; scene: Scene; first
           <Sequence key={c.id} from={c.at} durationInFrames={c.frames} name={`sub:${c.id}`}>
             <Subtitle text={c.text ?? ""} frames={c.frames} />
           </Sequence>
-        ) : c.id === "before" || c.id === "after" ? (
+        ) : c.id === "before" || c.id === "after" || c.id === "demo" ? ( // his real voice is playing
           <Sequence key={c.id} from={c.at - 8} durationInFrames={c.frames + 16} name={`credit:${c.id}`}>
             <Credit text={d.clip.credit} frames={c.frames + 16} />
           </Sequence>
@@ -51,7 +51,7 @@ const firstNarrated = (scenes: Scene[]) => scenes.find((s) => s.cues.some((c) =>
 // One scene on its own, as it looks in the film (for previews and stills).
 export function ScenePreview({ id, View, data }: { id: string; View: SceneComponent; data: Data | null }) {
   if (!data) return <Missing />
-  const scenes = timeline(data)
+  const scenes = timeline(data, boardOf(id))
   const scene = scenes.find((s) => s.id === id)
   if (!scene) return <Missing />
   return (
@@ -95,7 +95,7 @@ function FilmNvTracker({ scenes }: { scenes: Scene[] }) {
 // Nine moments of a scene on one image, for checking a scene at a glance.
 export function SceneSheet({ id, View, data, frames }: { id: string; View: SceneComponent; data: Data | null; frames: number[] }) {
   if (!data) return <Missing />
-  const scene = timeline(data).find((s) => s.id === id)
+  const scene = timeline(data, boardOf(id)).find((s) => s.id === id)
   if (!scene) return <Missing />
   const picks = frames.length ? frames : [0.04, 0.15, 0.27, 0.38, 0.5, 0.62, 0.73, 0.85, 0.96].map((u) => Math.round(u * (scene.frames - 1)))
   const cols = 3
@@ -122,9 +122,9 @@ export function SceneSheet({ id, View, data, frames }: { id: string; View: Scene
 
 // The whole film: one backdrop, the scenes with their transitions, narration and the real clip,
 // subtitles, music that ducks under speech, and a whoosh on every transition.
-export function Film({ data, views }: { data: Data | null; views: Record<string, SceneComponent> }) {
+export function Film({ data, views, board = BOARD }: { data: Data | null; views: Record<string, SceneComponent>; board?: Board }) {
   if (!data) return <Missing />
-  const scenes = timeline(data)
+  const scenes = timeline(data, board)
   const total = filmFrames(scenes)
   const spans = speechSpans(scenes)
   const first = firstNarrated(scenes)

@@ -13,6 +13,7 @@ import S9_what_the_judges_hear from "./what-the-judges-hear"
 import S10_measured from "./measured"
 import S11_in_the_app from "./in-the-app"
 import S12_on_your_terms from "./on-your-terms"
+import S13_live_demo from "./live-demo"
 
 export const VIEWS: Record<string, SceneComponent> = {
   "cold-open": S0_cold_open,
@@ -28,4 +29,5 @@ export const VIEWS: Record<string, SceneComponent> = {
   "measured": S10_measured,
   "in-the-app": S11_in_the_app,
   "on-your-terms": S12_on_your_terms,
+  "live-demo": S13_live_demo,
 }
