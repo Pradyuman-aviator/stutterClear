@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from "react"
+import { useEffect, useEffectEvent, useState, useCallback, useRef } from "react"
 import { motion, AnimatePresence } from "motion/react"
 import {
   Sparkles,
@@ -47,7 +47,7 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     tag: "MAIN TRIGGER",
     actionPrompt: "Press here (or tap Spacebar) to go live",
     description:
-      "Toggle real-time speech processing on and off. When live, StutterClear intercepts your microphone, trims disfluencies with sub-100ms latency, and broadcasts your cleaned voice.",
+      "Toggle real-time speech processing on and off. When live, StutterClear listens to your microphone, cuts stutters a fraction of a second behind you, and sends on your cleaned voice.",
     tab: "calls",
   },
   {
@@ -57,7 +57,7 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     tag: "PROFILE MATRIX",
     actionPrompt: "Select Off, Gentle, or Strong",
     description:
-      "• Gentle: Slices syllable repeats with ultra-low latency (~250ms behind you).\n• Strong: Removes prolongations, blocks, and fillers ('um', 'uh').\n• Off: Mirror mode for watching your raw speech acoustics.",
+      "• Gentle: Removes clear repeats, about 250 ms behind you (0.5 s with the Teacher model).\n• Strong: Removes the most stutters, fillers too; may clip a word now and then.\n• Off: Mirror only. Nothing is cut, so you can watch your speech as it is.",
     tab: "calls",
   },
   {
@@ -65,9 +65,9 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     targetSelector: "#tutorial-demo-btn",
     title: "Audio Simulation Deck",
     tag: "INSTANT DEMO",
-    actionPrompt: "Hear real audio samples without setting up a mic",
+    actionPrompt: "Hear sample clips without setting up a mic",
     description:
-      "No microphone plugged in? Click to instantly simulate authentic speech recordings to hear StutterClear clean real stutters before connecting your own voice.",
+      "No microphone plugged in? Open the sample clips in Recordings and hear each one before and after cleaning, before you try your own voice.",
     tab: "calls",
   },
   {
@@ -95,9 +95,9 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     targetSelector: "#tutorial-detector-select",
     title: "Detection Neural Model",
     tag: "AI ARCHITECTURE",
-    actionPrompt: "Toggle between Student (CPU) and Teacher (GPU)",
+    actionPrompt: "Pick the model this computer can run",
     description:
-      "StutterClear features an INT8-quantized Causal Student running at ~62ms latency on ordinary CPUs, plus a Deep Learning Teacher model for heavy GPU workloads.",
+      "• Teacher: the big model, run live on a GPU.\n• Student: a small model that runs on any computer.\n• Rule-based: light rules, safe but removes little.\nBelow the choice: how each one scored on speakers it never heard.",
     tab: "calls",
   },
   {
@@ -107,7 +107,7 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     tag: "ACOUSTIC RADAR",
     actionPrompt: "Hover over the color pills to isolate layers",
     description:
-      "Multi-track real-time spectrogram: Purple tracks what you said, Amber shows stutters removed, Cyan marks preserved natural pauses, and Green shows the seamless stream listeners hear.",
+      "Your voice live, in four layers: Blue is what you said, Pink is a stutter removed, Purple is a pause kept, and Teal is what the listener hears.",
     tab: "calls",
   },
   {
@@ -115,9 +115,9 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     targetSelector: "#tutorial-tabs-list",
     title: "Navigation Deck",
     tag: "COMMAND CENTER",
-    actionPrompt: "Switch between Live Calls, Dictation, Stage & Practice",
+    actionPrompt: "Switch between Calls, Recordings, Dictate, On stage & Practice",
     description:
-      "Explore StutterClear's full arsenal: 'Dictate' creates speech-to-text notes without stutters, 'On stage' synthesizes speech for high-pressure talks, and 'Practice' trains fluency with an AI interviewer.",
+      "Explore StutterClear's full arsenal: 'Recordings' cleans voice notes and sample clips, 'Dictate' turns speech into text without the stutters, 'On stage' follows your script as you speak, and 'Practice' runs a mock interview with an AI interviewer. The tabs shown depend on what this server can run.",
     tab: "calls",
   },
 ]
@@ -226,11 +226,32 @@ export function GameTutorial({ isOpen, onClose, onEnsureTab, userName }: GameTut
   const [targetRect, setTargetRect] = useState<DOMRect | null>(null)
   const [soundOn, setSoundOn] = useState(true)
   const [isCompleted, setIsCompleted] = useState(false)
-  const [xp, setXp] = useState(0)
-  const step = TUTORIAL_STEPS[currentStepIdx]
+  // Only the steps whose target is on the page: the demo button hides while live, the output
+  // picker when the browser's mic is the input (always, on the hosted demo).
+  const [steps, setSteps] = useState(TUTORIAL_STEPS)
+  const step = steps[Math.min(currentStepIdx, steps.length - 1)]
+  const xp = (currentStepIdx + 1) * 50
   const prevStepIdx = useRef(currentStepIdx)
 
   sfx.enabled = soundOn
+
+  // App passes a new function on every render; reading it through an effect event keeps the
+  // effects below from re-running (and re-scrolling) each time the app re-renders.
+  const ensureTab = useEffectEvent((tab: string) => onEnsureTab?.(tab))
+
+  // Every opening starts a fresh run from the first step.
+  useEffect(() => {
+    if (!isOpen) return
+    setCurrentStepIdx(0)
+    prevStepIdx.current = 0
+    setIsCompleted(false)
+    ensureTab("calls")
+    const timer = setTimeout(() => {
+      const present = TUTORIAL_STEPS.filter((s) => document.querySelector(s.targetSelector))
+      setSteps(present.length ? present : TUTORIAL_STEPS)
+    }, 100)
+    return () => clearTimeout(timer)
+  }, [isOpen])
 
   // Synchronize target bounding rect
   const updateRect = useCallback(() => {
@@ -248,8 +269,8 @@ export function GameTutorial({ isOpen, onClose, onEnsureTab, userName }: GameTut
   useEffect(() => {
     if (!isOpen || isCompleted || !step) return
 
-    if (step.tab && onEnsureTab) {
-      onEnsureTab(step.tab)
+    if (step.tab) {
+      ensureTab(step.tab)
     }
 
     const timer = setTimeout(() => {
@@ -264,7 +285,7 @@ export function GameTutorial({ isOpen, onClose, onEnsureTab, userName }: GameTut
     }, 150)
 
     return () => clearTimeout(timer)
-  }, [isOpen, currentStepIdx, step, onEnsureTab, isCompleted])
+  }, [isOpen, currentStepIdx, step, isCompleted])
 
   // Update rect on scroll / resize
   useEffect(() => {
@@ -284,31 +305,11 @@ export function GameTutorial({ isOpen, onClose, onEnsureTab, userName }: GameTut
     if (isOpen && !isCompleted && prevStepIdx.current !== currentStepIdx) {
       sfx.stepBlip()
       prevStepIdx.current = currentStepIdx
-      setXp((currentStepIdx + 1) * 50)
     }
   }, [currentStepIdx, isOpen, isCompleted])
 
-  // Keyboard navigation
-  useEffect(() => {
-    if (!isOpen) return
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault()
-        handleSkip()
-      } else if (e.key === "ArrowRight" || e.key === "Enter") {
-        e.preventDefault()
-        handleNext()
-      } else if (e.key === "ArrowLeft") {
-        e.preventDefault()
-        handlePrev()
-      }
-    }
-    window.addEventListener("keydown", handleKeyDown)
-    return () => window.removeEventListener("keydown", handleKeyDown)
-  })
-
   const handleNext = () => {
-    if (currentStepIdx < TUTORIAL_STEPS.length - 1) {
+    if (currentStepIdx < steps.length - 1) {
       setCurrentStepIdx((i) => i + 1)
     } else {
       // Completed!
@@ -346,9 +347,37 @@ export function GameTutorial({ isOpen, onClose, onEnsureTab, userName }: GameTut
   const handleRestart = () => {
     setIsCompleted(false)
     setCurrentStepIdx(0)
-    setXp(50)
     sfx.stepBlip()
   }
+
+  // Keyboard navigation. Captured before the app's own keys and kept from them: Esc would also
+  // pause the cleaning mid-session. Enter on a focused button presses that button.
+  useEffect(() => {
+    if (!isOpen) return
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const onControl = (e.target as Element | null)?.closest?.("button, a, input, textarea, select")
+      let handled = true
+      if (e.key === "Escape") {
+        if (isCompleted) handleFinish()
+        else handleSkip()
+      } else if (e.key === "Enter" && !onControl) {
+        if (isCompleted) handleFinish()
+        else handleNext()
+      } else if (e.key === "ArrowRight" && !isCompleted) {
+        handleNext()
+      } else if (e.key === "ArrowLeft" && !isCompleted) {
+        handlePrev()
+      } else {
+        handled = false
+      }
+      if (handled) {
+        e.preventDefault()
+        e.stopPropagation()
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown, true)
+    return () => window.removeEventListener("keydown", handleKeyDown, true)
+  })
 
   if (!isOpen) return null
 
@@ -397,13 +426,14 @@ export function GameTutorial({ isOpen, onClose, onEnsureTab, userName }: GameTut
   return (
     <AnimatePresence>
       <div className="fixed inset-0 z-50 overflow-hidden pointer-events-auto">
-        {/* Darkened Game Backdrop with Cutout Spotlight */}
+        {/* Darkened Game Backdrop. With a target, the spotlight's shadow does the darkening:
+            a dark, blurred layer here would cover the cutout and hide the very element shown. */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.3 }}
-          className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm"
+          className={cn("absolute inset-0", targetRect && !isCompleted ? "bg-transparent" : "bg-slate-950/80 backdrop-blur-sm")}
           onClick={handleNext}
         />
 
@@ -436,7 +466,7 @@ export function GameTutorial({ isOpen, onClose, onEnsureTab, userName }: GameTut
             <span className="absolute -inset-1 rounded-2xl animate-ping border border-sky-400/40 pointer-events-none" />
 
             {/* Floating Target Pin Callout */}
-            <div className="absolute -top-7 left-1/2 -translate-x-1/2 flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-sky-500/90 text-slate-950 font-mono text-[10px] font-bold tracking-wider uppercase shadow-lg shadow-sky-500/50">
+            <div className="absolute -top-7 left-1/2 -translate-x-1/2 flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-sky-500/90 text-slate-950 font-mono text-[10px] font-bold tracking-wider uppercase whitespace-nowrap shadow-lg shadow-sky-500/50">
               <Target className="size-3 animate-spin" style={{ animationDuration: "6s" }} />
               TARGET ACTIVE
             </div>
@@ -460,12 +490,12 @@ export function GameTutorial({ isOpen, onClose, onEnsureTab, userName }: GameTut
 
               {/* Header: Mission, XP, and Mute/Skip */}
               <div className="flex items-center justify-between gap-3 pb-3 border-b border-white/10">
-                <div className="flex items-center gap-2">
-                  <span className="inline-flex items-center gap-1.5 rounded-md bg-sky-500/15 border border-sky-400/30 px-2 py-0.5 font-mono text-xs font-semibold text-sky-300">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="inline-flex items-center gap-1.5 rounded-md bg-sky-500/15 border border-sky-400/30 px-2 py-0.5 font-mono text-xs font-semibold text-sky-300 whitespace-nowrap">
                     <Gamepad2 className="size-3.5" />
-                    MISSION {String(currentStepIdx + 1).padStart(2, "0")} / {String(TUTORIAL_STEPS.length).padStart(2, "0")}
+                    MISSION {String(currentStepIdx + 1).padStart(2, "0")} / {String(steps.length).padStart(2, "0")}
                   </span>
-                  <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/15 border border-amber-400/30 px-2 py-0.5 font-mono text-xs font-semibold text-amber-300">
+                  <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/15 border border-amber-400/30 px-2 py-0.5 font-mono text-xs font-semibold text-amber-300 whitespace-nowrap">
                     <Zap className="size-3 fill-current" />
                     +{xp} XP
                   </span>
@@ -523,7 +553,7 @@ export function GameTutorial({ isOpen, onClose, onEnsureTab, userName }: GameTut
               {/* Progress Track */}
               <div className="mt-4 pt-3 border-t border-white/10 flex items-center justify-between gap-3">
                 <div className="flex items-center gap-1">
-                  {TUTORIAL_STEPS.map((s, idx) => (
+                  {steps.map((s, idx) => (
                     <button
                       key={s.id}
                       type="button"
@@ -561,7 +591,7 @@ export function GameTutorial({ isOpen, onClose, onEnsureTab, userName }: GameTut
                     onClick={handleNext}
                     className="h-8 rounded-lg bg-gradient-to-r from-sky-400 to-indigo-500 font-semibold text-slate-950 text-xs hover:from-sky-300 hover:to-indigo-400 shadow-lg shadow-sky-500/25 px-3.5"
                   >
-                    {currentStepIdx === TUTORIAL_STEPS.length - 1 ? (
+                    {currentStepIdx === steps.length - 1 ? (
                       <>
                         Complete Mission
                         <CheckCircle2 className="size-3.5 ml-1" />
@@ -608,22 +638,22 @@ export function GameTutorial({ isOpen, onClose, onEnsureTab, userName }: GameTut
                   {userName ? `Congratulations, ${userName}!` : "Mission Accomplished!"}
                 </h3>
                 <p className="mt-2 text-sm text-slate-300 leading-relaxed">
-                  You've mastered the Fluency Core. You're fully trained to speak in your real voice without the repeats.
+                  You know your way around StutterClear. Press Start (or Space) whenever you're ready to talk.
                 </p>
 
                 {/* Gamified Stat Pill */}
                 <div className="mt-5 grid grid-cols-3 gap-2 w-full rounded-2xl border border-white/10 bg-white/[0.04] p-3 text-center">
                   <div>
                     <div className="text-[11px] font-medium text-white/50">XP Gained</div>
-                    <div className="text-lg font-bold text-amber-300 font-mono">+450 XP</div>
+                    <div className="text-lg font-bold text-amber-300 font-mono">+{steps.length * 50} XP</div>
                   </div>
                   <div>
                     <div className="text-[11px] font-medium text-white/50">Rank</div>
                     <div className="text-lg font-bold text-sky-300 font-mono">Pilot</div>
                   </div>
                   <div>
-                    <div className="text-[11px] font-medium text-white/50">Unlocked</div>
-                    <div className="text-lg font-bold text-emerald-300 font-mono">Full Rig</div>
+                    <div className="text-[11px] font-medium text-white/50">Missions</div>
+                    <div className="text-lg font-bold text-emerald-300 font-mono">{steps.length}/{steps.length}</div>
                   </div>
                 </div>
 

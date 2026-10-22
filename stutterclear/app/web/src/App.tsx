@@ -154,8 +154,13 @@ export default function App() {
   }, [])
 
   const handleSignUp = (profile: UserProfile) => {
+    const edited = user !== null
     setUser(profile)
     setShowSignUp(false)
+    if (edited) {
+      notify.success("Profile saved.")
+      return
+    }
     notify.success(`Welcome to StutterClear, ${profile.name}! Initializing game tutorial...`)
     setTimeout(() => {
       setShowTutorial(true)
@@ -921,6 +926,7 @@ export default function App() {
           isOpen={showSignUp}
           onClose={() => setShowSignUp(false)}
           onSignUp={handleSignUp}
+          profile={user}
         />
         <GameTutorial
           isOpen={showTutorial}

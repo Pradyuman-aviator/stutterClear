@@ -1,12 +1,8 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { motion, AnimatePresence } from "motion/react"
 import {
-  Sparkles,
   Gamepad2,
-  User,
   ArrowRight,
-  Target,
-  Shield,
   Zap,
   Check,
   X,
@@ -35,20 +31,43 @@ const GOALS = [
   { id: "calls", label: "Live Work & Zoom Meetings", desc: "Clean audio in high-stakes video calls" },
   { id: "speaking", label: "Public Speaking & Talks", desc: "Fluency on stage and presentations" },
   { id: "daily", label: "Everyday Conversations", desc: "Confidence talking with friends & family" },
-  { id: "practice", label: "Self-Training & Practice", desc: "Mirror feedback and speech therapy" },
+  { id: "practice", label: "Self-Training & Practice", desc: "Mirror feedback and practice runs" },
 ]
 
 interface SignUpModalProps {
   isOpen: boolean
   onClose: () => void
   onSignUp: (profile: UserProfile) => void
+  profile?: UserProfile | null // set when editing: the form opens filled in, and level and XP stay
 }
 
-export function SignUpModal({ isOpen, onClose, onSignUp }: SignUpModalProps) {
+export function SignUpModal({ isOpen, onClose, onSignUp, profile: current }: SignUpModalProps) {
   const [name, setName] = useState("")
   const [selectedAvatar, setSelectedAvatar] = useState(AVATARS[0].emoji)
   const [selectedGoal, setSelectedGoal] = useState(GOALS[0].id)
   const [error, setError] = useState("")
+
+  // Each opening shows the saved profile (or a blank form for a new one).
+  useEffect(() => {
+    if (!isOpen) return
+    setName(current?.name ?? "")
+    setSelectedAvatar(current?.avatar ?? AVATARS[0].emoji)
+    setSelectedGoal(GOALS.find((g) => g.label === current?.goal)?.id ?? GOALS[0].id)
+    setError("")
+  }, [isOpen, current])
+
+  // Esc closes. Captured and kept from the app, where Esc would also pause the cleaning mid-session.
+  useEffect(() => {
+    if (!isOpen) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return
+      e.preventDefault()
+      e.stopPropagation()
+      onClose()
+    }
+    window.addEventListener("keydown", onKey, true)
+    return () => window.removeEventListener("keydown", onKey, true)
+  }, [isOpen, onClose])
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -63,9 +82,9 @@ export function SignUpModal({ isOpen, onClose, onSignUp }: SignUpModalProps) {
       name: trimmed,
       avatar: selectedAvatar,
       goal: goalObj?.label ?? "Live Work & Meetings",
-      level: 1,
-      xp: 100,
-      joinedAt: Date.now(),
+      level: current?.level ?? 1,
+      xp: current?.xp ?? 100,
+      joinedAt: current?.joinedAt ?? Date.now(),
     }
 
     try {
@@ -138,7 +157,7 @@ export function SignUpModal({ isOpen, onClose, onSignUp }: SignUpModalProps) {
           </div>
 
           <p className="mt-2 text-xs sm:text-sm text-slate-300/80 leading-relaxed">
-            Create your profile to unlock real-time stutter suppression, tailor detection to your vocal habits, and launch the interactive tutorial.
+            Pick a name and a goal, then take a quick guided tour of the live rig. Your profile stays in this browser: nothing is sent to the server.
           </p>
 
           <form onSubmit={handleSubmit} className="mt-5 space-y-4">
@@ -216,12 +235,14 @@ export function SignUpModal({ isOpen, onClose, onSignUp }: SignUpModalProps) {
             </div>
 
             {/* Bonus Perk Info */}
-            <div className="flex items-center gap-2 rounded-xl bg-amber-500/10 border border-amber-400/20 p-2.5 text-xs text-amber-200">
-              <Zap className="size-4 shrink-0 text-amber-300" />
-              <span>
-                <strong>First-time recruit bonus:</strong> +100 XP & full guided game tutorial through the live rig!
-              </span>
-            </div>
+            {!current && (
+              <div className="flex items-center gap-2 rounded-xl bg-amber-500/10 border border-amber-400/20 p-2.5 text-xs text-amber-200">
+                <Zap className="size-4 shrink-0 text-amber-300" />
+                <span>
+                  <strong>First-time recruit bonus:</strong> +100 XP & full guided game tutorial through the live rig!
+                </span>
+              </div>
+            )}
 
             {/* Actions */}
             <div className="pt-2 flex flex-col sm:flex-row items-center gap-2.5">
@@ -229,17 +250,19 @@ export function SignUpModal({ isOpen, onClose, onSignUp }: SignUpModalProps) {
                 type="submit"
                 className="w-full h-11 rounded-xl bg-gradient-to-r from-sky-400 via-indigo-500 to-sky-400 bg-[length:200%_auto] hover:bg-[position:right_center] font-bold text-slate-950 text-sm shadow-xl shadow-sky-500/30 transition-all cursor-pointer"
               >
-                Sign Up & Start Tutorial
+                {current ? "Save Profile" : "Sign Up & Start Tutorial"}
                 <ArrowRight className="size-4 ml-1.5" />
               </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={handleGuest}
-                className="w-full sm:w-auto h-11 rounded-xl text-xs text-white/50 hover:text-white hover:bg-white/10"
-              >
-                Continue as Guest
-              </Button>
+              {!current && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={handleGuest}
+                  className="w-full sm:w-auto h-11 rounded-xl text-xs text-white/50 hover:text-white hover:bg-white/10"
+                >
+                  Continue as Guest
+                </Button>
+              )}
             </div>
           </form>
         </motion.div>
