@@ -13,7 +13,7 @@ name: Tests
 on:
   pull_request:
   push:
-    branches: [main, ci/tests] # ci/tests: TEMPORARY, to try the workflow before main
+    branches: [main]
 
 permissions:
   contents: read
