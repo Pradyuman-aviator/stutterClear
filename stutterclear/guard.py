@@ -21,6 +21,13 @@ SYSTEM = (
     "- KEEP when the person said it on purpose: grammar that needs the repeated word ('that that', "
     "'had had', 'is is' in 'what it is is'), deliberate emphasis ('very very', 'no no no'), or when "
     "deleting it would change or lose meaning.\n"
+    "When the same word comes three or more times, at most one extra copy can be grammar ('had had "
+    "had' keeps one); emphasis such as 'no no no' may keep every copy.\n"
+    "Examples:\n"
+    "[0:I] [1:I] I think [4:that] that is true -> keep 4 (grammatical: that that), delete 0 and 1.\n"
+    "she [1:had] [2:had] had enough -> keep 2 (grammatical: had had), delete 1.\n"
+    "[0:the] the plan is [4:very] very good -> keep 4 (emphasis: very very), delete 0.\n"
+    "we [1:w-] went [3:[UM]] home -> delete 1 and 3.\n"
     "Most candidates are real stutters. Reply with only JSON in this form, listing the candidates to "
     'KEEP (an empty list if every candidate should be deleted): {"keep": [{"id": 12, "reason": '
     '"grammatical: had had"}]}'
@@ -31,11 +38,7 @@ def marked_transcript(toks: list, candidates: set) -> str:
     return " ".join(f"[{i}:{t['w']}]" if i in candidates else t["w"] for i, t in enumerate(toks))
 
 
-def review(toks: list, candidates: set) -> dict:
-    """Nemotron's verdicts: {token index: reason} for the candidates to keep."""
-    reply = nemotron.chat([{"role": "system", "content": SYSTEM},
-                           {"role": "user", "content": marked_transcript(toks, candidates)}],
-                          max_tokens=4000, timeout=90.0, think=True)  # a judgement call: let it reason
+def _verdict(reply: str, candidates: set) -> dict:
     data = nemotron.last_json(reply, "{")
     keep = {}
     for item in (data or {}).get("keep", []) if isinstance(data, dict) else []:
@@ -44,6 +47,20 @@ def review(toks: list, candidates: set) -> dict:
         if isinstance(idx, int) and idx in candidates:
             keep[idx] = reason[:120]
     return keep
+
+
+def review(toks: list, candidates: set) -> dict:
+    """Nemotron's verdicts: {token index: reason} for the candidates to keep. Temperature 0 and worked
+    examples in the prompt: the same sentence should get the same verdict every time. It reasons
+    first (a judgement call), with more room for more candidates; if the reasoning still runs out
+    before the answer (a long recording), it is asked once more to answer directly."""
+    msgs = [{"role": "system", "content": SYSTEM}, {"role": "user", "content": marked_transcript(toks, candidates)}]
+    budget = min(12000, 3000 + 250 * len(candidates))
+    try:
+        reply = nemotron.chat(msgs, max_tokens=budget, temperature=0.0, timeout=45.0 + budget / 80, think=True)
+    except nemotron.NoAnswer:
+        reply = nemotron.chat(msgs, max_tokens=800, temperature=0.0, timeout=60.0, think=False)
+    return _verdict(reply, candidates)
 
 
 def guarded_cuts(toks: list, probs=None, cut_fillers: bool = False, cut_phrases: bool = False,

@@ -33,3 +33,4 @@ onnxruntime>=1.18
 pyarrow>=15
 
 pytest>=7
+httpx2>=2.0  # FastAPI's test client since Starlette 1.0 (older Starlette uses httpx)

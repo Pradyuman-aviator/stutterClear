@@ -14,9 +14,16 @@ const HEAR = [
   { value: "original" as Hear, label: "Original" },
   { value: "clean" as Hear, label: "Clean voice" },
 ]
+// Pause cuts only shorten a silence: they are counted apart from the stutters.
+function summary(cuts: { kind: string }[]) {
+  const stutters = cuts.filter((c) => c.kind !== "pause").length
+  const pauses = cuts.length - stutters
+  return `${stutters} stutter${stutters === 1 ? "" : "s"} removed` + (pauses ? `, ${pauses} long pause${pauses === 1 ? "" : "s"} shortened` : "")
+}
+
 const ENGINES: { value: DemoEngine; label: string; hint: string }[] = [
   { value: "natural", label: "Natural", hint: "Repeated and broken-off words go, cut only between words; um and uh stay." },
-  { value: "thorough", label: "Thorough", hint: "Natural, plus um, uh and repeated phrases." },
+  { value: "thorough", label: "Thorough", hint: "Natural, plus um, uh and repeated phrases; long pauses shrink to under half a second." },
   { value: "live", label: "Live", hint: "Exactly what a call hears, decided in real time." },
 ]
 
@@ -183,8 +190,8 @@ export function DemoBar({
         <div className="flex w-full items-start gap-2 rounded-xl border border-violet-300/15 bg-violet-300/[0.06] px-3 py-2 text-[11px] leading-relaxed text-violet-100/80">
           <ShieldCheck className="mt-px size-3.5 shrink-0 text-violet-300" />
           <span>
-            <span className="font-medium text-violet-100">Meaning guard · Nemotron</span> checked {tl.guard.checked} cut
-            {tl.guard.checked === 1 ? "" : "s"}
+            <span className="font-medium text-violet-100">Meaning guard · Nemotron</span> checked {tl.guard.checked} word
+            {tl.guard.checked === 1 ? "" : "s"} marked for cutting
             {tl.guard.error
               ? ` but did not answer, so the cuts stand as detected.`
               : tl.guard.kept.length
@@ -196,7 +203,7 @@ export function DemoBar({
       {tl && (
         <div className={cn("text-[11px] leading-relaxed text-white/40")}>
           <span className="text-white/60">{ENGINES.find((e) => e.value === state.engine)?.hint}</span>{" "}
-          {tl.cuts.length} stutter{tl.cuts.length === 1 ? "" : "s"} removed, {tl.removed_s.toFixed(1)} s shorter.{" "}
+          {summary(tl.cuts)}, {tl.removed_s.toFixed(1)} s shorter.{" "}
           {credit}
         </div>
       )}

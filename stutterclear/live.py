@@ -17,7 +17,7 @@ import numpy as np
 
 try:  # a server without audio hardware (a cloud VM) still runs browser-mic sessions
     import sounddevice as sd
-except (ImportError, OSError):
+except Exception:  # no package, no PortAudio (OSError), or PortAudio that cannot start (PortAudioError)
     sd = None
 
 from .audio import save_wav

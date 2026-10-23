@@ -3,7 +3,8 @@ three engines, served as a timeline the page replays in sync with the audio (no 
 
 - natural: the offline teacher finds the stutters, the verbatim transcript (CrisperWhisper) places
   every cut on word boundaries, so no real word is ever sliced; fillers are kept
-- thorough: the same, and ordinary disfluencies go too: fillers (um, uh) and repeated phrases
+- thorough: the same, and ordinary disfluencies go too: fillers (um, uh), repeated phrases, and long
+  silent pauses (a block or a hesitation) shrink to under half a second
 - live: the real-time pipeline exactly as a call gets it (delay buffer, online detector, splicer)
 
 Model-edge cutting sliced real words in 30-43% of cuts (a word that loses its first or last sound is
@@ -29,7 +30,7 @@ from ..config import HOP, SAMPLE_RATE as SR
 from ..pipeline import stream
 from ..segments import NATURAL_JOIN, render_edited
 from ..guard import guarded_cuts
-from ..silver import label_tokens
+from ..silver import label_tokens, tighten_pauses
 
 DATA = Path(__file__).resolve().parents[2] / "data" / "external"
 CLIPS = Path(__file__).resolve().parents[2] / "data" / "demo_clips"  # synthetic and consented clips
@@ -167,6 +168,8 @@ def _render(sid: str, engine: str) -> dict:
                                    confirm=confirm)
         label = f"{'Thorough' if thorough else 'Natural'} · offline model"
         text = transcript(toks, cuts)
+        if thorough:  # long silent blocks and hesitations shrink too: a recording can give that time back
+            cuts = sorted(cuts + tighten_pauses(toks, cuts), key=lambda c: c["start"])
         y = render_edited(x, cuts, NATURAL_JOIN)
         cuts = [{"kind": c["kind"], "start": c["start"], "end": c["end"],
                  "word": " ".join(toks[i]["w"] for i in c["tokens"])} for c in cuts]

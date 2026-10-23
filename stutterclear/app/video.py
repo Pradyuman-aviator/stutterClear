@@ -125,7 +125,9 @@ def _process(jid: str, data: bytes, suffix: str):
         job["status"] = "cutting"  # ffmpeg cuts picture and sound
         out = tmp / "clean.mp4"
         with _work:
-            _run(["-i", str(src), "-filter_complex", filter_graph(keep), "-map", "[v]", "-map", "[a]",
+            # passthrough: the kept frames at their own times. Some ffmpeg builds otherwise re-time the
+            # joined picture to 25 fps, duplicating frames (or dropping them from a 30 fps phone video).
+            _run(["-i", str(src), "-filter_complex", filter_graph(keep), "-map", "[v]", "-map", "[a]", "-fps_mode", "passthrough",
                   "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-c:a", "aac", "-b:a", "160k",
                   "-movflags", "+faststart", str(out)])
         job.update(out=out.read_bytes(), cuts=tl["cuts"], text=tl.get("text"), duration_s=round(duration, 2),

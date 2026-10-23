@@ -1,0 +1,206 @@
+{
+  "title": "StutterClear: Alex has something to say",
+  "logline": "Alex (fictional) built an app that teaches travellers to read Japanese train signs. He stutters; it is how he speaks. Tonight he records his demo-day pitch, and his real voice travels through StutterClear: a WavLM model on an NVIDIA GPU, CrisperWhisper's verbatim words, NVIDIA Nemotron's meaning guard; tomorrow, live on the call, a buffer half a second deep, NeMo captions, word rescue and Magpie. The judges hear what he meant, on his terms.",
+  "scenes": [
+    {
+      "id": "cold-open",
+      "title": "Alex has something to say",
+      "lead": 1.4,
+      "tail": 1.0,
+      "steps": [
+        {"line": "Alex built an app that teaches travellers to read Japanese train signs."},
+        {"gap": 0.3},
+        {"line": "He stutters; it's how he speaks. Tonight, he records his demo-day pitch."}
+      ],
+      "on_screen_text": ["Alex has something to say.", "Alex", "Alex is fictional · his voice is a real recording", "東京", "Tōkyō", "Chinese writing", "Roman letters", "Pitch video: tonight", "Demo day: tomorrow"],
+      "visuals": "Before the first line: the breathing voice line (Ribbon from d.clip.env_before, calm ~0.6, low opacity, sky to violet) drifts across the lower third; it is the film's bookend and returns, calm, under the logo at the end. The title 'Alex has something to say.' (SERIF ~120 px) arrives word by word (KineticText, effect blur) centred, holds ~1 s, then glides up and shrinks into a small chapter mark at top-left (x 96, y 90, scale ~0.42) as line 0 starts. On 'Alex' (line 0 start): the Avatar (~240 px) springs in left of centre (x ~560, y ~500) with a name pill 'Alex' under it and, under that, 'Alex is fictional · his voice is a real recording' (SANS 24 px, C.dim). On 'an app': a phone frame (glass, ~360x720, radius 48) rises at right of centre (x ~1240); its screen shows a station-sign card: a deep navy plate with a thin white border, '東京' (JP font, 700, ~120 px) above 'Tōkyō' (SANS 600, ~54 px), and a tiny 'Station' label. On 'read Japanese train signs': two leader lines draw themselves (evolvePath) to callouts: 'Chinese writing' (sky) to the kanji and 'Roman letters' (teal) to Tōkyō (MONO 24 px). Line 1, 'He stutters; it's how he speaks.': the Avatar's rings breathe; nothing turns red, no struggle colour: this is a neutral, warm fact. On 'Tonight, he records his demo-day pitch': pills 'Pitch video: tonight' and 'Demo day: tomorrow' spring in under the phone, and a small REC dot starts pulsing beside the Avatar. Slow push-in (zoom 1 to ~1.06) toward the Avatar so the next scene's recording frame feels like a match.",
+      "data_needed": ["clip.env_before"]
+    },
+    {
+      "id": "the-take",
+      "title": "Tonight: the take",
+      "transition": "fade",
+      "tail": 0.9,
+      "steps": [
+        {"line": "He knows exactly what he wants to say. Listen."},
+        {"gap": 0.4},
+        {"audio": "before"},
+        {"gap": 0.7},
+        {"line": "Every word was there from the start. It just takes longer to reach the listener."}
+      ],
+      "on_screen_text": ["REC", "00:00 timer", "Why are train signs hard to read?", "WHAT ALEX MEANS", "clip.clean", "WHAT HE SAYS", "verbatim words as spoken"],
+      "visuals": "The film draws the clip credit at top-left (x 56-820, y 48-175) while the real recording plays: keep that corner empty during the clip. Layout: a glass recording frame (~1240x620) at x 96-1336, y 210-830, and on the right (x ~1380-1824, y ~260-640) a slide card 'Why are train signs hard to read?' (SANS 600 ~30 px) with the same 東京 / Tōkyō sign (JP font). Frame header: a small Avatar (~72 px) whose rings follow envAt(d.clip.env_before, playhead), 'REC' with a pulsing dot, and a tabular timer counting real seconds from 00:00 to 00:19 at top-right of the frame. Row 1, label 'WHAT ALEX MEANS' (MONO caps): d.clip.clean in SERIF ~42 px at ~22% white, fully written from the start (it may wrap to two lines). Row 2: the BEFORE Wave (d.clip.env_before, sky, ~1160x110), playhead = elapsed / before_s, dimAfter. Row 3, label 'WHAT HE SAYS': a kinetic echo stack: each verbatim word of d.clip.words pops in at its real start time s (spring); a repeat lands on top of the previous copy, offset (+14, -10) px, and older copies drop to 45% opacity ('they' x3, 'writ-' x2 then 'writing', 'and' x3, 'in' x2, 'l-' x3 then 'letters'); every spoken word is the same white, fillers in italic 'um'; nothing is marked wrong. Each kept word of Row 1 (the words with removed=false, in order, matching clip.clean) brightens from 22% white to full sky over ~8 frames when its spoken word ENDS (its e time): the meaning fills in exactly as fast as the speech allows. Bottom-right of the frame: a headphones icon (the listener) whose ring fills clockwise in teal with the playhead. Line 0 plays before the clip over the empty frame. After the clip the timer freezes on 00:19, Row 1 is fully lit; on line 1 'Every word was there from the start' Row 1 glows once (soft sky bloom, scale 1.02); on 'the listener' the headphones ring pulses. No sound effects during the clip.",
+      "data_needed": ["clip.before_s", "clip.env_before", "clip.words", "clip.clean"]
+    },
+    {
+      "id": "his-choice",
+      "title": "His take, his choice",
+      "transition": "fade",
+      "tail": 1.3,
+      "steps": [
+        {"line": "Stuttering is a normal way of speaking. He could send this take as it is."},
+        {"gap": 0.3},
+        {"line": "Or he can choose StutterClear.", "say": "Or he can choose Stutter Clear."}
+      ],
+      "on_screen_text": ["Send as it is", "Take 1 · 0:19 · ready", "Clean my video", "Natural | Thorough", "StutterClear", "Your real voice, on your terms.", "Optional · always his call"],
+      "visuals": "Two cards of exactly equal size and brightness side by side (each ~780x470, y ~300-770): LEFT 'Send as it is': the take as a thumbnail (a small BEFORE Wave, 'Take 1 · 0:19') with a teal check and 'ready to send'; RIGHT 'Clean my video': a crop of the real Recordings screenshot (staticFile('generated/screens/recordings.png'), 1680x1050) showing only the 'Clean my video' panel (roughly x 32-1648, y 722-898), scaled to fit, with its 'Natural | Thorough' switch visible. Line 0: a soft cursor rests on 'Send as it is'; both cards stay equal: nothing is judged. On line 1 'choose StutterClear': the cursor glides to the right card, a sky ring draws around 'Thorough', the StutterClear Logo (~90 px) springs in at top-centre (y ~150) with the tagline 'Your real voice, on your terms.' (SANS 30 px, C.dim) under it, and a pill 'Optional · always his call' appears under the left card. Hold.",
+      "data_needed": ["clip.env_before", "screens/recordings.png"]
+    },
+    {
+      "id": "inside-the-take",
+      "title": "Every 20 milliseconds, every word",
+      "transition": "zoom",
+      "nvidia": ["gpu"],
+      "tail": 1.4,
+      "steps": [
+        {"line": "On a recording, a WavLM model trained on NVIDIA GPUs scores every twenty milliseconds of his voice.", "say": "On a recording, a Wave L M model, trained on NVIDIA GPUs, scores every twenty milliseconds of his voice."},
+        {"gap": 0.3},
+        {"line": "CrisperWhisper writes down every word, stutters included, so cuts land only between words.", "say": "Crisper Whisper writes down every word, stutters included, so cuts land only between words."}
+      ],
+      "on_screen_text": ["Thorough · recording", "WavLM teacher · 5 classes every 20 ms", "trained on NVIDIA GPUs", "sound repetition · word repetition · prolongation · block · filler", "20 ms", "CrisperWhisper · every word with its timing", "repeated word · broken-off start · filler", "long pause shortened", "9 stutters cut · 9 long pauses shortened · 0 words clipped"],
+      "visuals": "The take laid out as a score across the width (time axis x ~330-1824 for d.clip.before_s seconds), a 'Thorough · recording' pill at top-left. Row A (top): the BEFORE Wave. Rows B-F: ProbLanes with the real d.clip.probs (5 lanes, labels from d.clip.classes, dashed 0.5 threshold), revealed left to right during line 0 so the probabilities 'light up' (a bloom where a lane passes the threshold), tag 'WavLM teacher · 5 classes every 20 ms' with an NvTag-styled 'trained on NVIDIA GPUs'. At the start of line 0, a magnifier circle on one stutter shows FrameCells (one cell per 20 ms, ~40 cells) with a '20 ms' label, then shrinks away. Line 1: word chips drop into Row G at their real times (x from s, width e-s, min ~24 px) with the word above (SANS 18-20 px), tag 'CrisperWhisper · every word with its timing'. On 'so cuts land only between words': brackets drop for every entry of d.clip.cuts in time order (~4 frames apart): ROSE brackets for the 9 stutter cuts (kind word_rep, sound_rep, interjection) labelled in plain words ('repeated word', 'broken-off start', 'filler'), their edges snapping into the gaps between word chips; the chips inside get a rose strike-through; GREY brackets for the 9 'pause' cuts labelled 'long pause shortened'. Light snap sounds for the rose ones only. End on a counter chip: '9 stutters cut · 9 long pauses shortened · 0 words clipped' (compute the counts from the data).",
+      "data_needed": ["clip.env_before", "clip.probs", "clip.classes", "clip.words", "clip.cuts", "clip.before_s"]
+    },
+    {
+      "id": "meaning-guard",
+      "title": "Some repeats are meant",
+      "transition": "slide",
+      "nvidia": ["gpu", "nemotron"],
+      "tail": 1.5,
+      "steps": [
+        {"line": "Not every repeat is a stutter."},
+        {"gap": 0.3},
+        {"line": "NVIDIA Nemotron 3 Super, on Nebius, reads each cut in its sentence, as text only.", "say": "NVIDIA Nemotron Three Super, on Nebius, reads each cut in its sentence, as text only."},
+        {"gap": 0.3},
+        {"line": "'That that' is grammar. 'Very very' is emphasis. Both stay."}
+      ],
+      "on_screen_text": ["a typed test sentence", "on the laptop | Nebius Token Factory", "text only · never audio", "NVIDIA Nemotron 3 Super", "nvidia/nemotron-3-super-120b-a12b", "120B parameters · 12B active per token", "hybrid Mamba-2 + LatentMoE + attention", "multi-token prediction · up to 1M tokens", "OpenAI-compatible API", "d.guard.request", "d.guard.reply (Real Nemotron reply)", "grammatical: that that", "emphasis: very very", "On Alex's take: Nemotron checked 11 words marked for cutting · all real stutters"],
+      "visuals": "Split stage: a dashed vertical divider at x ~1180, left side captioned 'on the laptop' (sky), right side 'Nebius Token Factory' (violet); on the divider a small label 'text only · never audio'. Left: the test sentence from d.guard.words as word chips (SANS 600 ~46 px, wrapping), tag 'a typed test sentence'; candidate words (candidate=true) get a dashed rose outline. Right: a violet-edged Nemotron spec card: 'NVIDIA Nemotron 3 Super' (SANS 600 ~34 px, with NvTag), MONO 'nvidia/nemotron-3-super-120b-a12b', a small orb of 120 dots with 12 lit labelled '12B of 120B parameters active per token', 'hybrid Mamba-2 + LatentMoE + attention', 'multi-token prediction · up to 1M tokens', 'OpenAI-compatible API'. Line 1: the request d.guard.request (MONO ~22 px, the marked candidates like [3:that] highlighted) travels as a text packet from the sentence across the divider into the card (never a waveform); the card pulses while it 'reasons'; the reply d.guard.reply comes back as MONO JSON with the keep entries in green, labelled 'Real Nemotron reply'. Line 2: on 'That that is grammar' the candidate 'that' turns green with its reason under it ('grammatical: that that'); on 'Very very is emphasis' the candidate 'very' turns green ('emphasis: very very'); the extra 'I' turns rose and collapses out (snap); on 'Both stay' the sentence closes up with green underlines under both kept repeats (chime). Required, bottom-left, from about line 2 on: a chip 'On Alex's take: Nemotron checked 11 words marked for cutting · all real stutters' (from d.clip.guard.checked and its empty kept list).",
+      "data_needed": ["guard.words", "guard.request", "guard.reply", "model", "clip.guard"]
+    },
+    {
+      "id": "demo-day-live",
+      "title": "Demo day: half a second behind",
+      "transition": "push",
+      "nvidia": ["gpu", "nemotron"],
+      "tail": 1.2,
+      "steps": [
+        {"line": "Demo day. On a live video call, Alex picks Gentle mode."},
+        {"gap": 0.3},
+        {"line": "His voice waits in a buffer, half a second behind him, while WavLM-Large checks it on the laptop's NVIDIA GPU.", "say": "His voice waits in a buffer, half a second behind him, while Wave L M Large checks it on the laptop's NVIDIA GPU."}
+      ],
+      "on_screen_text": ["Demo day", "Demo day · video call", "Judge", "Off | Gentle | Strong", "Removes clear repeats. About 0.5 s behind you.", "Microphone · 16 kHz", "20 ms frames", "delay buffer", "≈0.5 s · Gentle", "≈0.85 s · Strong", "4 s of past audio + 200 ms lookahead (Strong: 500 ms)", "WavLM-Large · 316M parameters", "25 layers mixed → BiGRU → 5 classes", "RTX 4050 laptop GPU · CUDA", "re-run every 160 ms", "one window ≈ 60 ms", "lookahead 200 · hop 160 · GPU + margin 100 · headroom 80 = 0.54 s", "schematic"],
+      "visuals": "Line 0: a chip flips from 'Tonight' to 'Demo day' (rotateX). A CallWindow (~1500x780) draws in with a 2x2 grid: Alex's tile (Avatar) and three 'Judge' tiles with initials (no faces). A floating card shows a crop of the real Calls screenshot (staticFile('generated/screens/calls.png'): the hero area with 'Say it your way.', the 'Off | Gentle | Strong' switch and 'Removes clear repeats. About 0.5 s behind you.', roughly x 330-1100, y 200-500): a cursor taps 'Gentle' on 'picks Gentle'. Line 1: the camera pushes into Alex's tile and it opens into the live pipeline (left to right, y ~330-760): 'Microphone · 16 kHz' emits his voice as 20 ms frame tiles (FlowPath kind frame) into a delay buffer drawn as a circle with frames orbiting it: a write head (sky dot) leads, a play head (teal dot) trails it by an arc labelled '≈0.5 s · Gentle' with a ghost dashed arc '≈0.85 s · Strong'. A bracket lifts a window off the stream: '4 s of past audio + 200 ms lookahead (Strong: 500 ms)'. Into the GPU Block (nv, accent C.nv, active while it works): title 'WavLM-Large · 316M parameters', model '25 layers mixed → BiGRU → 5 classes', where 'RTX 4050 laptop GPU · CUDA'. Under the Block: a timing ruler 0-160 ms with a filled 60 ms segment 'one window ≈ 60 ms' that re-fires every 160 ms ('re-run every 160 ms'), and a delay-budget bar to scale: 'lookahead 200 | hop 160 | GPU + margin 100 | headroom 80' = '≈0.54 s Gentle', with a thinner Strong row (500 | 160 | 100 | 80 = ≈0.84 s). Five thin output lanes leave the Block to the right, labelled 'schematic' (no values here: the real per-frame scores were shown on the recording).",
+      "data_needed": ["screens/calls.png"]
+    },
+    {
+      "id": "into-the-call",
+      "title": "Out to the call",
+      "transition": "slide",
+      "nvidia": ["gpu", "nemo", "nemotron"],
+      "tail": 1.2,
+      "steps": [
+        {"line": "When a stutter's score crosses its threshold, a cut opens, and the stutter is skipped before anyone hears it."},
+        {"gap": 0.3},
+        {"line": "A virtual mic carries his voice into the call, and NVIDIA NeMo captions what the listener hears.", "say": "A virtual mic carries his voice into the call, and NVIDIA Nemo captions what the listener hears."}
+      ],
+      "on_screen_text": ["cut logic", "open", "close", "close cuts merge", "block: reported, never cut", "skipped before playback", "crossfade", "room tone, never silence", "virtual microphone", "CABLE Input → CABLE Output", "Zoom · Google Meet · Microsoft Teams", "NVIDIA NeMo streaming FastConformer · 480 ms chunks · int8 ONNX · CPU", "Audio stays on this laptop. Nothing is recorded unless you switch saving on."],
+      "visuals": "Continues the pipeline to the right (start as if the camera had panned from the previous scene). Line 0: one lane magnified (~900x180, a schematic curve) between a dashed 'open' line and a lower dashed 'close' line: when the curve crosses 'open', a rose bracket opens on the frame stream beneath; when it falls under 'close', it closes; two nearby brackets slide together ('close cuts merge'); an amber marker 'block: reported, never cut' on a separate stretch. On 'skipped before anyone hears it': the stream reaches the play head; the rose-bracketed frames lift out and fall away before it ('skipped before playback', a snap), the rest slide together through a short crossfade, and a fine teal-grey shimmer fills the join ('room tone, never silence'). Line 1: the cleaned voice (Ribbon) flows into a 'virtual microphone' node ('CABLE Input → CABLE Output') and fans out to three chips 'Zoom', 'Google Meet', 'Microsoft Teams'; the CallWindow slides back in on the right with a caption strip typing under Alex's tile in 480 ms bursts, tagged 'NVIDIA NeMo streaming FastConformer · 480 ms chunks · int8 ONNX · CPU' (NvTag). Footnote (SANS 22 px, C.dim): 'Audio stays on this laptop. Nothing is recorded unless you switch saving on.'",
+      "data_needed": []
+    },
+    {
+      "id": "word-rescue",
+      "title": "When a word won't come",
+      "transition": "fade",
+      "nvidia": ["gpu", "nemo", "nemotron", "magpie"],
+      "tail": 1.4,
+      "steps": [
+        {"line": "Then a word won't come."},
+        {"gap": 0.3},
+        {"line": "Nemotron reads the caption and his context card, as text, and suggests the word he means."},
+        {"gap": 0.3},
+        {"line": "He can say it himself, or tap it, and NVIDIA Magpie says it in a synthetic voice."},
+        {"gap": 0.4},
+        {"audio": "say"}
+      ],
+      "on_screen_text": ["live captions (shared)", "d.rescue.said", "Only Alex sees this", "l–", "Pause kept. Take your time.", "Context card", "d.rescue.context", "text only · never audio", "Word rescue · Nemotron", "d.rescue.suggestions", "Say it", "d.say.label", "...in Roman letters.", "Listening…"],
+      "visuals": "The call fills the frame: Alex's tile large on the left (~1000x560), three judge tiles stacked on the right. Under Alex's tile, the SHARED caption strip (NeMo) types d.rescue.said in 480 ms bursts and stops after 'Roman'. Line 0 'Then a word won't come': the stuck sound appears ONLY in Alex's private StutterClear panel (a small glass panel at the bottom-left labelled 'Only Alex sees this'): 'l–' with a blinking caret and the app's own amber status 'Pause kept. Take your time.'; the Avatar's rings tint amber (struggle) and slow. Line 1: two violet text packets leave the laptop side and cross a dashed 'text only · never audio' line to a Nemotron node at the right edge: one from the caption strip (the caption text), one from a 'Context card' chip showing d.rescue.context; the voice waveform stays on the laptop side. At the end of line 1, a 'Word rescue · Nemotron' card springs up in the private panel: the onset hint 'l…' and the three chips of d.rescue.suggestions, popping in one by one (pop). Line 2: on 'He can say it himself' the 'letters' chip glows; on 'or tap it' a cursor taps a 'Say it' button next to it (labelled with d.say.label); then the say audio plays (a violet waveform pulses on the button): the shared caption completes '...in Roman letters.' with 'letters' underlined in violet, the Avatar's rings return to sky, status 'Listening…'.",
+      "data_needed": ["rescue.said", "rescue.onset", "rescue.context", "rescue.suggestions", "say.word", "say.label"]
+    },
+    {
+      "id": "where-it-runs",
+      "title": "Where it runs",
+      "transition": "zoom",
+      "nvidia": ["gpu", "nemo", "nemotron", "magpie"],
+      "tail": 1.8,
+      "steps": [
+        {"line": "StutterClear processes his voice on the laptop. Only text goes to the cloud, for Nemotron and Magpie.", "say": "Stutter Clear processes his voice on the laptop. Only text goes to the cloud, for Nemotron and Magpie."}
+      ],
+      "on_screen_text": ["Alex's laptop", "NVIDIA GPU · CUDA: WavLM-Large (live) · recordings teacher", "CPU: NeMo FastConformer captions · int8 ONNX", "CrisperWhisper · verbatim words", "splicer · room tone", "virtual mic → the call", "text only", "Nebius Token Factory: NVIDIA Nemotron 3 Super · meaning guard · word rescue · context card · insights · practice interview", "build.nvidia.com: NVIDIA Magpie TTS · Say it"],
+      "visuals": "The system design in one picture. Left two thirds: a large rounded container 'Alex's laptop' holding Blocks: 'NVIDIA GPU · CUDA' (nv: WavLM-Large live, and the recordings teacher), 'CPU' (NeMo FastConformer captions · int8 ONNX, nv), 'CrisperWhisper · verbatim words', 'splicer · room tone', and an exit 'virtual mic → the call'; sky audio-frame packets circulate between them and never leave the container. A dashed vertical boundary labelled 'text only'. Right third: two cloud Blocks: 'Nebius Token Factory' with 'NVIDIA Nemotron 3 Super' (nv) and its jobs as small chips (meaning guard · word rescue · context card · insights · practice interview), and 'build.nvidia.com' with 'NVIDIA Magpie TTS' (nv) and 'Say it'. Violet word packets cross the boundary to the cloud; only one small packet comes back from Magpie (the tapped word as audio). Build it piece by piece in sync with the line (laptop first, then the boundary on 'Only text', then the cloud on 'Nemotron and Magpie'), then hold the whole map for the tail with a slow camera drift.",
+      "data_needed": []
+    },
+    {
+      "id": "what-the-judges-hear",
+      "title": "What the judges hear",
+      "transition": "zoom",
+      "nvidia": ["gpu", "nemo", "nemotron", "magpie"],
+      "tail": 1.4,
+      "steps": [
+        {"line": "Then he plays last night's pitch video. Here's what the judges hear."},
+        {"gap": 0.5},
+        {"audio": "after"},
+        {"gap": 0.8},
+        {"line": "Both versions say what Alex meant. Which one you hear is up to him."}
+      ],
+      "on_screen_text": ["Alex is sharing his screen", "Why are train signs hard to read?", "Last night's take · Thorough · checked by Nemotron · joined with room tone", "9 stutters cut · 9 long pauses shortened", "0:19 → 0:08", "WHAT ALEX MEANS", "captions of the clean take", "As it is | StutterClear"],
+      "visuals": "The film draws the clip credit at top-left while the AFTER plays: keep that corner empty then. Alex's tile reads 'Alex is sharing his screen'; a video player (~1280x720 glass) opens centre with his slide (東京 / Tōkyō, 'Why are train signs hard to read?'); the judge tiles shrink to a column on the right; label 'Last night's take · Thorough · checked by Nemotron · joined with room tone'. During line 0: under the player, the BEFORE Wave with the cuts tinted (rose for stutter cuts, grey for 'pause' cuts) collapses cut by cut (Wave collapse, staggered, small snaps), seams flash teal, and a counter runs '0:19 → 0:08' with '9 stutters cut · 9 long pauses shortened'; it becomes the AFTER Wave (d.clip.env_after, teal). During the AFTER clip (no sound effects): the playhead sweeps env_after; the words of d.clip.after_words appear as captions at their times; a 'WHAT ALEX MEANS' row (SERIF ~40 px) lights word by word, visibly sooner than in the take; a listener ring fills to 8.25 s inside a ghost ring sized to 19.45 s; the judges' tile borders glow teal with envAt(env_after). Line 1: the verbatim line (d.clip.said) and the clean line (d.clip.clean) shown at EQUAL brightness one above the other, with an 'As it is | StutterClear' toggle that flips both ways once: neither is the 'right' one.",
+      "data_needed": ["clip.after_s", "clip.before_s", "clip.env_before", "clip.env_after", "clip.cuts", "clip.after_words", "clip.clean", "clip.said"]
+    },
+    {
+      "id": "measured",
+      "title": "Measured on unseen speakers",
+      "transition": "wipe",
+      "nvidia": ["gpu", "nemo", "nemotron", "magpie"],
+      "tail": 1.5,
+      "steps": [
+        {"line": "On seven speakers the models never trained on, live Gentle removes a third of stutters, and Strong two thirds."},
+        {"gap": 0.3},
+        {"line": "Recordings remove ninety-one percent, and lose no words."}
+      ],
+      "on_screen_text": ["Measured on 7 speakers no model trained on (UCLASS)", "stutters removed · words lost", "Live · Gentle 33.1% · 3.1%", "Live · Strong 65.2% · 5.68%", "Recordings · Thorough 90.9% · 0%", "Live delay ≈0.5 s (Gentle) · ≈0.85 s (Strong)", "Recordings cut only between words", "Teacher v2: macro F1 0.618 on SEP-28k-E"],
+      "visuals": "Header 'Measured on 7 speakers no model trained on (UCLASS)' (SANS 600 ~44 px) with 'stutters removed · words lost' under it. Three rows with equal visual weight: 'Live · Gentle', 'Live · Strong', 'Recordings · Thorough'; each has two bars on a shared 0-100% scale (~1100 px): 'stutters removed' (sky to teal gradient) and 'words lost' (rose), each ending in a Counter. Bars grow exactly when the narration names them: Gentle on 'Gentle' (33.1 / 3.1), Strong on 'Strong' (65.2 / 5.68), Recordings on 'Recordings' (90.9 / 0); on 'lose no words' the 0% gets a green ring pulse (chime). Footnotes (SANS 22 px, C.dim): 'Live delay ≈0.5 s (Gentle) · ≈0.85 s (Strong)', 'Recordings cut only between words', 'Teacher v2: macro F1 0.618 on SEP-28k-E'. Values from d.numbers.",
+      "data_needed": ["numbers"]
+    },
+    {
+      "id": "in-the-app",
+      "title": "It's all in the app",
+      "transition": "slide-up",
+      "nvidia": ["gpu", "nemo", "nemotron", "magpie"],
+      "tail": 1.6,
+      "steps": [
+        {"line": "It's all in the app."},
+        {"gap": 0.2},
+        {"line": "For calls, pick Gentle or Strong, and choose StutterClear's virtual cable as the mic in Zoom, Meet or Teams.", "say": "For calls, pick Gentle or Strong, and choose Stutter Clear's virtual cable as the mic in Zoom, Meet or Teams."},
+        {"gap": 0.3},
+        {"line": "Recordings cleans voice notes and videos, Dictate types clean text, and Practice runs a mock interview."}
+      ],
+      "on_screen_text": ["Calls · Recordings · Dictate · Practice · Journal", "1  Calls: Gentle or Strong", "2  Send the cleaned voice to: CABLE Input", "3  In Zoom, Meet or Teams: microphone CABLE Output", "a virtual audio cable, e.g. VB-CABLE", "Download clean · Timestamps · Subtitles", "Dictate: text without the stutters", "Practice: a mock interview", "Journal: opt-in, only on your computer", "github.com/Pradyuman-aviator/stutterClear", "python scripts/run_app.py"],
+      "visuals": "A how-to with the REAL app (screens in staticFile('generated/screens/...'), 1680x1050 each: calls.png, recordings.png, dictate.png, practice.png, journal.png). Line 0: the Calls screenshot in a ScreenFrame tilts in (3D) at centre; its tab bar (Calls · Recordings · Dictate · Practice · Journal, top-left of the screenshot at about x 32-472, y 92-124) is ringed. Line 1: the screenshot slides left (~60% width) and three numbered steps appear on the right, each with a ring on the matching part of the screenshot: '1  Calls: Gentle or Strong' (the Off | Gentle | Strong switch at about x 345-537, y 377-417), '2  Send the cleaned voice to: CABLE Input' (the 'Send the cleaned voice to' dropdown at about x 1148-1622, y 290-348), '3  In Zoom, Meet or Teams: microphone CABLE Output' (a small mock of a meeting app's audio settings card with 'Microphone: CABLE Output'); small note 'a virtual audio cable, e.g. VB-CABLE'. Line 2: quick cards slide through, one per tab: Recordings (recordings.png, ring on 'Download clean · Timestamps · Subtitles' at about x 498-822, y 438-466), Dictate (dictate.png), Practice (practice.png), then a 'Journal: opt-in, only on your computer' chip. Bottom band (above the subtitles): MONO 'github.com/Pradyuman-aviator/stutterClear  ·  python scripts/run_app.py'.",
+      "data_needed": ["screens/calls.png", "screens/recordings.png", "screens/dictate.png", "screens/practice.png", "screens/journal.png"]
+    },
+    {
+      "id": "on-your-terms",
+      "title": "On his terms",
+      "transition": "fade",
+      "lead": 0.8,
+      "tail": 4.6,
+      "steps": [
+        {"line": "StutterClear. Your real voice, on your terms.", "say": "Stutter Clear. Your real voice, on your terms."}
+      ],
+      "on_screen_text": ["StutterClear", "Your real voice, on your terms.", "Built for the Nebius × NVIDIA Global AI Hackathon · github.com/Pradyuman-aviator/stutterClear", "NVIDIA Nemotron 3 Super on Nebius Token Factory · NVIDIA NeMo FastConformer · NVIDIA Magpie TTS · NVIDIA GPUs with CUDA", "Alex is fictional. His voice: a real recording from UCLASS, University College London (Howell, Davis & Bartrip, 2009); data collection supported by the Wellcome Trust.", "d.voice_label"],
+      "visuals": "The breathing voice line returns (Ribbon of env_after, calm ~0.9, teal to sky) across the lower middle. The Logo (~150 px) springs in at centre; on 'Your real voice' the tagline rises (SANS ~40 px). After the line: the credits block fades in, centred, at y ~720-880 (SANS 22-24 px, at least C.dim brightness, never fainter): the hackathon and repo line, the NVIDIA stack line, the Alex/UCLASS/Wellcome credit, and d.voice_label. Fade everything to the background over the last ~1 s.",
+      "data_needed": ["voice_label", "clip.env_after"]
+    }
+  ]
+}

@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useEffectEvent, useRef, useState, type ReactNode, type RefObject } from "react"
 import { AnimatePresence, MotionConfig, motion, type Variants } from "motion/react"
-import { Check, Cpu, Lock, Mic, Play, Square } from "lucide-react"
+import { Check, Cpu, Gamepad2, Lock, Mic, Play, Sparkles, Square } from "lucide-react"
 import { IsoBadge, IsoContext, IsoLogo, IsoMirror, IsoSetup } from "@/components/iso-icon"
 
 import { CaptionStrip } from "@/components/caption-strip"
+import { GameTutorial } from "@/components/game-tutorial"
+import { SignUpModal, type UserProfile } from "@/components/signup-modal"
 import { DelayMatrix } from "@/components/delay-matrix"
 import { DemoBar, DemoPicker } from "@/components/demo-player"
 import { HowItWorks } from "@/components/how-it-works"
@@ -126,6 +128,45 @@ export default function App() {
   const [playbackVersion, setPlaybackVersion] = useState(0)
   const highlight = useRef<Layer | null>(null)
   const [hl, setHl] = useState<Layer | null>(null)
+  const [user, setUser] = useState<UserProfile | null>(() => {
+    try {
+      const saved = localStorage.getItem("sc.user")
+      return saved ? JSON.parse(saved) : null
+    } catch {
+      return null
+    }
+  })
+  const [showSignUp, setShowSignUp] = useState(false)
+  const [showTutorial, setShowTutorial] = useState(false)
+
+  // First-time visitor check: auto-prompt sign up if new
+  useEffect(() => {
+    try {
+      const hasCompleted = localStorage.getItem("sc.tutorial_completed")
+      const isGuest = localStorage.getItem("sc.guest")
+      const savedUser = localStorage.getItem("sc.user")
+      if (!savedUser && !hasCompleted && !isGuest) {
+        const timer = setTimeout(() => setShowSignUp(true), 1000)
+        return () => clearTimeout(timer)
+      }
+    } catch {
+      // storage disabled
+    }
+  }, [])
+
+  const handleSignUp = (profile: UserProfile) => {
+    const edited = user !== null
+    setUser(profile)
+    setShowSignUp(false)
+    if (edited) {
+      notify.success("Profile saved.")
+      return
+    }
+    notify.success(`Welcome to StutterClear, ${profile.name}! Initializing game tutorial...`)
+    setTimeout(() => {
+      setShowTutorial(true)
+    }, 350)
+  }
   const demo = useDemo(data, stats, reset, caption)
   const [demos, setDemos] = useState<{ samples: DemoSample[]; credit: string }>({ samples: [], credit: "" })
   const demoOn = demo.state !== null
@@ -430,7 +471,54 @@ export default function App() {
                 <div className="hidden text-xs text-white/45 min-[420px]:block">Your real voice, on your terms</div>
               </div>
             </div>
-            <EnginePill connected={connected} running={running} demo={demoOn} detector={detName} stats={stats} />
+            <div className="flex items-center gap-2.5">
+              <EnginePill connected={connected} running={running} demo={demoOn} detector={detName} stats={stats} />
+              {user ? (
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowTutorial(true)}
+                    className="inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-sky-400/30 bg-sky-500/10 px-3 py-1 text-xs font-medium text-sky-200 transition-colors hover:border-sky-300 hover:bg-sky-500/20 shadow-sm shadow-sky-500/20"
+                    title="Replay interactive tutorial"
+                  >
+                    <Gamepad2 className="size-3.5 text-sky-300" />
+                    <span className="hidden sm:inline">Tutorial</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowSignUp(true)}
+                    className="inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs text-white/80 transition-colors hover:border-white/20 hover:bg-white/[0.08]"
+                    title={`Voice Pilot: ${user.name} · Click to edit`}
+                  >
+                    <span className="text-sm leading-none">{user.avatar}</span>
+                    <span className="font-medium max-w-[85px] truncate">{user.name}</span>
+                    <span className="rounded-full bg-sky-400/20 px-1.5 py-0.2 font-mono text-[10px] font-bold text-sky-300">
+                      Lv.{user.level}
+                    </span>
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowTutorial(true)}
+                    className="inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs text-white/70 transition-colors hover:border-white/20 hover:text-white"
+                    title="Take the interactive tutorial"
+                  >
+                    <Gamepad2 className="size-3.5 text-sky-300" />
+                    <span className="hidden sm:inline">Tutorial</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowSignUp(true)}
+                    className="inline-flex cursor-pointer items-center gap-1.5 rounded-full bg-gradient-to-r from-sky-400 to-indigo-500 px-3 py-1 text-xs font-bold text-slate-950 shadow-md shadow-sky-500/25 transition-all hover:from-sky-300 hover:to-indigo-400"
+                  >
+                    <Sparkles className="size-3.5" />
+                    <span>Sign Up</span>
+                  </button>
+                </div>
+              )}
+            </div>
           </header>
 
           <Tabs
@@ -439,7 +527,7 @@ export default function App() {
             value={tab}
             onValueChange={(v) => goTab(String(v))}
           >
-            <TabsList className="sticky top-2 z-20 h-auto max-w-full flex-wrap sm:static">
+            <TabsList id="tutorial-tabs-list" className="sticky top-2 z-20 h-auto max-w-full flex-wrap sm:static">
               <TabsTrigger value="calls">Calls</TabsTrigger>
               <TabsTrigger value="recordings">Recordings</TabsTrigger>
               {notesOn && <TabsTrigger value="dictate">Dictate</TabsTrigger>}
@@ -453,12 +541,14 @@ export default function App() {
             <div id="hero" className="scroll-mt-4 md:col-span-2">
               <GlassCard tilt={0} className="h-full p-5 sm:p-8">
                 <div className="relative flex flex-col items-center gap-6 sm:h-full sm:flex-row sm:gap-10">
-                  <VoiceOrb
-                    signals={signals}
-                    running={active}
-                    onToggle={toggle}
-                    className="w-44 shrink-0 min-[400px]:w-52 sm:w-56 lg:w-60"
-                  />
+                  <div id="tutorial-voice-orb" className="shrink-0">
+                    <VoiceOrb
+                      signals={signals}
+                      running={active}
+                      onToggle={toggle}
+                      className="w-44 shrink-0 min-[400px]:w-52 sm:w-56 lg:w-60"
+                    />
+                  </div>
                   <div className="flex min-w-0 flex-1 flex-col items-center gap-4 text-center sm:items-start sm:gap-5 sm:text-left">
                     <StatusLine
                       signals={signals}
@@ -475,6 +565,7 @@ export default function App() {
                     </h1>
                     <div className="flex flex-wrap items-center justify-center gap-4 sm:justify-start">
                       <Button
+                        id="tutorial-start-btn"
                         onClick={toggle}
                         disabled={!connected}
                         aria-label={running ? "Stop" : "Start listening"}
@@ -502,14 +593,17 @@ export default function App() {
                       </span>
                     </div>
                     <div className="flex w-full flex-col items-center gap-2 sm:items-start">
-                      <ToggleGroup aria-label="Correction" value={[mode]} onValueChange={(v) => { const n = v[0] as Mode | undefined; if (n) change({ mode: n }) }} variant="outline" spacing={1}>
-                        {MODES.map((m) => (
-                          <ToggleGroupItem key={m.value} value={m.value}>{m.label}</ToggleGroupItem>
-                        ))}
-                      </ToggleGroup>
+                      <div id="tutorial-modes" className="inline-block">
+                        <ToggleGroup aria-label="Correction" value={[mode]} onValueChange={(v) => { const n = v[0] as Mode | undefined; if (n) change({ mode: n }) }} variant="outline" spacing={1}>
+                          {MODES.map((m) => (
+                            <ToggleGroupItem key={m.value} value={m.value}>{m.label}</ToggleGroupItem>
+                          ))}
+                        </ToggleGroup>
+                      </div>
                       <p className="max-w-md text-[13px] leading-relaxed text-white/50">{modeHint(mode, detector)}</p>
                       {!running && demos.samples.length > 0 && (
                         <button
+                          id="tutorial-demo-btn"
                           type="button"
                           onClick={() => goTab("recordings")}
                           className="mt-1 inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs text-white/70 transition-colors hover:border-sky-300/30 hover:text-sky-100"
@@ -564,7 +658,7 @@ export default function App() {
               <GlassCard tilt={0} className="flex h-full flex-col gap-5 p-5 sm:p-6">
                 <CardTitle icon={<IsoSetup />}>Setup</CardTitle>
                 <FieldGroup>
-                  <FormField>
+                  <FormField id="tutorial-mic-select">
                   <FieldLabel>Microphone</FieldLabel>
                   <DeviceSelect
                     items={inItems}
@@ -579,7 +673,7 @@ export default function App() {
                   />
                   </FormField>
                   {inDev === BROWSER_MIC ? null : (
-                  <FormField>
+                  <FormField id="tutorial-out-select">
                     <FieldLabel>Send the cleaned voice to</FieldLabel>
                     <DeviceSelect
                       items={outItems}
@@ -593,7 +687,7 @@ export default function App() {
                     />
                   </FormField>
                   )}
-                  <FormField>
+                  <FormField id="tutorial-detector-select">
                   <FieldLabel>Detector</FieldLabel>
                   <ToggleGroup aria-label="Detector" className="flex-wrap" value={[detector]} onValueChange={(v) => { const n = v[0] as DetectorKind | undefined; if (n) change({ detector: n }) }} variant="outline" spacing={1}>
                     {detectorOptions(detectorList).map((d) => (
@@ -651,7 +745,7 @@ export default function App() {
 
             {/* Fluency Mirror */}
             <motion.div variants={rise} className="md:col-span-2">
-              <GlassCard tilt={0} className="flex h-full flex-col p-5 sm:p-6">
+              <GlassCard id="tutorial-fluency-mirror" tilt={0} className="flex h-full flex-col p-5 sm:p-6">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <CardTitle icon={<IsoMirror />}>Fluency Mirror</CardTitle>
                   <div className="flex flex-wrap gap-1.5" onPointerLeave={() => setHighlight(null)}>
@@ -831,6 +925,18 @@ export default function App() {
 
         <SessionToast toast={toast} onClose={() => setToast(null)} />
         <Toaster />
+        <SignUpModal
+          isOpen={showSignUp}
+          onClose={() => setShowSignUp(false)}
+          onSignUp={handleSignUp}
+          profile={user}
+        />
+        <GameTutorial
+          isOpen={showTutorial}
+          onClose={() => setShowTutorial(false)}
+          onEnsureTab={(t) => goTab(t)}
+          userName={user?.name}
+        />
       </div>
     </MotionConfig>
   )
