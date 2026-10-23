@@ -21,7 +21,8 @@ grpcio>=1.60
 # Clean my video: a bundled ffmpeg cuts picture and sound
 imageio-ffmpeg>=0.5
 
-# Live captions: NVIDIA NeMo streaming FastConformer through sherpa-onnx (CPU)
+# Live captions: WhisperFlow streaming Whisper (CPU / CUDA) or NeMo FastConformer
+faster-whisper>=1.0.0
 sherpa-onnx==1.13.8
 onnxruntime>=1.18
 

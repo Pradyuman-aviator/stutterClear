@@ -16,7 +16,7 @@ export interface Rescue {
 
 // What the listener hears, as text: the previous line dimmed, the current one with each new word
 // fading in. Fixed height, so the page never jumps as lines change.
-export function CaptionStrip({ caption, label, rescue }: { caption: Store<Caption | null>; label: string; rescue?: Rescue }) {
+export function CaptionStrip({ caption, label, rescue, engine }: { caption: Store<Caption | null>; label: string; rescue?: Rescue; engine?: string }) {
   const c = useStore(caption)
   const prev = c?.lines[c.lines.length - 1] ?? ""
   const words = (c?.partial ?? "").split(" ").filter(Boolean)
@@ -25,7 +25,7 @@ export function CaptionStrip({ caption, label, rescue }: { caption: Store<Captio
       <div className="mb-1.5 flex items-center gap-1.5 text-[10px] font-semibold tracking-[0.12em] text-white/40 uppercase">
         <Captions className="size-3.5" />
         {label}
-        <span className="hidden font-normal tracking-normal normal-case text-white/25 sm:inline">· NVIDIA FastConformer, on this computer</span>
+        <span className="hidden font-normal tracking-normal normal-case text-white/25 sm:inline">· {engine || "WhisperFlow streaming, on this computer"}</span>
         {rescue?.enabled && (
           <motion.button
             type="button"

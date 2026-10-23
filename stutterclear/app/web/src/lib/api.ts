@@ -102,6 +102,7 @@ export const getInfo = () =>
     student_eval: StudentEval | null
     notes: boolean
     captions: boolean
+    caption_engine?: string
     rescue: boolean
     nemotron: boolean
     search: boolean
