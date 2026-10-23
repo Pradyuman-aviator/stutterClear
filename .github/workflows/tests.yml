@@ -1,0 +1,46 @@
+# The test suite on every pull request and every push to main.
+#
+# A pull request runs only the tests its change can affect: Karma
+# (github.com/Pradyuman-aviator/Karma) follows the imports from the changed files to the tests,
+# and the job summary says why each test ran and which change a failure points at. A change to
+# requirements.txt or the pytest setup runs everything. main always runs the full suite, the
+# safety net for what static selection cannot see (a data file a test reads).
+#
+# The tests stand in for every model, so this needs no GPU, no model downloads and no keys:
+# CPU PyTorch and requirements.txt. Pull requests from forks run with read-only access.
+name: Tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0 # Karma diffs against the merge base
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install
+        run: |
+          sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends libportaudio2 libsndfile1
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install -r requirements.txt onnx
+      - name: Tests
+        uses: Pradyuman-aviator/Karma@a6177c9217e9070929ec629169d3191c545fb1a3 # main, 2026-10-19
+        with:
+          args: ${{ github.event_name == 'pull_request' && '--explain' || '--all' }}
+          diagnose: ${{ github.event_name == 'pull_request' }}
