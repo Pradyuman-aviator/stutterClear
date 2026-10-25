@@ -37,7 +37,7 @@ writes live captions; the hosted demo is built to run on a Nebius AI Cloud GPU V
 
 | | What it is | How well it works today (7 speakers it never trained on) |
 |---|---|---|
-| **Live** | Your mic (or your browser's, on the hosted demo), cleaned in real time, sent to headphones or a virtual mic for Zoom, Meet or Teams. A **Sensitivity** bar sets how readily it cuts, changed while you talk. | Big model on a laptop GPU: **33% of stutters removed in Gentle** (fillers kept, 3.1% of words lost) and **65% in Strong** (fillers too, 5.7% lost), 0.5-0.85 s behind you; at full sensitivity Gentle removes **58%** (9.9% lost). Without a GPU the rule-based detector removes ~8% (41% at full sensitivity, with 20% of words lost). |
+| **Live** | Your mic (or your browser's, on the hosted demo), cleaned in real time, sent to headphones or a virtual mic for Zoom, Meet or Teams. A **Sensitivity** bar sets how readily it cuts, changed while you talk. | Big model on a laptop GPU: **33% of stutters removed in Gentle** (fillers kept, 3.1% of words lost) and **65% in Strong** (fillers too, 5.7% lost), 0.5-0.85 s behind you; at full sensitivity **60% in Gentle** (10% lost) and **77% in Strong** (13% lost). Without a GPU the rule-based detector removes ~8% (41% at full sensitivity, with 20% of words lost). |
 | **Clean a voice note** | Record or upload a message (up to 3 minutes) in the browser and get it back cleaned, to play or download. | Cuts land **between words only**: 57% of stutters removed in Natural, **91% in Thorough** (fillers and repeated phrases too), with **no real word cut**. |
 | **Try a real recording** | Real stuttered recordings (UCLASS: three men aged 18 to 35, about 30 s each, credited on the page), with A/B playback, no mic needed. Where they cannot be shown, read speech from LibriSpeech with synthetic stutters stands in. | Every engine, side by side, on the same 30 s of speech. |
 | **Dictate** | Speak (or upload) and get the text without the stutters, ready to paste into an email or a chat. | The Thorough engine read as text; the removed words are shown struck through. |
@@ -257,6 +257,21 @@ Teacher v2 hears more stutters, but with the thresholds tuned for v1 it also cut
 then it was tested once here: calibration halved its word loss in Strong, but by the app's rule
 (removed minus 3 x lost) v1 still scores best live (Gentle 23.8 vs 18.8, Strong 48.2 vs 47.9), so
 live uses v1. With only 200 ms of lookahead, v2's mistakes are not a threshold problem.
+
+**The Sensitivity bar** (the Live panel, 0 to 100, changed while you talk) scales every detector's cut
+thresholds: 50 is the setting above. Measured the same way, through the app's own path:
+
+| sensitivity | teacher v1, Gentle: removed / lost | teacher v1, Strong: removed / lost | rule-based, Gentle |
+|---|---|---|---|
+| 0 | 12.2% / 0.64% | 51.3% / 2.90% | 0.8% / 0.24% |
+| 50 | 33.1% / 3.10% | 65.2% / 5.68% | 7.6% / 1.25% |
+| 75 | 48.4% / 6.24% | 75.9% / 9.34% | 20.4% / 6.08% |
+| 100 | 59.5% / 9.98% | 77.3% / 12.96% | 41.4% / 19.81% |
+
+Above 50, cuts run longer before the safety limits take them for a detector error (1/sqrt of the
+threshold scale): at the old 2 s limits Strong's top removed fewer stutters than 75 (65.7%) while
+losing more words. In a call each cut stutter is heard as a short pause (a call cannot play what was
+not said yet); on a recording the demo and Listen back close that time up.
 
 The live machinery costs almost nothing: cutting the same 200 ms-lookahead probabilities offline
 gives 34.8% / 3.62% in Gentle, the full live pipeline 33.1% / 3.10%. What holds Gentle back is how
