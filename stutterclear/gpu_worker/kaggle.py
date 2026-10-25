@@ -288,14 +288,16 @@ class KaggleLauncher:
         return box["out"]
 
     def _kernel(self, c, ref: str):
-        """A kernel's metadata, or None when there is no such kernel."""
+        """A kernel's metadata, or None when there is no such kernel. Kaggle answers a kernel that does
+        not exist (the worker's, before its first push) with 403 "Permission 'kernels.get' was denied",
+        not 404; wrong credentials are a 401."""
         from kagglesdk.kernels.types.kernels_api_service import ApiGetKernelRequest
         req = ApiGetKernelRequest()
         req.user_name, req.kernel_slug = ref.split("/")
         try:
             return self._call(c.kernels.kernels_api_client.get_kernel, req).metadata
         except Exception as e:
-            if _http_status(e) == 404:
+            if _http_status(e) in (403, 404):
                 return None
             raise
 
@@ -306,7 +308,7 @@ class KaggleLauncher:
         try:
             return self._call(c.datasets.dataset_api_client.get_dataset, req)
         except Exception as e:
-            if _http_status(e) == 404:
+            if _http_status(e) in (403, 404):  # as for kernels: a missing dataset can be a 403
                 return None
             raise
 

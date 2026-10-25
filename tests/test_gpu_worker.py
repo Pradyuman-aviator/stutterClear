@@ -958,8 +958,8 @@ class FakeKaggle:
     def get_kernel(self, req):
         self._call("get_kernel")
         ref = f"{req.user_name}/{req.kernel_slug}"
-        if ref not in self.meta:
-            raise http_error(404, "Not found")
+        if ref not in self.meta:  # what Kaggle really answers for a kernel that does not exist (not 404)
+            raise http_error(403, "Permission 'kernels.get' was denied")
         return SimpleNamespace(metadata=self.meta[ref])
 
     def get_kernel_session_status(self, req):
