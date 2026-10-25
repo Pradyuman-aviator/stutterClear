@@ -1,0 +1,51 @@
+# What `gcloud builds submit` uploads to build the Cloud Run image (deploy/cloudrun/Dockerfile):
+# an allowlist. Everything at the top is left out, then only what the image needs is let back in:
+# its package lock (deploy/cloudrun/requirements.lock), the code without the web sources, the
+# captions download script, the sample clips and their caches, and the two measured-results files.
+# Never checkpoints (runs/), datasets (data/), models/, sessions/, video/, personal recordings, .env
+# or keys.
+#
+# Check what would go up:  gcloud meta list-files-for-upload
+# (scripts/deploy_cloudrun.ps1 also refuses to build if anything uploaded is not committed.)
+/*
+
+!/scripts/
+/scripts/*
+!/scripts/download_asr.py
+
+!/stutterclear/
+/stutterclear/app/web/
+
+!/deploy/
+/deploy/*
+!/deploy/cloudrun/
+
+!/data/
+/data/*
+!/data/demo_clips/
+
+!/runs/
+/runs/*
+!/runs/eval/
+/runs/eval/*
+!/runs/eval/live_quality.json
+!/runs/eval/recordings.json
+
+# Never, wherever they appear inside what is let in
+**/__pycache__/
+**/node_modules/
+**/.env
+**/.env.*
+**/kaggle.json
+**/access_token
+**/*.pem
+**/*.key
+**/*.pt
+**/*.onnx
+**/*.ogg
+**/*.opus
+**/*.m4a
+**/*.mp3
+**/*.mp4
+**/*.mov
+**/*.webm

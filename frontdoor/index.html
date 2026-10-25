@@ -1,0 +1,448 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https: http://localhost:* http://127.0.0.1:*; frame-src https://www.youtube-nocookie.com; base-uri 'none'; form-action 'none'">
+<title>StutterClear</title>
+<meta name="description" content="StutterClear removes stutters from your own voice, live in calls and on recordings. Nothing is re-synthesised: the listener hears you, minus the repeats.">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0d1020">
+<meta property="og:title" content="StutterClear">
+<meta property="og:description" content="Your real voice, on your terms: stutters removed from your own voice, live in calls and on recordings.">
+<meta property="og:image" content="https://pradyuman-aviator.github.io/stutterClear/img/app.jpg">
+<meta property="og:url" content="https://pradyuman-aviator.github.io/stutterClear/">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%237dd3fc'/%3E%3Cstop offset='.5' stop-color='%23a5b4fc'/%3E%3Cstop offset='1' stop-color='%235eead4'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='64' height='64' rx='18' fill='url(%23g)'/%3E%3Cg stroke='%230b1020' stroke-width='5' stroke-linecap='round'%3E%3Cline x1='18' y1='26' x2='18' y2='38'/%3E%3Cline x1='27' y1='18' x2='27' y2='46'/%3E%3Cline x1='37' y1='22' x2='37' y2='42'/%3E%3Cline x1='46' y1='28' x2='46' y2='36'/%3E%3C/g%3E%3C/svg%3E">
+<!--
+  The frozen link of the StutterClear submission (GitHub Pages, .github/workflows/pages.yml). It checks the
+  servers in backends.json (GET /api/health, all at once) and sends the visitor to the first one in list order
+  that answers, keeping the #tab. If none does, it stays and shows what StutterClear is: each server's status,
+  the demo video and the measured results, and checks again every minute. It never wakes the GPU and holds no
+  secrets. ?stay=1 shows this page without leaving (the app links here as its status page); ?to=<n> picks
+  backend n (0 is the first). To re-point the link, edit backends.json only.
+-->
+<style>
+  :root {
+    --bg: #0d1020; --card: rgba(255, 255, 255, 0.04); --text: #f5f6fa; --muted: #aab3c5;
+    --accent: #8ccbf0; --border: rgba(255, 255, 255, 0.1); --ok: #5eead4; --warn: #fbbf24; --off: #f87171;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; min-height: 100vh; color: var(--text); overflow-wrap: anywhere;
+    background: radial-gradient(1200px 600px at 50% -200px, rgba(140, 203, 240, 0.12), transparent 70%), var(--bg);
+    font: 16px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  main { max-width: 760px; margin: 0 auto; padding: 28px 16px 56px; }
+  [hidden] { display: none !important; }
+  a { color: var(--accent); }
+  .brand { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 0.95rem; margin-bottom: 28px; }
+  .brand svg { width: 28px; height: 28px; flex: none; }
+  h1, h2 { font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif; font-weight: 400; line-height: 1.15; }
+  h1 { font-size: clamp(2rem, 7vw, 2.9rem); margin: 0 0 12px; }
+  h2 { font-size: 1.5rem; margin: 40px 0 12px; }
+  p { margin: 0 0 12px; }
+  .lead { font-size: 1.15rem; }
+  .muted { color: var(--muted); }
+  .small { font-size: 0.9rem; }
+  .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 18px 0; }
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 10px 18px;
+    border-radius: 999px; border: 1px solid var(--border); background: rgba(255, 255, 255, 0.06);
+    color: var(--text); font: inherit; font-size: 0.95rem; text-decoration: none; cursor: pointer;
+  }
+  .btn:hover { background: rgba(255, 255, 255, 0.1); }
+  .btn.primary { background: var(--accent); border-color: transparent; color: #0b1020; font-weight: 600; }
+  .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .spinner {
+    width: 22px; height: 22px; border-radius: 50%; border: 3px solid rgba(140, 203, 240, 0.25);
+    border-top-color: var(--accent); animation: spin 0.9s linear infinite; flex: none;
+  }
+  .waiting { flex-wrap: nowrap; align-items: flex-start; }
+  .waiting .spinner { margin-top: 1px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 16px; }
+  .servers { list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; }
+  .server { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+  .server .what { flex: 1 1 200px; min-width: 0; }
+  .server .name { font-weight: 600; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); flex: none; }
+  .dot.ok { background: var(--ok); } .dot.warn { background: var(--warn); } .dot.off { background: var(--off); }
+  .dot.checking { background: var(--accent); animation: pulse 1.2s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: 0.3; } }
+  @media (prefers-reduced-motion: reduce) { .spinner, .dot.checking { animation: none; } }
+  .video { position: relative; aspect-ratio: 16 / 9; border-radius: 16px; overflow: hidden; border: 1px solid var(--border); background: #000; }
+  .video iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.95rem; }
+  th, td { text-align: left; padding: 9px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  thead th { color: var(--muted); font-weight: 500; }
+  tbody th { font-weight: 400; }
+  .num { text-align: right; }
+  td.num { white-space: nowrap; font-variant-numeric: tabular-nums; }
+  figure { margin: 0; }
+  figure img { display: block; width: 100%; height: auto; border-radius: 16px; border: 1px solid var(--border); }
+  figcaption { margin-top: 8px; }
+  footer { margin-top: 48px; }
+</style>
+</head>
+<body>
+<main>
+  <div class="brand">
+    <svg viewBox="0 0 64 64" aria-hidden="true"><defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7dd3fc"/><stop offset=".5" stop-color="#a5b4fc"/><stop offset="1" stop-color="#5eead4"/></linearGradient></defs><rect width="64" height="64" rx="18" fill="url(#lg)"/><g stroke="#0b1020" stroke-width="5" stroke-linecap="round"><line x1="18" y1="26" x2="18" y2="38"/><line x1="27" y1="18" x2="27" y2="46"/><line x1="37" y1="22" x2="37" y2="42"/><line x1="46" y1="28" x2="46" y2="36"/></g></svg>
+    StutterClear
+  </div>
+
+  <section id="opening" hidden>
+    <h1>Opening StutterClear…</h1>
+    <div class="row waiting" role="status">
+      <div class="spinner" aria-hidden="true"></div>
+      <span>The server sleeps when nobody uses it, so the first visit can take up to a minute.</span>
+    </div>
+    <p id="slow" class="muted" hidden></p>
+    <div class="row"><button class="btn" id="stay" type="button">Stay on this page</button></div>
+  </section>
+
+  <section id="info" hidden>
+    <h1>StutterClear</h1>
+    <p class="lead">Your real voice, on your terms.</p>
+    <p>StutterClear removes stutters (repeated words, broken-off starts and, if you like, fillers such as “um”)
+      from your own voice: live in calls, and on recordings and voice notes. Nothing is re-synthesised: the
+      listener hears you, minus the repeats. It is an assistive tool, not a treatment, and it never speaks for you.</p>
+
+    <h2>Try it</h2>
+    <div class="card">
+      <p id="summary" role="status">Checking the servers…</p>
+      <ul class="servers" id="servers"></ul>
+      <div class="row"><button class="btn" id="retry" type="button">Try again</button></div>
+      <p class="muted small">The servers are checked again every minute while this page is open.</p>
+    </div>
+
+    <section id="video-box" hidden>
+      <h2>The demo video</h2>
+      <div class="video" id="video" hidden></div>
+      <p id="video-link" hidden><a class="btn" id="video-a" rel="noopener" target="_blank">Watch the demo video</a></p>
+    </section>
+
+    <section id="results" hidden>
+      <h2>Measured on speakers it never heard</h2>
+      <table>
+        <thead><tr><th scope="col">What</th><th scope="col" class="num">Stutters removed</th><th scope="col" class="num">Words lost</th></tr></thead>
+        <tbody id="results-rows"></tbody>
+      </table>
+      <p class="muted small" id="results-note"></p>
+    </section>
+
+    <figure id="shot">
+      <h2>What it looks like</h2>
+      <img src="img/app.jpg" width="1440" height="1240" loading="lazy" id="shot-img"
+        alt="StutterClear playing a stuttered recording: what was said, the removed stutters in red, and what the listener hears">
+      <figcaption class="muted small">The Fluency Mirror: what was said, the removed stutters in red, and what the listener hears.</figcaption>
+    </figure>
+
+    <h2>More</h2>
+    <div class="row">
+      <a class="btn" id="repo" rel="noopener" href="https://github.com/Pradyuman-aviator/stutterClear">Code on GitHub</a>
+      <a class="btn" id="readme" rel="noopener" href="https://github.com/Pradyuman-aviator/stutterClear#readme">How it works (README)</a>
+    </div>
+    <footer class="muted small">Built for the Nebius × NVIDIA Global AI Hackathon: NVIDIA Nemotron on Nebius Token Factory and
+      NVIDIA FastConformer captions. This page only checks which StutterClear server is up; it sends nothing you say anywhere.</footer>
+  </section>
+
+  <noscript>
+    <h1>StutterClear</h1>
+    <p>This page needs JavaScript to find a running StutterClear server.
+      The code, the measured results and how it works: <a href="https://github.com/Pradyuman-aviator/stutterClear">github.com/Pradyuman-aviator/stutterClear</a>.</p>
+  </noscript>
+</main>
+
+<script>
+(function () {
+  "use strict";
+  var URL_OK = /^(https:\/\/[a-z0-9-]+(\.[a-z0-9-]+)+|http:\/\/(localhost|127\.0\.0\.1))(:\d{1,5})?\/?$/i;
+  var VERSION_OK = /^([0-9a-f]{12}|dev)$/;
+  var YOUTUBE = /^https:\/\/(?:(?:www\.|m\.)?youtube\.com\/(?:watch\?(?:[^#]*&)?v=|embed\/|shorts\/|live\/)|youtu\.be\/|www\.youtube-nocookie\.com\/embed\/)([\w-]{11})(?:[?&#].*)?$/;
+  var RECHECK_MS = 60000;
+  var query = new URLSearchParams(location.search);
+  var stayed = query.get("stay") === "1";  // show this page and never leave it by itself
+  var to = /^\d{1,2}$/.test(query.get("to") || "") ? Number(query.get("to")) : null;
+  var config = null;
+  var backends = [];
+  var round = 0;
+  var lastCheck = 0;
+  var leaving = false;
+  var filled = { page: false, config: false };
+
+  function $(id) { return document.getElementById(id); }
+
+  function show(view) {
+    $("opening").hidden = view !== "opening";
+    $("info").hidden = view !== "info";
+    if (view === "info") { fillPage(); fillConfig(); render(); }
+  }
+
+  function timeout(ms) {  // AbortSignal.timeout is missing on older Safari
+    var c = new AbortController();
+    var id = setTimeout(function () { c.abort(); }, ms);
+    return { signal: c.signal, clear: function () { clearTimeout(id); } };
+  }
+
+  function readBackends(c) {
+    return (c && Array.isArray(c.backends) ? c.backends : []).map(function (b, i) {
+      b = b || {};
+      var url = typeof b.url === "string" ? b.url.trim() : "";
+      var s = Number(b.first_timeout_s);
+      return {
+        name: typeof b.name === "string" && b.name ? b.name : "Server " + (i + 1),
+        url: URL_OK.test(url) ? url.replace(/\/$/, "") : null,  // a placeholder URL counts as "not set up"
+        ms: (s >= 3 && s <= 120 ? s : 20) * 1000,
+        state: "checking"
+      };
+    });
+  }
+
+  // A StutterClear server answers GET /api/health with {ok: true, service: "stutterclear", version}: "up".
+  // ok: false says it runs but should not get visitors now (its downloads for the hour are used up): "busy".
+  function healthy(b) {
+    var t = timeout(b.ms);
+    return fetch(b.url + "/api/health?fd=" + Date.now(),
+      { cache: "no-store", mode: "cors", credentials: "omit", signal: t.signal })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) {
+        if (!j || j.service !== "stutterclear" || typeof j.version !== "string" || !VERSION_OK.test(j.version)) {
+          return false;
+        }
+        return j.ok === true ? "up" : "busy";
+      })
+      .catch(function () { return false; })
+      .then(function (ok) { t.clear(); return ok; });
+  }
+
+  // Unhealthy but there at all (an older version without /api/health): offered, never opened by itself
+  function reachable(b) {
+    var t = timeout(8000);
+    return fetch(b.url + "/favicon.svg?fd=" + Date.now(),
+      { cache: "no-store", mode: "no-cors", credentials: "omit", signal: t.signal })
+      .then(function () { return true; }, function () { return false; })
+      .then(function (ok) { t.clear(); return ok; });
+  }
+
+  // Read the list again (it may have been re-pointed), then check every server at once
+  function start(goWhenUp) {
+    lastCheck = Date.now();
+    fetch("backends.json?v=" + Date.now(), { cache: "no-store" })
+      .then(function (r) { if (!r.ok) { throw new Error("HTTP " + r.status); } return r.json(); })
+      .then(function (c) {
+        config = c;
+        backends = readBackends(c);
+        if (to !== null && to >= backends.length) { to = null; }
+        if (!$("info").hidden) { fillConfig(); }
+      }, function () {})  // keep the list from the last check, if there was one
+      .then(function () {
+        if (config) { check(goWhenUp); return; }
+        show("info");
+        $("summary").textContent = "Could not load the list of servers. The code and how it works are linked below.";
+      });
+  }
+
+  // With goWhenUp, open the first server in list order that answers, as soon as none before it still can.
+  // Never leaves by itself while this page is being read (?stay=1, Stay, or the every-minute checks).
+  function check(goWhenUp) {
+    var mine = ++round;
+    var results = backends.map(function (b) { return b.url ? undefined : false; });
+    backends.forEach(function (b, k) {
+      b.state = b.url ? "checking" : "missing";
+      if (!b.url) { return; }
+      healthy(b).then(function (ok) {
+        if (mine !== round) { return; }
+        results[k] = ok === "up";
+        if (ok) { b.state = ok; }
+        decide();
+        render();
+        if (!ok) {
+          reachable(b).then(function (there) {
+            if (mine !== round) { return; }
+            b.state = there ? "old" : "down";
+            render();
+          });
+        }
+      });
+    });
+    render();
+    decide();
+
+    function decide() {
+      if (mine !== round || leaving) { return; }
+      for (var k = 0; k < backends.length; k++) {
+        if (to !== null && k !== to) { continue; }
+        if (results[k] === undefined) { return; }  // an earlier one may still answer
+        if (results[k]) {
+          if (goWhenUp && !stayed) {
+            leaving = true;
+            location.replace(backends[k].url + "/" + location.hash);
+          }
+          return;
+        }
+      }
+      if ($("info").hidden) { show("info"); }  // nobody answered: stay and show what this is
+    }
+  }
+
+  var TEXT = {
+    checking: "Checking…",
+    up: "Running.",
+    old: "Answers, but not its health check (an older version?).",
+    down: "Not answering right now.",
+    busy: "Running, but it has sent its share of data for now (audio may not play).",
+    missing: "Not set up yet."
+  };
+  var DOT = { checking: "dot checking", up: "dot ok", old: "dot warn", busy: "dot warn", down: "dot off", missing: "dot" };
+
+  function render() {
+    var list = $("servers");
+    var up = 0;
+    var waiting = 0;
+    while (list.firstChild) { list.removeChild(list.firstChild); }
+    backends.forEach(function (b, k) {
+      if (to !== null && k !== to) { return; }
+      up += b.state === "up" ? 1 : 0;
+      waiting += b.state === "checking" ? 1 : 0;
+      var li = document.createElement("li");
+      li.className = "server";
+      var dot = document.createElement("span");
+      dot.className = DOT[b.state];
+      dot.setAttribute("aria-hidden", "true");
+      var what = document.createElement("div");
+      what.className = "what";
+      var name = document.createElement("div");
+      name.className = "name";
+      name.textContent = b.name;
+      var state = document.createElement("div");
+      state.className = "muted small";
+      state.textContent = TEXT[b.state];
+      what.appendChild(name);
+      what.appendChild(state);
+      li.appendChild(dot);
+      li.appendChild(what);
+      if (b.state === "up" || b.state === "old" || b.state === "busy") {
+        var a = document.createElement("a");
+        a.className = b.state === "up" ? "btn primary" : "btn";
+        a.href = b.url + "/" + location.hash;
+        a.textContent = b.state === "up" ? "Open" : "Open it anyway";
+        li.appendChild(a);
+      }
+      list.appendChild(li);
+    });
+    $("summary").textContent = up ? "StutterClear is running: open it below." :
+      waiting ? "Checking the servers…" :
+      navigator.onLine === false ? "You seem to be offline. Connect, then try again." :
+      "The live demo is not answering right now. Below is what it does; it is checked again every minute.";
+    var first = backends[to !== null ? to : 0];
+    $("slow").hidden = !(first && first.state === "checking" && Date.now() - lastCheck > 10000);
+    $("slow").textContent = to === null && backends.length > 1 ?
+      "Still waking the main server; trying the backup too." : "Still waking the server…";
+  }
+
+  function getJson(path) {
+    return fetch(path, { cache: "no-store" })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .catch(function () { return null; });
+  }
+
+  function pct(v, digits) {
+    var n = Number(v);
+    return isFinite(n) ? (n === 0 ? "0" : n.toFixed(digits)) + "%" : "–";
+  }
+
+  // What does not depend on backends.json: the measured results and the screenshot (once)
+  function fillPage() {
+    if (filled.page) { return; }
+    filled.page = true;
+    var img = $("shot-img");
+    img.addEventListener("error", function () { $("shot").hidden = true; });
+    if (img.complete && !img.naturalWidth) { $("shot").hidden = true; }
+    Promise.all([getJson("results/live_quality.json"), getJson("results/recordings.json")]).then(function (r) {
+      var live = r[0] && Array.isArray(r[0].results) ? r[0].results : [];
+      var rec = r[1] && Array.isArray(r[1].results) ? r[1].results : [];
+      var rows = [];
+      var counts = null;
+      [["teacher", "gentle", "Live, big model on a GPU (Gentle)"],
+        ["teacher", "strong", "Live, big model on a GPU (Strong: fillers too)"],
+        ["rule-based", "gentle", "Live, rule-based, no GPU needed (Gentle)"]].forEach(function (w) {
+        var m = live.filter(function (x) { return x && x.detector === w[0] && x.mode === w[1]; })[0];
+        if (m) { rows.push([w[2], pct(m.stutter_removed_pct, 0), pct(m.words_lost_pct, 1)]); counts = counts || m; }
+      });
+      [["natural", "Recordings and voice notes (Natural)"],
+        ["thorough", "Recordings and voice notes (Thorough: fillers and repeated phrases too)"]].forEach(function (w) {
+        var m = rec.filter(function (x) { return x && x.recipe === w[0]; })[0];
+        if (m) { rows.push([w[1], pct(m.stutter_removed_pct, 0), pct(m.words_lost_pct, 1)]); counts = counts || m; }
+      });
+      if (!rows.length) { return; }
+      rows.forEach(function (row) {
+        var tr = document.createElement("tr");
+        row.forEach(function (text, i) {
+          var cell = document.createElement(i ? "td" : "th");
+          if (i) { cell.className = "num"; } else { cell.scope = "row"; }
+          cell.textContent = text;
+          tr.appendChild(cell);
+        });
+        $("results-rows").appendChild(tr);
+      });
+      if (counts && Number(counts.n_stutter) > 0) {
+        $("results-note").textContent = Number(counts.n_stutter).toLocaleString("en") + " stutters and " +
+          Number(counts.n_fluent).toLocaleString("en") + " fluent words from speakers none of the models trained on. " +
+          "Recordings are cut between words only.";
+      }
+      $("results").hidden = false;
+    });
+  }
+
+  // What backends.json says beyond the servers: the repository and the demo video (once)
+  function fillConfig() {
+    if (filled.config || !config) { return; }
+    filled.config = true;
+    if (typeof config.repo === "string" && /^https:\/\/github\.com\/[\w.-]+\/[\w.-]+$/.test(config.repo)) {
+      $("repo").href = config.repo;
+      $("readme").href = config.repo + "#readme";
+    }
+    var video = typeof config.video_url === "string" ? config.video_url.trim() : "";
+    var id = YOUTUBE.exec(video);
+    if (id) {
+      var f = document.createElement("iframe");
+      f.src = "https://www.youtube-nocookie.com/embed/" + id[1] + "?rel=0";
+      f.title = "StutterClear demo video";
+      f.loading = "lazy";
+      f.allow = "encrypted-media; picture-in-picture; fullscreen";
+      f.allowFullscreen = true;
+      f.referrerPolicy = "strict-origin-when-cross-origin";  // YouTube refuses embeds that send no referrer
+      $("video").appendChild(f);
+      $("video").hidden = false;
+      $("video-box").hidden = false;
+    } else if (/^https:\/\/\S+$/.test(video)) {
+      $("video-a").href = video;
+      $("video-link").hidden = false;
+      $("video-box").hidden = false;
+    }
+  }
+
+  $("stay").addEventListener("click", function () { stayed = true; show("info"); });
+  $("retry").addEventListener("click", function () { start(!stayed); });
+  function recheck() {
+    if (!$("info").hidden && document.visibilityState === "visible" && Date.now() - lastCheck >= RECHECK_MS) {
+      start(false);
+    }
+  }
+  setInterval(function () {
+    recheck();
+    if (!$("opening").hidden) { render(); }  // the "still waking" line
+  }, 1000);
+  document.addEventListener("visibilitychange", recheck);
+  window.addEventListener("online", function () { if (!$("info").hidden) { start(false); } });
+
+  show(stayed ? "info" : "opening");
+  start(!stayed);
+})();
+</script>
+</body>
+</html>

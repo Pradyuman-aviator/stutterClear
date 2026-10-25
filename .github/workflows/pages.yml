@@ -1,0 +1,69 @@
+# The front door on GitHub Pages: https://pradyuman-aviator.github.io/stutterClear/ (the submission's
+# frozen link; the path is case-sensitive). frontdoor/ is a static page that checks the servers in
+# frontdoor/backends.json and sends visitors to the first one that answers; see frontdoor/index.html.
+#
+# Runs on a push to main that changes the page, the measured results it shows or the screenshot, and
+# by hand (Actions > Front door > Run workflow). One-time setup by the repository owner: Settings >
+# Pages > Source: GitHub Actions. Every action is pinned to a commit, with its version alongside.
+name: Front door
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - frontdoor/**
+      - runs/eval/*.json
+      - docs/img/app.jpg
+      - .github/workflows/pages.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false # never cut a deployment short
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check backends.json
+        # A broken list would break the frozen link: refuse to publish it. A placeholder URL is allowed
+        # (the page shows that server as not set up) but flagged.
+        run: |
+          python3 - <<'EOF'
+          import json, re
+          c = json.load(open("frontdoor/backends.json", encoding="utf-8"))
+          assert isinstance(c.get("backends"), list) and c["backends"], "backends must be a non-empty list"
+          for b in c["backends"]:
+              assert isinstance(b.get("name"), str) and b["name"], f"every backend needs a name: {b}"
+              url = b.get("url", "")
+              if not re.fullmatch(r"https://[a-z0-9-]+(\.[a-z0-9-]+)+/?", url, re.I):
+                  assert "<" in url, f"{b['name']}: {url!r} is not https://<host> (nothing after the host)"
+                  print(f"::warning::{b['name']} is not set up yet: {url}")
+              assert 3 <= b.get("first_timeout_s", 20) <= 120, f"{b['name']}: first_timeout_s must be 3-120"
+          v = c.get("video_url")
+          assert v is None or (isinstance(v, str) and v.startswith("https://")), "video_url must be null or https://"
+          print("backends.json ok:", ", ".join(b["name"] for b in c["backends"]))
+          EOF
+      - name: Add the measured results and the screenshot
+        run: |
+          mkdir -p frontdoor/results frontdoor/img
+          cp runs/eval/live_quality.json runs/eval/recordings.json frontdoor/results/
+          cp docs/img/app.jpg frontdoor/img/
+      - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: frontdoor
+      - id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

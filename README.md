@@ -369,17 +369,25 @@ the clean text (what Dictate copies).
 
 ## Hosted demo
 
-The same app runs on a GPU VM on Nebius AI Cloud behind Caddy (automatic HTTPS: browsers only allow
-the microphone on HTTPS pages), with Docker Compose. Setup, and a plan B serving it from a laptop
-through an HTTPS tunnel: `docs/DEPLOY.md`. On a public server (`STUTTERCLEAR_HOSTED=1`):
+**https://pradyuman-aviator.github.io/stutterClear/** (`?stay=1` shows its status page). This front
+door, a static page, checks the servers and opens the first that answers; if none does, it shows the
+demo video, the measured results and each server's status instead of an error. The app behind it runs
+on Google Cloud Run (CPU, Mumbai), with an Azure server as the backup. Its GPU features (voice notes,
+Dictate, Clean my video) go to a GPU worker the app wakes only when a visitor asks for one, a private
+Kaggle notebook or the team's laptop, which connects out to the app and sleeps again when unused; the
+page shows each step of the wake (usually 2-4 minutes), and everything else works meanwhile. Setup,
+and the other ways to host it (a Nebius AI Cloud GPU VM with Docker Compose and Caddy, the laptop
+through an HTTPS tunnel): `docs/DEPLOY.md`. On a public server (`STUTTERCLEAR_HOSTED=1`):
 
 - visitors use their browser's microphone (captured at 16 kHz, or at the device's rate and
   resampled in the page, as Firefox requires);
 - a live session's captions, waveforms and audio go only to the browser tab that started it;
 - one live session at a time, up to 5 minutes, ended after 15 s without audio; others are told it
   is someone else's turn;
-- at most 4 voice notes wait for the GPU at once, and 40 are kept in memory, each for at most an
+- at most 4 voice notes wait for the GPU at once, and 20 are kept in memory, each for at most an
   hour;
+- each visitor gets a fair share of the GPU worker: one recording at a time, 10 minutes of audio an
+  hour and a few GPU starts a day; pages and requests from other websites are refused;
 - visitors' Nemotron calls are capped at 60 a minute and Say it at 30, because they spend the
   owner's credits;
 - review feedback stays in the visitor's browser (the page sends its multipliers with a session);

@@ -1,0 +1,26 @@
+# Cloud Build: the Cloud Run image (deploy/cloudrun/Dockerfile) from the allowlisted upload
+# (.gcloudignore), pushed to Artifact Registry. scripts/deploy_cloudrun.ps1 runs it as
+#   gcloud builds submit --config deploy/cloudrun/cloudbuild.yaml \
+#     --substitutions=_TAG=<short sha>,_COMMIT=<full sha>,_REGION=asia-south1 .
+# and then deploys the image by its digest. An empty _COMMIT fails the build on purpose: every image
+# says which commit it runs (the Kaggle worker fetches exactly that commit).
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - deploy/cloudrun/Dockerfile
+      - --build-arg
+      - COMMIT=${_COMMIT}
+      - -t
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/stutterclear/app:${_TAG}
+      - .
+images:
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/stutterclear/app:${_TAG}
+substitutions:
+  _TAG: manual
+  _COMMIT: ""
+  _REGION: asia-south1
+options:
+  logging: CLOUD_LOGGING_ONLY  # no logs bucket to create or pay for
+timeout: 1800s

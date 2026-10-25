@@ -1,0 +1,17 @@
+{
+  "backends": [
+    {
+      "name": "Main server (Google Cloud, Mumbai)",
+      "url": "https://stutterclear-<PROJECT_NUMBER>.asia-south1.run.app",
+      "first_timeout_s": 45
+    },
+    {
+      "name": "Backup server (Azure, India)",
+      "url": "https://stutterclear-demo.centralindia.cloudapp.azure.com",
+      "first_timeout_s": 10
+    }
+  ],
+  "video_url": null,
+  "repo": "https://github.com/Pradyuman-aviator/stutterClear",
+  "updated": "2026-10-25"
+}

@@ -1,0 +1,4 @@
+100c5616929a131b5b3c8c8ab0d83aaba2cdcae163acd8d190b4e5ffa5f7d051  models/asr/sherpa-onnx-nemo-streaming-fast-conformer-transducer-en-480ms-int8/encoder.int8.onnx
+4f04431988472f8c7b815f942aa6901976929c9e22353029681fcdb262da0164  models/asr/sherpa-onnx-nemo-streaming-fast-conformer-transducer-en-480ms-int8/decoder.int8.onnx
+d2d8e7290a6a8245a83ed211aa0dd8cdf8effb8a7c64fe392399561111b52f30  models/asr/sherpa-onnx-nemo-streaming-fast-conformer-transducer-en-480ms-int8/joiner.int8.onnx
+618dc110fc2213886b52e063ff42329bbdf37a266ca7705184090fa5f39f3131  models/asr/sherpa-onnx-nemo-streaming-fast-conformer-transducer-en-480ms-int8/tokens.txt
