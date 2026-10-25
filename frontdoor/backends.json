@@ -2,7 +2,7 @@
   "backends": [
     {
       "name": "Main server (Google Cloud, Mumbai)",
-      "url": "https://stutterclear-<PROJECT_NUMBER>.asia-south1.run.app",
+      "url": "https://stutterclear-932829349156.asia-south1.run.app",
       "first_timeout_s": 45
     },
     {
