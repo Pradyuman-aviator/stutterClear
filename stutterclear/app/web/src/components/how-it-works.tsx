@@ -10,7 +10,7 @@ const STEPS = [
   {
     icon: IsoHear,
     title: "Hears the stutter",
-    text: "A WavLM model trained on real stuttered speech spots repeats, broken-off starts and blocks. Live, it runs on the GPU about half a second behind you.",
+    text: "A WavLM model trained on real stuttered speech spots repeats, broken-off starts and blocks. Live, it runs on a GPU, about half a second behind you (a little more when our GPU is far away).",
   },
   {
     icon: IsoCut,

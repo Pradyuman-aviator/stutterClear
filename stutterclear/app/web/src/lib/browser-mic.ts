@@ -2,7 +2,7 @@
 // of float32 audio to the server (/ws/mic), which runs the same live pipeline as a local session.
 // Used when the app is hosted (the server has no mic) or when "This browser" is picked as the mic.
 
-import { PAGE_ID, type PlaybackInfo, type Summary } from "@/lib/api"
+import { OFFLINE, PAGE_ID, type PlaybackInfo, type Summary } from "@/lib/api"
 
 // Firefox only connects a mic to an AudioContext at the device's own rate (usually 48 kHz). Then the
 // worklet resamples to 16 kHz itself: a windowed-sinc low-pass below 8 kHz (so nothing folds back
@@ -82,6 +82,14 @@ export async function openMic(): Promise<MediaStream> {
 // How a session ended: the summary and listen-back, and why if the server ended it itself.
 export type MicEnd = { summary: Summary | null; playback?: PlaybackInfo; ended?: string | null }
 
+const parse = (data: unknown) => {
+  try {
+    return JSON.parse(String(data))
+  } catch {
+    return null
+  }
+}
+
 export class BrowserMic {
   private ws: WebSocket | null = null
   private ctx: AudioContext | null = null
@@ -97,22 +105,32 @@ export class BrowserMic {
   async start(
     settings: { mode: string; detector: string; aidMs?: number; adjust?: Record<string, number> },
     onEnd?: (r: MicEnd | null) => void,
-  ): Promise<{ detector: string }> {
+  ): Promise<{ detector: string; delay_ms?: number }> {
     this.stream = await openMic()
     const proto = location.protocol === "https:" ? "wss" : "ws"
     const ws = new WebSocket(`${proto}://${location.host}/ws/mic`)
     ws.binaryType = "arraybuffer"
     this.ws = ws
-    const ready = new Promise<{ detector: string }>((resolve, reject) => {
-      ws.onopen = () => ws.send(JSON.stringify({ ...settings, page: PAGE_ID }))
-      ws.onmessage = (m) => resolve(JSON.parse(m.data))
-      ws.onclose = (e) => reject(new Error(e.reason || "The live connection closed."))
+    let opened = false
+    // The server answers the settings with {ok: true, detector, delay_ms}, or {ok: false, error}
+    // when it turns the session down (say, too many Best (GPU) sessions this hour).
+    const ready = new Promise<{ detector: string; delay_ms?: number }>((resolve, reject) => {
+      ws.onopen = () => {
+        opened = true
+        ws.send(JSON.stringify({ ...settings, page: PAGE_ID }))
+      }
+      ws.onmessage = (m) => {
+        const r = parse(m.data)
+        if (r?.ok) resolve(r)
+        else reject(new Error(r?.error || "The server could not start a live session."))
+      }
+      ws.onclose = (e) => reject(new Error(e.reason || (opened ? "The live connection closed." : OFFLINE)))
     })
     const info = await ready
     ws.onmessage = (m) => {
       if (this.stopping) return
       this.stopping = true
-      onEnd?.(JSON.parse(m.data))
+      onEnd?.(parse(m.data) ?? { summary: null })
     }
     ws.onclose = () => {
       if (!this.stopping) onEnd?.(null)
@@ -175,7 +193,7 @@ export class BrowserMic {
         resolve(v)
         ws.close()
       }
-      ws.onmessage = (m) => done(JSON.parse(m.data))
+      ws.onmessage = (m) => done(parse(m.data))
       ws.onclose = () => resolve(null)
       window.setTimeout(() => done(null), 5000)
       ws.send("stop")

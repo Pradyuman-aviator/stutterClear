@@ -1,100 +1,157 @@
 import { useEffect, useRef, useState } from "react"
 import { AnimatePresence, motion } from "motion/react"
-import { LoaderCircle, Mic, Square } from "lucide-react"
+import { LoaderCircle, Mic, RotateCcw, Square } from "lucide-react"
+import { GpuNote } from "@/components/gpu-note"
 import { IsoBadge, IsoNote } from "@/components/iso-icon"
 import { GlassCard } from "@/components/glass-card"
-import { createNote, getNote, type NoteStatus } from "@/lib/api"
+import { blocked as gpuBlocked, queuedText, type Gpu } from "@/hooks/use-gpu"
+import { clock } from "@/hooks/use-now"
+import { createNote, getNote, transient, type ApiError, type NoteStatus } from "@/lib/api"
 import { openMic } from "@/lib/browser-mic"
 import { SPRING } from "@/lib/motion"
 import { toWav16k } from "@/lib/wav"
 import { cn } from "@/lib/utils"
 
 const MAX_S = 180
-const STEP: Record<NoteStatus["status"], string> = {
-  queued: "Waiting for the models…",
+const STEP: Record<string, string> = {
   listening: "Finding the stutters…",
   transcribing: "Writing down every word…",
-  done: "Done",
-  error: "",
 }
-const clock = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`
+const FORGOTTEN = "The server restarted and forgot this recording (nothing is kept on disk)."
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
 type Phase =
   | { kind: "idle" }
   | { kind: "recording"; started: number }
   | { kind: "preparing" }
-  | { kind: "cleaning"; step: NoteStatus["status"]; slow?: boolean }
-  | { kind: "error"; message: string }
+  | { kind: "cleaning"; step: string; slow?: boolean; ahead?: number | null }
+  | { kind: "error"; message: string; again: boolean } // again: sending the kept audio once more may work
 
 // Record or upload a message; it is cleaned offline (teacher + word-aligned cuts) and opens in the
-// player above. Nothing is saved: the server keeps it in memory for an hour.
+// player above. Nothing is saved: the server keeps it in memory for an hour. With a GPU worker
+// elsewhere (`gpu`), the GPU is woken as soon as the recording is sure to come (the mic allowed, a
+// file that passed its checks), so it wakes while the visitor speaks.
 export function VoiceNoteCard({
   enabled,
   busy,
   onReady,
   title = "Clean a voice note",
   blurb = "Record or upload a message. Repeated and broken-off words are removed between words, in your own voice, and nothing is saved.",
+  offText = "Needs the offline model, which is not downloaded.",
+  gpu,
+  feature = "voice-note",
+  onGoto,
 }: {
   enabled: boolean
   busy: boolean // a live session owns the mic
   onReady: (id: string, seconds: number) => void
   title?: string
   blurb?: string
+  offText?: string // why voice notes are off here
+  gpu?: Gpu // the GPU worker that cleans notes on this server, if it has one
+  feature?: "voice-note" | "dictate"
+  onGoto?: (tab: "calls" | "recordings") => void
 }) {
   const [phase, setPhase] = useState<Phase>({ kind: "idle" })
   const [elapsed, setElapsed] = useState(0)
   const recorder = useRef<MediaRecorder | null>(null)
+  const stream = useRef<MediaStream | null>(null)
   const ring = useRef<HTMLSpanElement | null>(null)
   const stopMeter = useRef<() => void>(() => undefined)
   const fileInput = useRef<HTMLInputElement>(null)
+  const last = useRef<Blob | null>(null) // the last recording or file, for Try again
+  const alive = useRef(true)
 
-  useEffect(() => () => stopMeter.current(), [])
+  // Unmounting ends a recording without sending it and lets go of the mic.
+  useEffect(() => {
+    alive.current = true
+    return () => {
+      alive.current = false
+      stopMeter.current()
+      if (recorder.current?.state === "recording") recorder.current.stop()
+      stream.current?.getTracks().forEach((t) => t.stop())
+    }
+  }, [])
+
+  // Follow the note until it is done: every 2 s while it waits for a GPU elsewhere, faster while it
+  // is being cleaned. Up to five failed polls in a row (a network blip, a restart) are waited out.
+  const follow = async (id: string) => {
+    let waiting = true
+    for (let misses = 0; ; ) {
+      await sleep(misses ? Math.min(8000, 1000 * 2 ** misses) : waiting && gpu ? 2000 : 600)
+      if (!alive.current) return
+      let s: NoteStatus
+      try {
+        s = await getNote(id)
+        misses = 0
+      } catch (e) {
+        if ((e as ApiError).status === 404) throw new Error(FORGOTTEN)
+        if (transient(e) && ++misses < 5) continue
+        throw e
+      }
+      if (!alive.current) return
+      if (s.status === "error") throw new Error(s.error ?? "Cleaning failed.")
+      if (s.status === "done") {
+        setPhase({ kind: "idle" })
+        onReady(id, s.duration_s)
+        return
+      }
+      waiting = s.status === "queued"
+      setPhase({ kind: "cleaning", step: s.status, slow: s.slow, ahead: s.ahead })
+    }
+  }
 
   const clean = async (blob: Blob) => {
+    last.current = blob
     setPhase({ kind: "preparing" })
+    let wav: Blob
     try {
-      const { wav, seconds } = await toWav16k(blob)
-      if (seconds < 1) throw new Error("That recording is shorter than a second.")
-      if (seconds > MAX_S) throw new Error(`Voice notes can be up to ${MAX_S / 60} minutes long.`)
+      const r = await toWav16k(blob, MAX_S) // a recording that ran to the limit ends a moment past it: its first 3 minutes
+      if (r.seconds < 1) throw new Error("That recording is shorter than a second.")
+      if (r.seconds > MAX_S + 1) throw new Error(`Voice notes can be up to ${MAX_S / 60} minutes long.`)
+      wav = r.wav
+    } catch (e) {
+      setPhase({ kind: "error", message: (e as Error).message, again: false })
+      return
+    }
+    gpu?.wake(feature, { quiet: true }) // it passed its checks: the GPU wakes while it uploads
+    try {
       const { id } = await createNote(wav)
       setPhase({ kind: "cleaning", step: "queued" })
-      for (;;) {
-        await new Promise((r) => setTimeout(r, 600))
-        const s = await getNote(id)
-        if (s.status === "error") throw new Error(s.error ?? "Cleaning failed.")
-        if (s.status === "done") {
-          setPhase({ kind: "idle" })
-          onReady(id, s.duration_s)
-          return
-        }
-        setPhase({ kind: "cleaning", step: s.status, slow: s.slow })
-      }
+      await follow(id)
     } catch (e) {
-      setPhase({ kind: "error", message: (e as Error).message })
+      if (alive.current) setPhase({ kind: "error", message: (e as Error).message, again: (e as ApiError).status !== 415 })
     }
   }
 
   const record = async () => {
-    let stream: MediaStream
+    let mic: MediaStream
     try {
-      stream = await openMic()
+      mic = await openMic()
     } catch (e) {
-      setPhase({ kind: "error", message: (e as Error).message })
+      setPhase({ kind: "error", message: (e as Error).message, again: false })
       return
     }
+    if (!alive.current) {
+      mic.getTracks().forEach((t) => t.stop())
+      return
+    }
+    gpu?.wake(feature, { quiet: true }) // the mic is allowed: a recording is coming, so wake the GPU now
+    stream.current = mic
     const chunks: Blob[] = []
-    const rec = new MediaRecorder(stream)
+    const rec = new MediaRecorder(mic)
     rec.ondataavailable = (e) => e.data.size && chunks.push(e.data)
     rec.onstop = () => {
       stopMeter.current()
-      stream.getTracks().forEach((t) => t.stop())
-      clean(new Blob(chunks, { type: rec.mimeType }))
+      mic.getTracks().forEach((t) => t.stop())
+      stream.current = null
+      if (alive.current) clean(new Blob(chunks, { type: rec.mimeType }))
     }
     // Level ring: swells with the voice while recording.
     const ctx = new AudioContext()
     const analyser = ctx.createAnalyser()
     analyser.fftSize = 512
-    ctx.createMediaStreamSource(stream).connect(analyser)
+    ctx.createMediaStreamSource(mic).connect(analyser)
     const data = new Float32Array(analyser.fftSize)
     const started = performance.now()
     let raf = 0
@@ -122,9 +179,12 @@ export function VoiceNoteCard({
 
   const stop = () => recorder.current?.state === "recording" && recorder.current.stop()
 
+  const st = gpu?.status ?? null
+  const paused = gpuBlocked(st) // the GPU rests or is offline: nothing could clean it now
   const working = phase.kind === "preparing" || phase.kind === "cleaning"
   const recording = phase.kind === "recording"
-  const disabled = !enabled || busy || working
+  const disabled = !enabled || busy || working || paused
+  const queued = phase.kind === "cleaning" && phase.step === "queued"
 
   return (
     <GlassCard className="flex flex-1 flex-col gap-4 p-5 sm:p-6">
@@ -173,19 +233,34 @@ export function VoiceNoteCard({
                 </span>
               ) : working ? (
                 <span className="inline-flex items-center gap-2 text-white/70">
-                  <LoaderCircle className="size-4 animate-spin text-sky-300" />
+                  <LoaderCircle className="size-4 shrink-0 animate-spin text-sky-300" />
                   {phase.kind === "preparing"
                     ? "Preparing the audio…"
-                    : phase.slow && phase.step === "transcribing"
-                      ? "Writing down every word (on the CPU: the GPU is busy, so this takes longer)…"
-                      : STEP[phase.step]}
+                    : phase.step === "queued"
+                      ? queuedText(st, phase.ahead, !!gpu)
+                      : phase.slow && phase.step === "transcribing"
+                        ? "Writing down every word (on the CPU this time, so it takes longer)…"
+                        : STEP[phase.step] ?? "Working…"}
                 </span>
               ) : phase.kind === "error" ? (
-                <span className="text-rose-300">{phase.message}</span>
+                <span className="text-rose-300">
+                  {phase.message}
+                  {phase.again && !paused && !busy && (
+                    <button
+                      type="button"
+                      onClick={() => last.current && clean(last.current)}
+                      className="ml-2 inline-flex cursor-pointer items-center gap-1 text-xs text-sky-300/90 underline-offset-4 hover:text-sky-200 hover:underline"
+                    >
+                      <RotateCcw className="size-3" /> Try again
+                    </button>
+                  )}
+                </span>
               ) : !enabled ? (
-                <span className="text-white/45">Needs the offline model, which is not downloaded.</span>
+                <span className="text-white/45">{offText}</span>
               ) : busy ? (
                 <span className="text-white/45">Stop the live session to record a note.</span>
+              ) : paused ? (
+                <span className="text-white/45">Paused until the GPU is back (see below).</span>
               ) : (
                 <span className="text-white/60">Tap to record, up to 3 minutes.</span>
               )}
@@ -212,6 +287,15 @@ export function VoiceNoteCard({
           />
         </div>
       </div>
+      {gpu && enabled && (
+        <GpuNote
+          gpu={gpu}
+          feature={feature}
+          job={queued}
+          onWake={() => gpu.wake("button")}
+          onGoto={recording ? undefined : onGoto}
+        />
+      )}
     </GlassCard>
   )
 }

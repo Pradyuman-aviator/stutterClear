@@ -1,7 +1,8 @@
 // Browsers record compressed audio (WebM/Opus, MP4/AAC) and the server has no decoder for those, so
 // the page decodes any recording or uploaded file itself and sends plain 16 kHz mono WAV.
 
-export async function toWav16k(blob: Blob): Promise<{ wav: Blob; seconds: number }> {
+// `seconds` is the whole recording's length; the WAV holds at most its first `maxSeconds`.
+export async function toWav16k(blob: Blob, maxSeconds = Infinity): Promise<{ wav: Blob; seconds: number }> {
   const ctx = new AudioContext()
   let decoded: AudioBuffer
   try {
@@ -11,7 +12,7 @@ export async function toWav16k(blob: Blob): Promise<{ wav: Blob; seconds: number
   } finally {
     ctx.close().catch(() => undefined)
   }
-  const frames = Math.max(1, Math.ceil(decoded.duration * 16000))
+  const frames = Math.max(1, Math.min(Math.ceil(decoded.duration * 16000), Math.floor(maxSeconds * 16000)))
   const off = new OfflineAudioContext(1, frames, 16000) // one channel: stereo is mixed down
   const src = off.createBufferSource()
   src.buffer = decoded

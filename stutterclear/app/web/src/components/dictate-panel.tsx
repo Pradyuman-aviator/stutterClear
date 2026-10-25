@@ -6,6 +6,7 @@ import { GlassCard } from "@/components/glass-card"
 import { TranscriptView } from "@/components/transcript-view"
 import { Button } from "@/components/ui/button"
 import { VoiceNoteCard } from "@/components/voice-note"
+import type { Gpu } from "@/hooks/use-gpu"
 import { getDemo, type Transcript } from "@/lib/api"
 
 type Result = { kind: "tidying" } | { kind: "done"; text: Transcript } | { kind: "error"; message: string }
@@ -13,7 +14,17 @@ type Result = { kind: "tidying" } | { kind: "done"; text: Transcript } | { kind:
 // Dictate: speak, get the text without the stutters, ready to paste anywhere. The same offline
 // engine as a voice note (Thorough: repeats, broken-off starts, fillers and repeated phrases go),
 // read as text instead of audio.
-export function DictatePanel({ enabled, busy }: { enabled: boolean; busy: boolean }) {
+export function DictatePanel({
+  enabled,
+  busy,
+  gpu,
+  onGoto,
+}: {
+  enabled: boolean
+  busy: boolean
+  gpu?: Gpu
+  onGoto?: (tab: "calls" | "recordings") => void
+}) {
   const [result, setResult] = useState<Result | null>(null)
   const [copied, setCopied] = useState(false)
 
@@ -21,7 +32,7 @@ export function DictatePanel({ enabled, busy }: { enabled: boolean; busy: boolea
     setResult({ kind: "tidying" })
     setCopied(false)
     try {
-      const tl = await getDemo(id, "thorough")
+      const tl = await getDemo(id, "thorough", { captions: false }) // the text is enough: no timed captions
       if (!tl.text) throw new Error("No words were heard in that recording.")
       setResult({ kind: "done", text: tl.text })
     } catch (e) {
@@ -49,6 +60,9 @@ export function DictatePanel({ enabled, busy }: { enabled: boolean; busy: boolea
         title="Dictate"
         blurb="Speak, or upload a recording, and get the text without the stutters, ready to paste into an email, a chat or a document. Nothing is saved."
         onReady={(id) => ready(id)}
+        gpu={gpu}
+        feature="dictate"
+        onGoto={onGoto}
       />
       {result && (
         <GlassCard className="flex flex-col gap-4 p-5 sm:p-6">
