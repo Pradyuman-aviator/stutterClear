@@ -261,6 +261,13 @@ export default function Scene({ d, scene }: SceneProps) {
           <span style={{ color: C.dim }}>·</span>
           <span style={{ fontFamily: MONO, fontSize: 22, color: C.teal }}>github.com/Pradyuman-aviator/stutterClear</span>
         </CreditRow>
+        <CreditRow at={credAt + 3} out={outAt} style={{ fontFamily: SANS, fontSize: 24, fontWeight: 500, color: C.text, gap: 14 }}>
+          <span>
+            Try it: <span style={{ fontFamily: MONO, fontSize: 22, color: C.teal }}>pradyuman-aviator.github.io/stutterClear</span>
+          </span>
+          <span style={{ color: C.dim }}>·</span>
+          <span style={{ color: CREDIT }}>the full GPU model wakes on a free Kaggle GPU in about 3 minutes</span>
+        </CreditRow>
         <CreditRow at={credAt + 4} out={outAt} style={{ gap: 10, flexWrap: "nowrap" }}>
           {NV_STACK.map((s, i) => (
             <span

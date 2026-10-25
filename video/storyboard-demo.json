@@ -439,7 +439,7 @@
       "tail": 1.0,
       "steps": [
         {
-          "line": "Here's the real app, running live on this laptop, with Alex's recording as the microphone."
+          "line": "Here's the real app, live, with Alex's recording as the microphone."
         },
         {
           "gap": 0.3

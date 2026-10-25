@@ -2,6 +2,7 @@
 // storyboard.json. The timeline sizes every scene to its narration, so a new voice re-times the film.
 import board from "../storyboard.json"
 import boardDemo from "../storyboard-demo.json"
+import boardSubmission from "../storyboard-submission.json"
 
 export interface Narration {
   id: string
@@ -93,6 +94,8 @@ export const NV_ITEMS: { key: NvKey; label: string }[] = [
 export type Board = { title: string; scenes: BoardScene[] }
 export const BOARD = board as unknown as Board // the film (storyboard.json)
 export const BOARD_DEMO = boardDemo as unknown as Board // the film with the live demo (storyboard-demo.json)
+// The live-demo cut under three minutes, for the hackathon's video limit (storyboard-submission.json).
+export const BOARD_SUBMISSION = boardSubmission as unknown as Board
 export const SCENE_IDS = [...new Set([...BOARD.scenes, ...BOARD_DEMO.scenes].map((s) => s.id))]
 // The cut a scene belongs to (scenes in both use the film's timing in previews).
 export const boardOf = (id: string): Board => (BOARD.scenes.some((s) => s.id === id) ? BOARD : BOARD_DEMO)
