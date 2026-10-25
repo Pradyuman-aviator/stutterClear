@@ -21,7 +21,7 @@ except Exception:  # no package, no PortAudio (OSError), or PortAudio that canno
     sd = None
 
 from .audio import save_wav
-from .config import HOP, SAMPLE_RATE as SR, preset
+from .config import HOP, PRESETS, SAMPLE_RATE as SR, preset
 from .pipeline import Pipeline
 from .segments import CutConfig
 
@@ -59,6 +59,18 @@ LABELS = {"teacher": "Best (GPU)", "student": "AI model", "heuristic": "Rule-bas
 # The teacher decides each frame once it has this much audio after it; its decisions then need
 # lookahead + hop (160 ms) + about 60 ms of GPU time + margin before that audio may be played.
 TEACHER_LOOKAHEAD_MS = {"gentle": 200, "strong": 500}
+REMOTE_EXTRA_MS = 300  # what a GPU worker elsewhere usually adds, shown before one is awake
+
+
+# A GPU worker elsewhere can run the teacher for live sessions here (stutterclear/app/gpu.py); the
+# server replaces these. remote_offered: whether one can serve live here at all (it may be asleep);
+# remote_live: a link to a worker that is ready now, or None.
+def remote_offered() -> bool:
+    return False
+
+
+def remote_live(mode: str):
+    return None
 
 
 def quality() -> dict:
@@ -84,30 +96,44 @@ def student_eval(path: Path = DEFAULT_STUDENT) -> dict | None:
 
 
 def detectors() -> list:
-    """Detectors this machine can run, with their measured quality."""
+    """Detectors this machine can run, with their measured quality and how far behind the speaker
+    each mode plays. The teacher is `on_demand` when it runs on a GPU worker that wakes when asked."""
     from .teacher_runtime import live_capable
     q = quality()
-    can = {"teacher": live_capable(), "student": DEFAULT_STUDENT.exists(), "heuristic": True}
-    return [{"kind": k, "label": LABELS[k], "available": can[k], "quality": q.get(k)} for k in LABELS]
+    local = live_capable()
+    remote = not local and remote_offered()
+    can = {"teacher": local or remote, "student": DEFAULT_STUDENT.exists(), "heuristic": True}
+    out = []
+    for k in LABELS:
+        extra = REMOTE_EXTRA_MS if k == "teacher" and remote else 0
+        delay = {m: delay_overrides(k, m, extra).get("target_delay_ms", PRESETS[MODES[m][0]].target_delay_ms)
+                 for m in ("gentle", "strong")}
+        d = {"kind": k, "label": LABELS[k], "available": can[k], "quality": q.get(k), "delay_ms": delay}
+        if k == "teacher":
+            d["on_demand"] = remote
+        out.append(d)
+    return out
 
 
 def recommended() -> str:
     """The best measured detector this machine can run: stutters removed minus 3x words lost (a
-    lost word costs more than a stutter left in). Rule-based if nothing better is measured."""
+    lost word costs more than a stutter left in). Rule-based if nothing better is measured. Never
+    one that runs on demand: it may be asleep when the page loads."""
     best, score = "heuristic", float("-inf")
     for d in detectors():
-        if d["available"] and d["quality"]:
+        if d["available"] and d["quality"] and not d.get("on_demand"):
             s = d["quality"]["removed_pct"] - 3 * d["quality"]["words_lost_pct"]
             if s > score:
                 best, score = d["kind"], s
     return best
 
 
-def delay_overrides(kind: str, mode: str) -> dict:
-    """Delay a detector needs so no cut decision arrives after its audio was already played."""
+def delay_overrides(kind: str, mode: str, extra_ms: float = 0) -> dict:
+    """Delay a detector needs so no cut decision arrives after its audio was already played.
+    extra_ms: what a teacher on a GPU worker elsewhere adds (the round trip, its GPU time)."""
     if kind == "teacher" and mode in TEACHER_LOOKAHEAD_MS:
         from .teacher_runtime import HOP_MS
-        need = TEACHER_LOOKAHEAD_MS[mode] + HOP_MS + 100
+        need = TEACHER_LOOKAHEAD_MS[mode] + HOP_MS + 100 + extra_ms
         return {"min_delay_ms": need, "target_delay_ms": need + 80}
     return {}
 
@@ -157,6 +183,14 @@ def make_detector(kind: str, mode: str, student_path=None, adjust: dict | None =
         if live_capable():
             det, name = TeacherDetector(TEACHER_LOOKAHEAD_MS[mode], cut_cfg=teacher_cut_config(cuts),
                                         cut_interjections=cuts == "strong"), "teacher"
+        elif (link := remote_live(mode)) is not None:  # the teacher on a GPU worker elsewhere
+            try:
+                from .remote_detector import RemoteTeacherDetector
+                det, name = RemoteTeacherDetector(link, TEACHER_LOOKAHEAD_MS[mode], cut_cfg=teacher_cut_config(cuts),
+                                                  cut_interjections=cuts == "strong"), "teacher"
+            except Exception:
+                link.close()  # never leave the worker holding a stream nobody reads
+                raise
     if det is None and kind == "student" and cuts:
         from .student_onnx import onnx_available_for_path
         use_onnx = onnx_available_for_path(path, require_step=True)
@@ -182,10 +216,21 @@ def make_detector(kind: str, mode: str, student_path=None, adjust: dict | None =
     if det is None:
         return None, "rule-based"  # Pipeline falls back to the heuristic detector
     if adjust:
-        from .feedback import scale_thresholds
-        det.thresholds = scale_thresholds(det.thresholds, adjust)
-        det.thresholds[det.cut_idx] = np.maximum(det.thresholds[det.cut_idx], det.MIN_CUT_THRESHOLD)
+        try:
+            from .feedback import scale_thresholds
+            det.thresholds = scale_thresholds(det.thresholds, adjust)
+            det.thresholds[det.cut_idx] = np.maximum(det.thresholds[det.cut_idx], det.MIN_CUT_THRESHOLD)
+        except Exception:
+            _close(det)
+            raise
     return det, name
+
+
+def _close(det) -> None:
+    """Let a detector go: one on a GPU worker elsewhere frees its stream there."""
+    close = getattr(det, "close", None)
+    if close is not None:
+        close()
 
 
 class LiveSession:
@@ -198,28 +243,38 @@ class LiveSession:
         self.source = source
         preset_name, _, _ = MODES[mode]
         det, self.detector_name = make_detector(detector, mode, student_path, adjust)
-        self.pipe = Pipeline(preset(preset_name, **delay_overrides(self.detector_name, mode)), detector=det)
-        if source == "browser":
-            in_device = out_device = None
-        self.in_device = in_device if in_device is not None or source == "browser" else devices()["default_input"]
-        self.out_device = out_device
-        self.save = save
-        self.q: queue.Queue = queue.Queue()
-        # Kept in memory for the play buttons, dropped with the session; written to disk only
-        # when the user switched saving on.
-        self.raw, self.out = Recorder(), Recorder()
-        self.env_in, self.env_out = [], []  # 10 ms peak envelopes
-        self.detect_ms = []
-        self.running = False
-        self.started = None
-        self._sent = {"env_in": 0, "env_out": 0, "cuts": 0, "events": 0}
-        # Say it in the call: synthetic speech the user asked for, mixed into what the listener hears.
-        self._say: deque = deque()
-        self._say_lock = threading.Lock()
-        # Captions of what the listener hears, on their own thread (the model runs on the CPU).
-        from . import captions
-        self.captioner = captions.Captioner() if captions.available() else None
-        self.cap_q: queue.Queue = queue.Queue()
+        try:
+            extra = getattr(det, "extra_delay_ms", 0)  # a teacher on a GPU worker elsewhere answers later
+            self.pipe = Pipeline(preset(preset_name, **delay_overrides(self.detector_name, mode, extra)), detector=det)
+            if source == "browser":
+                in_device = out_device = None
+            self.in_device = in_device if in_device is not None or source == "browser" else devices()["default_input"]
+            self.out_device = out_device
+            self.save = save
+            self.q: queue.Queue = queue.Queue()
+            # Kept in memory for the play buttons, dropped with the session; written to disk only
+            # when the user switched saving on.
+            self.raw, self.out = Recorder(), Recorder()
+            # 10 ms peak envelopes, the last PLAYBACK_MAX_S of each; off: points dropped from the front
+            self.env_in, self.env_out = [], []
+            self._env_off = {"env_in": 0, "env_out": 0}
+            self._env_lock = threading.Lock()
+            self.detect_ms: deque = deque(maxlen=50)
+            self.note = None  # said once on the page when something changed mid-session
+            self.detect_failed = False
+            self.running = False
+            self.started = None
+            self._sent = {"env_in": 0, "env_out": 0, "cuts": 0, "events": 0}
+            # Say it in the call: synthetic speech the user asked for, mixed into what the listener hears.
+            self._say: deque = deque()
+            self._say_lock = threading.Lock()
+            # Captions of what the listener hears, on their own thread (the model runs on the CPU).
+            from . import captions
+            self.captioner = captions.Captioner() if captions.available() else None
+            self.cap_q: queue.Queue = queue.Queue()
+        except Exception:
+            _close(det)  # a teacher on a GPU worker must not keep its stream open for nobody
+            raise
 
     # ---- audio callbacks and worker -------------------------------------------------------
 
@@ -233,11 +288,20 @@ class LiveSession:
         x = indata[:, 0].copy()
         self.pipe.write(x)
         self.raw.add(x)
-        self.env_in.append(float(np.abs(x).max()) if len(x) else 0.0)
+        self._envelope("env_in", float(np.abs(x).max()) if len(x) else 0.0)
         self.q.put(x)
 
+    def _envelope(self, name: str, peak: float):
+        """One envelope point; the oldest are dropped past PLAYBACK_MAX_S, like the audio itself."""
+        env = getattr(self, name)
+        with self._env_lock:
+            env.append(peak)
+            if len(env) > PLAYBACK_MAX_S * 100 + 1000:
+                del env[:1000]
+                self._env_off[name] += 1000
+
     def _emit(self, y):
-        self.env_out.append(float(np.abs(y).max()) if len(y) else 0.0)
+        self._envelope("env_out", float(np.abs(y).max()) if len(y) else 0.0)
         y = y.copy()
         self.out.add(y)
         if self.captioner is not None:
@@ -287,11 +351,27 @@ class LiveSession:
                 x = self.q.get(timeout=0.2)
             except queue.Empty:
                 continue
-            t0 = time.perf_counter()
-            self.pipe.detect(x)
-            self.detect_ms.append((time.perf_counter() - t0) * 1000)
+            if not self.detect_failed:
+                t0 = time.perf_counter()
+                try:
+                    self.pipe.detect(x)
+                except Exception as e:  # never take the person's voice down with the detector
+                    self._detector_failed(e)
+                self.detect_ms.append((time.perf_counter() - t0) * 1000)
             if self.out_device is None:
                 self._emit(self._mix(self.pipe.read(len(x))))  # no device: the input clock drives the output
+
+    def _detector_failed(self, e: Exception):
+        """The detector raised: the session goes on uncut instead of stopping (or holding the
+        voice for ever at the last decided sample), and the page says so once."""
+        print(f"live: the detector failed ({type(e).__name__}); the session continues uncut", flush=True)
+        self.detect_failed = True
+        sp = self.pipe.splicer
+        for cut_id, cut in list(sp.cuts.items()):
+            if cut.end is None:  # a stutter it was still following: play it after all
+                sp.cancel_cut(cut_id)
+        sp.set_decided(None)
+        self.note = "The detector stopped, so your voice now goes through uncut."
 
     # ---- control ----------------------------------------------------------------------------
 
@@ -324,7 +404,9 @@ class LiveSession:
             s.stop()
             s.close()
         self.running = False
-        self.thread.join(timeout=2)
+        if hasattr(self, "thread"):
+            self.thread.join(timeout=2)
+        _close(self.pipe.detector)  # a teacher on a GPU worker frees its stream there
         summary = self.pipe.summary()
         if self.save and self.raw.n:  # files are written only when the user switched saving on
             folder = Path(__file__).resolve().parents[1] / "sessions" / datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -342,28 +424,38 @@ class LiveSession:
     def poll(self) -> dict:
         st = self.pipe.splicer.stats
         spans = st.removed_spans
-        events = getattr(self.pipe.detector, "events", [])
+        det = self.pipe.detector
+        events = getattr(det, "events", [])
+        remote_ms = det.detect_ms() if hasattr(det, "detect_ms") else None  # a GPU elsewhere: its round trip
+        with self._env_lock:
+            # Index of the first envelope point sent, so a page that joins mid-session lines up its
+            # waveform with the cut times (both count from the start of the session).
+            in_start = max(self._sent["env_in"], self._env_off["env_in"])
+            out_start = max(self._sent["env_out"], self._env_off["env_out"])
+            env_in = self.env_in[in_start - self._env_off["env_in"]:]
+            env_out = self.env_out[out_start - self._env_off["env_out"]:]
+            level = self.env_in[-1] if self.env_in else None
         msg = {
             "t": round(time.time() - self.started, 2) if self.started else 0.0,
             "lag_ms": round(self.pipe.splicer.lag_ms()),
-            "level_db": round(20 * np.log10(max(self.env_in[-1], 1e-9)), 1) if self.env_in else -120.0,
+            "level_db": round(20 * np.log10(max(level, 1e-9)), 1) if level is not None else -120.0,
             "removed_s": round(st.removed / SR, 2),
             "n_cuts": len(spans),
-            "detector": self.detector_name,
-            "detect_ms": round(float(np.mean(self.detect_ms[-50:])), 2) if self.detect_ms else 0.0,
-            # Index of the first envelope point below, so a page that joins mid-session lines up
-            # its waveform with the cut times (both count from the start of the session).
-            "in_start": self._sent["env_in"],
-            "out_start": self._sent["env_out"],
-            "env_in": self.env_in[self._sent["env_in"]:],
-            "env_out": self.env_out[self._sent["env_out"]:],
+            # A teacher on a GPU worker that lags or drops hands over to the rule-based detector
+            "detector": getattr(det, "name", None) or self.detector_name,
+            "detector_note": getattr(det, "note", None) or self.note,
+            "detect_ms": (round(float(remote_ms), 2) if remote_ms is not None
+                          else round(float(np.mean(self.detect_ms)), 2) if self.detect_ms else 0.0),
+            "in_start": in_start,
+            "out_start": out_start,
+            "env_in": env_in,
+            "env_out": env_out,
             "cuts": [{"start": s / SR, "end": e / SR, "kind": k} for s, e, k in spans[self._sent["cuts"]:]],
             "events": [{"kind": ev.kind, "start": ev.start / SR, "end": ev.end / SR}
                        for ev in events[self._sent["events"]:] if ev.kind in ("block", "pause")],
             "caption": ({"lines": self.captioner.lines[-2:], "partial": self.captioner.partial}
                         if self.captioner is not None else None),
         }
-        self._sent = {"env_in": self._sent["env_in"] + len(msg["env_in"]),
-                      "env_out": self._sent["env_out"] + len(msg["env_out"]),
+        self._sent = {"env_in": in_start + len(env_in), "env_out": out_start + len(env_out),
                       "cuts": len(spans), "events": len(events)}
         return msg

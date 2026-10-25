@@ -3,6 +3,7 @@ stt_en_fastconformer_hybrid_large_streaming, 480 ms chunks, int8 ONNX via sherpa
 
 Model files go in models/asr/ (scripts/download_asr.py); without them captions are simply off.
 """
+import threading
 from pathlib import Path
 
 import numpy as np
@@ -21,7 +22,9 @@ def available(model_dir: Path = MODEL_DIR) -> bool:
     return (Path(model_dir) / "encoder.int8.onnx").exists()
 
 
-def recognizer(model_dir: Path = MODEL_DIR, threads: int = 2):
+def recognizer(model_dir: Path = MODEL_DIR, threads: int = 1):
+    """One ONNX thread: the same text as two, at about a tenth of one core instead of two whole
+    cores spinning (measured on a live session), which a shared CPU server cannot spare."""
     import sherpa_onnx
     d = Path(model_dir)
     return sherpa_onnx.OnlineRecognizer.from_transducer(
@@ -36,8 +39,8 @@ def recognizer(model_dir: Path = MODEL_DIR, threads: int = 2):
 class Captioner:
     """Feed audio, read lines: finished lines (ended at a pause) plus the line being spoken."""
 
-    def __init__(self, model_dir: Path = MODEL_DIR):
-        self.rec = recognizer(model_dir)
+    def __init__(self, model_dir: Path = MODEL_DIR, rec=None):
+        self.rec = rec if rec is not None else recognizer(model_dir)
         self.stream = self.rec.create_stream()
         self.lines: list[str] = []
         self.partial = ""
@@ -84,10 +87,19 @@ def _words(tokens, times, t0) -> list:
     return [w for w in out if w["w"]]
 
 
+_offline: dict = {}  # the one recognizer whole recordings share (a new stream each)
+_offline_lock = threading.Lock()
+
+
 def caption_audio(x: np.ndarray) -> list:
-    """Words with start times for a whole recording (used for demo samples and voice notes)."""
-    c = Captioner()
-    for i in range(0, len(x), SAMPLE_RATE // 10):
-        c.feed(x[i:i + SAMPLE_RATE // 10])
-    c.close()
-    return c.words
+    """Words with start times for a whole recording (used for demo samples and voice notes). One
+    recording at a time, on one recognizer loaded once: on a small server, captioning several
+    recordings at once would only slow each of them and the live sessions down."""
+    with _offline_lock:
+        if "rec" not in _offline:
+            _offline["rec"] = recognizer()
+        c = Captioner(rec=_offline["rec"])
+        for i in range(0, len(x), SAMPLE_RATE // 10):
+            c.feed(x[i:i + SAMPLE_RATE // 10])
+        c.close()
+        return c.words

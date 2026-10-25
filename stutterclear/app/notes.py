@@ -4,9 +4,14 @@ transcript (CrisperWhisper) puts every cut on a word boundary.
 
 Notes live in memory only, for an hour at most, and are never written to disk. One note is processed
 at a time, because the teacher and CrisperWhisper together fill most of a laptop GPU.
+
+A server without the recordings teacher (a CPU server in the cloud) sends the two GPU steps, the
+teacher's probabilities and CrisperWhisper's words, to a GPU worker it wakes for them
+(stutterclear/app/gpu.py); the cut decisions, the meaning guard and the cleaned audio stay here.
 """
 import io
 import os
+import struct
 import threading
 import time
 import uuid
@@ -23,10 +28,20 @@ from ..teacher_runtime import RECORDINGS_CKPT as TEACHER  # the recordings teach
 MAX_S = 180  # longest note accepted
 KEEP_S = 3600  # notes are forgotten after an hour
 MAX_WAITING = 4  # notes waiting for or on the GPU; more are turned away for a minute
-MAX_KEPT = 40  # finished notes held in memory; the oldest are forgotten first
+# A public server: the page always uploads 16 kHz mono 16-bit WAV (web/src/lib/wav.ts), and that is all
+# it reads, without an audio library, at most MAX_S of it. A personal computer takes any format
+# soundfile reads (8-48 kHz, one or two channels).
+HOSTED = os.environ.get("STUTTERCLEAR_HOSTED") == "1"
+MAX_BYTES = 44 + MAX_S * SR * 2 + 4096 if HOSTED else 40_000_000  # an upload's size (a little room for more header)
+RATES = (8000, 48000)
+# Finished notes held in memory; the oldest are forgotten first (fewer on a small cloud server)
+MAX_KEPT = 20 if HOSTED else 40
+ABANDON_S = 600  # a note still waiting for a GPU worker is dropped once its page stopped asking
 FRAME = 320
+UNREADABLE = "That file could not be read as audio."
 
 _notes: dict = {}
+_lock = threading.Lock()  # a note's admission and its place in _notes, against concurrent uploads
 _gpu = threading.Lock()
 _models: dict = {}
 # Set once the server's warm-up (live teacher, demo renders) is over; until then a note waiting
@@ -40,25 +55,76 @@ class NoteError(ValueError):
 
 
 class NoteBusy(RuntimeError):
-    pass
+    """Turned away for now (429): the queue is full, or this visitor already has one being cleaned."""
+
+
+class NoteUnavailable(RuntimeError):
+    """No GPU can take a note now (503): the GPU worker rests or failed; the reason says which."""
+
+
+def remote() -> bool:
+    """Whether notes go to a GPU worker elsewhere: one is set up, and the recordings teacher is not
+    on this machine."""
+    from . import gpu
+    return gpu.broker.configured() and not TEACHER.exists()
 
 
 def available() -> bool:
-    """Voice notes need the teacher checkpoint (CrisperWhisper downloads itself on first use).
-    STUTTERCLEAR_NOTES=0 turns them off, for a server without a GPU (they would take minutes)."""
-    return os.environ.get("STUTTERCLEAR_NOTES") != "0" and TEACHER.exists()
+    """Voice notes need the teacher checkpoint (CrisperWhisper downloads itself on first use), or a
+    GPU worker to send them to. STUTTERCLEAR_NOTES=0 turns them off, for a server without a GPU
+    (they would take minutes)."""
+    return os.environ.get("STUTTERCLEAR_NOTES") != "0" and (TEACHER.exists() or remote())
 
 
 def decode(data: bytes) -> np.ndarray:
+    """An upload as 16 kHz mono float32, never more than MAX_S of it (a few hundred bytes can declare
+    hours of audio, or a sample rate that would resample to gigabytes)."""
+    x = pcm16_wav(data)
+    if x is None:
+        if HOSTED:
+            raise NoteError(UNREADABLE)
+        x = _any_format(data)
+    return check_length(x)
+
+
+def pcm16_wav(data: bytes) -> np.ndarray | None:
+    """The samples of a 16 kHz mono 16-bit PCM WAV, read directly; None if data is anything else."""
+    if len(data) < 44 or data[:4] != b"RIFF" or data[8:12] != b"WAVE":
+        return None
+    pos, fmt = 12, None
+    while pos + 8 <= len(data):
+        kind, size = data[pos:pos + 4], int.from_bytes(data[pos + 4:pos + 8], "little")
+        body = pos + 8
+        if kind == b"fmt " and size >= 16 and body + 16 <= len(data):
+            fmt = struct.unpack_from("<HHIIHH", data, body)  # format, channels, rate, bytes/s, block, bits
+        elif kind == b"data":
+            if fmt is None or (fmt[0], fmt[1], fmt[2], fmt[5]) != (1, 1, SR, 16):
+                return None
+            n = min(size, len(data) - body) // 2  # (a writer that could not fill in the size: to the end)
+            return np.frombuffer(data, "<i2", count=n, offset=body).astype(np.float32) / 32768
+        pos = body + size + (size & 1)
+    return None
+
+
+def _any_format(data: bytes) -> np.ndarray:
+    """Any format soundfile reads (a personal computer only), within the limits before it is read."""
     try:
-        x, sr = sf.read(io.BytesIO(data), dtype="float32", always_2d=True)
+        with sf.SoundFile(io.BytesIO(data)) as f:
+            sr, channels = f.samplerate, f.channels
+            if not RATES[0] <= sr <= RATES[1] or not 1 <= channels <= 2:
+                raise NoteError(f"{UNREADABLE[:-1]}: 8 to 48 kHz, one or two channels.")
+            x = f.read(frames=MAX_S * sr + 1, dtype="float32", always_2d=True)  # at most MAX_S (and a sample)
+    except NoteError:
+        raise
     except Exception as e:
-        raise NoteError("That file could not be read as audio.") from e
+        raise NoteError(UNREADABLE) from e
+    if len(x) > MAX_S * sr:
+        raise NoteError(f"Recordings can be up to {MAX_S // 60} minutes long.")
     x = x.mean(axis=1)
     if sr != SR:
         g = gcd(SR, sr)
         x = resample_poly(x, SR // g, sr // g).astype(np.float32)
-    return check_length(x)
+    return x
 
 
 def check_length(x: np.ndarray) -> np.ndarray:
@@ -197,13 +263,16 @@ def teacher_probs(x: np.ndarray, model=None, dev=None) -> np.ndarray:
 def _process(nid: str):
     note = _notes[nid]
     try:
-        warm.wait(timeout=300)
-        with _gpu:
-            note["status"] = "listening"  # the teacher looks for stutters
-            note["probs"] = teacher_probs(note["x"])
-            note["status"] = "transcribing"  # CrisperWhisper writes down every word, stutters included
-            r = _transcribe(note)
-            note["toks"] = label_tokens([{"w": t.word, "s": float(t.start), "e": float(t.end)} for t in r.words])
+        if remote():
+            _analyse_remote(note)
+        else:
+            warm.wait(timeout=300)
+            with _gpu:
+                note["status"] = "listening"  # the teacher looks for stutters
+                note["probs"] = teacher_probs(note["x"])
+                note["status"] = "transcribing"  # CrisperWhisper writes down every word, stutters included
+                r = _transcribe(note)
+                note["toks"] = label_tokens([{"w": t.word, "s": float(t.start), "e": float(t.end)} for t in r.words])
         try:  # the journal (if the person started one) must never fail a note
             from .. import journal
             journal.record(journal.from_note(note["toks"], len(note["x"]) / SR))
@@ -211,51 +280,108 @@ def _process(nid: str):
             pass
         note["status"] = "done"
     except Exception as e:  # report it on the page instead of failing silently
-        note["status"], note["error"] = "error", f"Cleaning failed: {e}"
+        from .gpu import GpuError  # the GPU worker's own sentences are written for the page already
+        note["status"], note["error"] = "error", str(e) if isinstance(e, GpuError) else f"Cleaning failed: {e}"
 
 
-def submit(data: bytes) -> str:
-    """A recording as uploaded (any format soundfile reads)."""
-    _make_room()
-    return _add(decode(data))
+def _analyse_remote(note: dict):
+    """The teacher's probabilities and CrisperWhisper's words from a GPU worker elsewhere (it is woken
+    if it sleeps); the note waits its turn in the worker's queue."""
+    from . import gpu
+
+    def on_update(stage: str, ahead: int | None):
+        note["status"], note["ahead"] = stage, ahead
+
+    probs, words, slow = gpu.broker.analyse(note["x"], on_update, abandoned=lambda: time.time() - note["seen"] > ABANDON_S,
+                                            client=note.pop("client", ""))  # (the note keeps no address)
+    note["probs"], note["toks"], note["slow"], note["ahead"] = probs, label_tokens(words), slow, None
 
 
-def submit_audio(x: np.ndarray) -> str:
+def submit(data: bytes, client: str = "") -> str:
+    """A recording as uploaded (decode() says which formats). client: who sent it (their address),
+    for a GPU worker's fair share; kept only while the note is processed."""
+    room(client)  # turned away before anything is decoded
+    return _admit(decode(data), client)
+
+
+def submit_audio(x: np.ndarray, client: str = "") -> str:
     """Audio already at 16 kHz mono (a video's soundtrack)."""
-    _make_room()
-    return _add(check_length(np.asarray(x, np.float32)))
+    return _admit(check_length(np.asarray(x, np.float32)), client)
 
 
-def _make_room():
+def room(client: str = ""):
+    """Whether a recording from this visitor could be taken now (the queue, the GPU worker, their fair
+    share), before it is read: raises NoteBusy or NoteUnavailable with the reason."""
+    _make_room(client, 0.0, dry_run=True)
+
+
+def _admit(x: np.ndarray, client: str) -> str:
+    with _lock:  # two uploads at once never both take the last place
+        _make_room(client, len(x) / SR)
+        return _add(x, client)
+
+
+def _make_room(client: str = "", seconds: float = 0.0, dry_run: bool = False):
     expire()
-    if sum(n["status"] not in ("done", "error") for n in _notes.values()) >= MAX_WAITING:
+    if sum(n["status"] not in ("done", "error") for n in list(_notes.values())) >= MAX_WAITING:
         raise NoteBusy("Several voice notes are being cleaned right now. Try again in a minute.")
+    if remote():  # the GPU worker must be able to take it, and each visitor gets a fair share
+        from . import gpu
+        reason = gpu.broker.accepting(client)
+        if reason:
+            raise NoteUnavailable(reason)
+        reason = gpu.broker.admit(client, seconds, dry_run=dry_run)
+        if reason:
+            raise NoteBusy(reason)
 
 
-def _add(x: np.ndarray) -> str:
-    finished = [k for k, v in _notes.items() if v["status"] in ("done", "error")]  # oldest first
+def _add(x: np.ndarray, client: str = "") -> str:
+    finished = [k for k, v in list(_notes.items()) if v["status"] in ("done", "error")]  # oldest first
     for nid in finished[:max(0, len(_notes) + 1 - MAX_KEPT)]:
         _notes.pop(nid, None)
     nid = "note-" + uuid.uuid4().hex[:12]
-    _notes[nid] = {"status": "queued", "x": x, "created": time.time(), "error": None}
+    now = time.time()
+    # renders: the cleaned versions and captions made from it (demo.py), forgotten with the note
+    _notes[nid] = {"status": "queued", "x": x, "created": now, "error": None, "seen": now, "client": client,
+                   "renders": {}, "lock": threading.Lock()}
     threading.Thread(target=_process, args=(nid,), daemon=True).start()
     return nid
 
 
-def status(nid: str) -> dict | None:
+def _get(nid: str) -> dict | None:
+    """The note, unless its hour is over: then it is forgotten now, not at the next upload."""
     note = _notes.get(nid)
+    if note is not None and time.time() - note["created"] > KEEP_S:
+        _notes.pop(nid, None)
+        return None
+    return note
+
+
+def touch(nid: str):
+    """The page asked about this note: it still wants it (a note nobody asks about any more is not
+    cleaned once it has waited ABANDON_S for a GPU worker)."""
+    note = _get(nid)
+    if note is not None:
+        note["seen"] = time.time()
+
+
+def status(nid: str) -> dict | None:
+    note = _get(nid)
     if note is None:
         return None
     return {"id": nid, "status": note["status"], "error": note["error"], "slow": note.get("slow", False),
-            "duration_s": round(len(note["x"]) / SR, 2)}
+            "duration_s": round(len(note["x"]) / SR, 2), "ahead": note.get("ahead")}
 
 
 def ready(nid: str) -> dict | None:
-    note = _notes.get(nid)
+    note = _get(nid)
     return note if note and note["status"] == "done" else None
 
 
 def expire():
+    """Forget notes past their hour, with everything made from them (the server also calls this every
+    minute, so a quiet server keeps nothing longer)."""
     now = time.time()
-    for nid in [k for k, v in _notes.items() if now - v["created"] > KEEP_S]:
-        _notes.pop(nid, None)
+    for nid, note in list(_notes.items()):  # (uploads add notes meanwhile)
+        if now - note["created"] > KEEP_S:
+            _notes.pop(nid, None)

@@ -25,6 +25,13 @@ imageio-ffmpeg>=0.5
 sherpa-onnx==1.13.8
 onnxruntime>=1.18
 
+# GPU on demand (stutterclear/app/gpu.py, stutterclear/gpu_worker/): the server starts a worker on
+# Kaggle through the Kaggle API's own client (kagglesdk, not the kaggle CLI, which signs in over the
+# network as it is imported); the worker connects out to the server with websockets (the server's
+# side comes with uvicorn[standard]). On Kaggle the worker installs stutterclear/gpu_worker/requirements.lock.
+kagglesdk==0.1.37
+websockets==15.0.1
+
 # Model export (optional: needed only for scripts/export_student_onnx.py)
 # onnx>=1.16
 

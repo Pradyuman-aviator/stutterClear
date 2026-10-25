@@ -3,6 +3,7 @@
 Outputs per-frame logits (20 ms frames) for CLASSES. It is non-causal and large; it only
 labels data and teaches the small causal student that runs live.
 """
+import os
 import threading
 
 import torch
@@ -25,13 +26,17 @@ class FrameTeacher(nn.Module):
     def __init__(self, backbone: str = "microsoft/wavlm-base-plus", hidden: int = 256):
         super().__init__()
         self.backbone_name = backbone
+        # STUTTERCLEAR_BACKBONE_REVISION pins the backbone's files to one tested revision (the GPU
+        # worker sets it, so a new upload of the backbone cannot change what it runs); unset: the latest.
+        revision = os.environ.get("STUTTERCLEAR_BACKBONE_REVISION")
+        pin = {"revision": revision} if revision else {}
         # LayerDrop skips whole transformer layers at random while training; under DDP every
         # parameter must take part in every step, and a fixed depth is cleaner for distillation.
         # Set at load time too: some transformers versions copy it when the model is built.
-        self.ssl = AutoModel.from_pretrained(backbone, layerdrop=0.0)
+        self.ssl = AutoModel.from_pretrained(backbone, layerdrop=0.0, **pin)
         self.ssl.freeze_feature_encoder()
         self.ssl.config.layerdrop = 0.0
-        self.normalize = bool(getattr(AutoFeatureExtractor.from_pretrained(backbone), "do_normalize", False))
+        self.normalize = bool(getattr(AutoFeatureExtractor.from_pretrained(backbone, **pin), "do_normalize", False))
         n_layers = self.ssl.config.num_hidden_layers + 1
         self.layer_weights = nn.Parameter(torch.zeros(n_layers))
         self.proj = nn.Linear(self.ssl.config.hidden_size, hidden)

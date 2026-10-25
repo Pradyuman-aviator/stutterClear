@@ -28,7 +28,7 @@ def test_a_video_is_cut_where_the_sound_was(tmp_path, monkeypatch):
     video._run(["-f", "lavfi", "-i", "testsrc=size=160x120:rate=10:duration=3", "-f", "lavfi", "-i",
                 "sine=frequency=440:duration=3", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", str(src)])
     monkeypatch.setattr(video.notes, "available", lambda: True)
-    monkeypatch.setattr(video.notes, "submit_audio", lambda x: "note-v")
+    monkeypatch.setattr(video.notes, "submit_audio", lambda x, client="": "note-v")
     monkeypatch.setattr(video.notes, "status", lambda nid: {"status": "done", "slow": False})
     monkeypatch.setattr(video.demo, "render", lambda nid, engine: {"timeline": {"cuts": [{"start": 1.0, "end": 1.6, "kind": "word_rep"}],
                                                                                "text": None}})

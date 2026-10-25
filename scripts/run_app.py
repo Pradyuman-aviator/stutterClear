@@ -50,4 +50,5 @@ if __name__ == "__main__":
     print(f"StutterClear on {url}", flush=True)
     if not args.no_browser:
         threading.Timer(1.5, lambda: webbrowser.open(url)).start()
-    uvicorn.run(app, host=args.host, port=port, log_level="warning")
+    # The largest WebSocket message anyone sends here is a GPU worker's 4 MiB (uvicorn would buffer 16)
+    uvicorn.run(app, host=args.host, port=port, log_level="warning", ws_max_size=4 * 1024 * 1024)
