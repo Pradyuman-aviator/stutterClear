@@ -12,7 +12,8 @@ people talk; StutterClear gives you a choice about what a listener hears.
 
 Built for the Nebius × NVIDIA Global AI Hackathon: NVIDIA Nemotron on Nebius Token Factory checks
 the meaning of every cut, rescues blocked words and prepares your vocabulary; NVIDIA FastConformer
-writes live captions; the hosted demo is built to run on a Nebius AI Cloud GPU VM.
+writes live captions; the hosted demo runs on Google Cloud Run, its GPU models on a free Kaggle
+GPU that wakes when a visitor needs it.
 
 ## Contents
 
@@ -388,7 +389,8 @@ the clean text (what Dictate copies).
 **https://pradyuman-aviator.github.io/stutterClear/** (`?stay=1` shows its status page). This front
 door, a static page, checks the servers and opens the first that answers; if none does, it shows the
 demo video, the measured results and each server's status instead of an error. The app behind it runs
-on Google Cloud Run (CPU, Mumbai), with an Azure server as the backup. Its GPU features (voice notes,
+on Google Cloud Run (CPU, Mumbai); the front door also tries a backup server (Azure) when one is up.
+Its GPU features (voice notes,
 Dictate, Clean my video) go to a GPU worker the app wakes only when a visitor asks for one, a private
 Kaggle notebook or the team's laptop, which connects out to the app and sleeps again when unused; the
 page shows each step of the wake (usually 2-4 minutes), and everything else works meanwhile. Setup,

@@ -27,8 +27,10 @@ listener to hear *you*, just without the repeats, and to keep every word you mea
 
 - **Live**: speak into your mic; StutterClear plays your own voice about half a second later with
   repeated words and broken-off starts removed, to headphones or into Zoom/Meet via a virtual
-  cable. A Fluency Mirror shows what you said, what was removed, and what the listener hears;
-  NVIDIA FastConformer captions show what the listener hears, live.
+  cable. A Sensitivity bar sets how hard it cuts, even while you talk. A Fluency Mirror shows what
+  you said, what was removed, and what the listener hears; NVIDIA FastConformer captions show what
+  the listener hears, live. A call can't play what you haven't said yet, so there each removed
+  stutter becomes a short pause; played back as a recording, that time is closed up too.
 - **Voice notes**: record or upload a message; get it back cleaned, cutting only between words.
 - **Word rescue**: when you get stuck on a word, Nemotron suggests the few words you most likely
   mean, from what you've said and your context card. You choose; nothing is said for you.
@@ -52,7 +54,12 @@ listener to hear *you*, just without the repeats, and to keep every word you mea
   boundary; Nemotron's meaning guard reviews each cut.
 - **NVIDIA Nemotron on Nebius Token Factory** in four roles: meaning guard, word rescue, context
   agent, insights. **NVIDIA FastConformer** (NeMo streaming, via sherpa-onnx) for live captions.
-  **Nebius AI Cloud** hosts the demo on a GPU VM (Docker + Caddy).
+- **Hosting on free resources**: no free always-on GPU host was available to us (we tried Hugging
+  Face Spaces), so the GPU comes to the app when someone needs it. The app runs on Google Cloud Run
+  (CPU, Mumbai); voice notes, Dictate, video and the big live model wake a private Kaggle notebook
+  (2x T4) that connects out to the app over a signed WebSocket and sleeps again when idle. A wake
+  takes 2-4 minutes, shown step by step on the page; after that a 20 s voice note comes back in
+  about 10 s. A static front door on GitHub Pages is the link that never shows an error.
 - **App**: FastAPI + WebSockets; React UI with a WebGL "liquid" background, the ElevenLabs orb,
   live waveform mirror, A/B playback.
 
@@ -75,6 +82,7 @@ On 7 speakers the models never trained on, through the real live pipeline:
 | Live, rule-based baseline | 7.6% | 1.25% |
 | Live, teacher on GPU, Gentle (keeps fillers) | 33.1% | 3.10% |
 | Live, teacher on GPU, Strong (fillers too) | 65.2% | 5.68% |
+| Live, teacher on GPU, Sensitivity bar at 100: Gentle / Strong | 59.5% / 77.3% | 9.98% / 12.96% |
 | Recordings, word-aligned (teacher v2): Natural / Thorough (fillers, repeated phrases) | 57.2% / 90.9% | 0 words sliced |
 
 On the standard speaker-exclusive SEP-28k-E test set, teacher v2 reaches macro F1 0.618 (AUC 0.98
@@ -93,19 +101,23 @@ laptops without a GPU, Zoom/Meet one-click setup, and more languages.
 
 ### Built with
 
-NVIDIA Nemotron, Nebius Token Factory, Nebius AI Cloud, NVIDIA NeMo FastConformer, sherpa-onnx,
-WavLM, PyTorch, CrisperWhisper, FastAPI, React, Vite, Tailwind, three.js, Tavily, Kaggle.
+NVIDIA Nemotron, Nebius Token Factory, NVIDIA NeMo FastConformer, sherpa-onnx, WavLM, PyTorch,
+CrisperWhisper, FastAPI, React, Vite, Tailwind, three.js, Tavily, Kaggle, Google Cloud Run,
+GitHub Pages.
 
 ## How it meets the criteria
 
 | Criterion | Where it shows |
 |---|---|
-| Technological implementation | Nemotron in four roles in the core flows; Token Factory API; hosted on Nebius AI Cloud GPU; measured live pipeline with a GPU model on sliding windows; NVIDIA streaming ASR |
+| Technological implementation | Nemotron in four roles in the core flows; Token Factory API; hosted on Cloud Run with a GPU that wakes on demand; measured live pipeline with a GPU model on sliding windows; NVIDIA streaming ASR |
 | Design | One coherent app: live, voice notes, real-recording demo, captions, A/B playback, insights; privacy defaults (nothing stored; a live session reaches only its own tab); works on phones; plain-language errors (mic blocked, busy, someone else's turn) |
 | Potential impact | 70M people; calls and voice messages; keeps the speaker's own voice; honest numbers on unseen speakers |
 | Quality of the idea | Nemotron as a meaning guard for speech editing (an LLM deciding which repeats were meant, try it on any sentence); word rescue for blocks |
 
 ## Demo video (under 3 minutes)
+
+The submitted cut is `video/out/stutterclear-submission.mp4` (2:58), built from
+`video/storyboard-submission.json`; the table below was the original shot list.
 
 | Time | Shot | Say |
 |---|---|---|
@@ -116,17 +128,25 @@ WavLM, PyTorch, CrisperWhisper, FastAPI, React, Vite, Tailwind, three.js, Tavily
 | 1:40-2:05 | Word rescue: get stuck, chips appear | "When I get stuck, Nemotron suggests the word I mean. I choose; it never speaks for me." |
 | 2:05-2:25 | Context agent: type a situation, Prepare | "Before an interview, it prepares the names and terms I'll need." |
 | 2:25-2:45 | Voice note: record, cleaned, Insights | "Voice notes too, with a few supportive notes afterwards." |
-| 2:45-3:00 | Numbers slide / README table | "Measured on speakers it never saw. Open source, running on Nebius." |
+| 2:45-3:00 | Numbers slide / README table | "Measured on speakers it never saw. Open source; Nemotron runs on Nebius." |
 
 Use headphones while recording the live part (laptop speakers feed back into the mic).
 
 ## Testing instructions for judges
 
-1. Open the hosted link (Chrome or Edge; allow the microphone).
-2. No mic needed: under Start, pick a real recording, play it, switch Original / Clean voice and
-   Natural / Thorough / Live; click "Insights · Nemotron".
-3. Live: Setup shows "This browser's mic"; press Start, speak for 20 seconds, press Stop, then play
-   the Clean voice. One person can be live at a time, for up to 5 minutes. Turn on Word rescue on the Context card first to see suggestions.
-4. Voice note: "Clean a voice note" on the right; record or upload, then play it back.
-5. Meaning guard: under "How StutterClear works", press Check on the example sentence (or type
+1. Open **https://pradyuman-aviator.github.io/stutterClear/** in Chrome or Edge. It opens the app;
+   if the app is ever unreachable, it shows the demo video and the results instead of an error.
+2. No mic needed: the Recordings tab opens first. Under "Hear it on a real recording", pick one of
+   the three real recordings (UCLASS, men who stutter), play it, and switch Original / Clean voice
+   and Natural / Thorough / Live. On Live, "As the call heard it" plays the call's own version (a
+   short pause where each stutter was). Click "Insights · Nemotron" for the notes.
+3. Live: the Calls tab. Setup shows "This browser's mic"; pick Gentle or Strong, set the Sensitivity
+   bar (higher cuts more stutters, and more real words with them), press Start listening, speak for
+   20 seconds, press Stop, then play Clean voice under Listen back. One person can be live at a
+   time, for up to 5 minutes. Turn on Word rescue on the Context card first to see suggestions.
+4. The GPU sleeps when nobody uses it. Voice notes, Dictate, Clean my video and the Best (GPU) live
+   detector wake it on first use (or press Wake the GPU in Setup): 2-4 minutes, shown step by step,
+   while everything else keeps working. It stays up for 10 minutes after its last job.
+5. Voice note: "Clean a voice note" on the Recordings tab; record or upload, then play it back.
+6. Meaning guard: under "How StutterClear works", press Check on the example sentence (or type
    your own); Nemotron marks the repeats it would cut and the ones it keeps, with reasons.
