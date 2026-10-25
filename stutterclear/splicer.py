@@ -97,6 +97,11 @@ class Splicer:
                 return
             self.cuts[cut_id] = Cut(start, end, kind)
 
+    def set_max_open(self, ms: float) -> None:
+        """How long a cut may stay open before it is dropped and the held audio played."""
+        with self.lock:
+            self.max_open = int(round(ms * self.sr / 1000))
+
     def set_decided(self, pos: int) -> None:
         with self.lock:
             self.decided = pos

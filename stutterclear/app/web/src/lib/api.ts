@@ -60,7 +60,8 @@ export interface StartBody {
 export interface PlaybackInfo {
   available: boolean
   original_s: number
-  clean_s: number
+  clean_s: number // the stutters cut out, the time closed up
+  heard_s?: number // as the listener heard it live: a short pause where each stutter was cut
 }
 
 export interface Summary {
@@ -195,7 +196,7 @@ export const wakeGpu = (reason: WakeReason) => send<GpuStatus>("/api/gpu/wake", 
 // A random id for this page. On a public server a live session belongs to the page that started
 // it: only that page gets its live updates and its listen-back.
 export const PAGE_ID = Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, "0")).join("")
-export const playbackUrl = (which: "clean" | "original", version: number) =>
+export const playbackUrl = (which: "clean" | "original" | "heard", version: number) =>
   `/api/playback/${which}.wav?v=${version}&page=${PAGE_ID}`
 
 export const getPlayback = () => json<PlaybackInfo>(fetch(`/api/playback?page=${PAGE_ID}`))
@@ -246,9 +247,13 @@ export interface DemoTimeline {
   removed_s: number
   env_in: number[] // 10 ms peaks of the original
   env_out: number[] // 10 ms peaks of the cleaned audio
+  // Live only: the call's own version, a short pause where each stutter was cut (a call cannot
+  // play what was not said yet); the clean voice closes that time up, as a recording can
+  heard_s?: number
+  env_heard?: number[]
   cuts: Span[]
   events: Span[]
-  captions?: { original: CaptionWord[]; clean: CaptionWord[] } | null
+  captions?: { original: CaptionWord[]; clean: CaptionWord[]; heard?: CaptionWord[] } | null
   text?: Transcript | null
   // Nemotron's review of each proposed cut (offline engines, when a key is set)
   guard?: { model: string; checked: number; kept: { word: string; context: string; reason: string }[]; error?: string } | null
@@ -258,7 +263,7 @@ export const getDemos = () => json<{ samples: DemoSample[]; credit: string }>(fe
 // captions: false skips the word captions (Dictate reads the transcript, not the timed words).
 export const getDemo = (id: string, engine: DemoEngine, opts?: { captions?: boolean }) =>
   json<DemoTimeline>(fetch(`/api/demo/${id}?engine=${engine}${opts?.captions === false ? "&captions=0" : ""}`))
-export const demoAudioUrl = (id: string, which: "original" | "clean", engine: DemoEngine) =>
+export const demoAudioUrl = (id: string, which: "original" | "clean" | "heard", engine: DemoEngine) =>
   `/api/demo/${id}/${which}.wav?engine=${engine}`
 
 export const sayIt = async (text: string) => {

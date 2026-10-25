@@ -1,7 +1,7 @@
 """Wires a detector to the splicer, and summarises a session."""
 import numpy as np
 
-from .config import HOP, SAMPLE_RATE, SpliceConfig, preset
+from .config import HOP, SAMPLE_RATE, SpliceConfig, cut_limit_factor, preset
 from .detector import CutUpdate, HeuristicDetector
 from .splicer import Splicer
 
@@ -25,6 +25,14 @@ class Pipeline:
         decided = getattr(self.detector, "decided_samples", None)
         if decided is not None:
             self.splicer.set_decided(decided())
+
+    def set_sensitivity(self, scale: float) -> None:
+        """Live sensitivity (live.py): the detector cuts more readily below 1, fewer above; the limit on
+        a cut still open grows with the detector's own (cut_limit_factor), never shrinking."""
+        tune = getattr(self.detector, "set_sensitivity", None)
+        if tune is not None:
+            tune(scale)
+        self.splicer.set_max_open(self.cfg.max_open_cut_ms * cut_limit_factor(scale))
 
     def apply(self, u: CutUpdate) -> None:
         if u.op == "set":

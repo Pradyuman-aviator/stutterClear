@@ -24,7 +24,7 @@ except Exception:  # no package, no PortAudio (OSError), or PortAudio that canno
 from .audio import save_wav
 from .config import HOP, PRESETS, SAMPLE_RATE as SR, preset
 from .pipeline import Pipeline
-from .segments import CutConfig
+from .segments import NATURAL_JOIN, CutConfig, render_edited
 
 # Off: nothing is cut. Gentle: the "balanced" cut rules, 250 ms delay, fillers kept (like the
 # Natural engine for recordings). Strong: lower thresholds, fillers removed too (like Thorough):
@@ -302,9 +302,7 @@ class LiveSession:
     def set_sensitivity(self, v) -> float:
         """The slider moved: from now on the detector cuts more or less readily. Returns the value used."""
         self.sensitivity = clamp_sensitivity(v)
-        tune = getattr(self.pipe.detector, "set_sensitivity", None)
-        if tune is not None:
-            tune(sensitivity_scale(self.sensitivity))
+        self.pipe.set_sensitivity(sensitivity_scale(self.sensitivity))
         return self.sensitivity
 
     # ---- audio callbacks and worker -------------------------------------------------------
@@ -448,8 +446,15 @@ class LiveSession:
         return summary
 
     def recording(self) -> dict:
-        """What you said and what the listener heard, for playback after the session."""
-        return {"original": self.raw.audio(), "clean": self.out.audio()}
+        """For playback after the session: what you said, what the listener heard ("heard": each
+        stutter cut became a short pause, as a call cannot play what was not said yet), and the clean
+        voice, the same cuts with the time closed up, as a recording can."""
+        raw = self.raw.audio()
+        offset = self.pipe.splicer.write_pos - len(raw)  # what the recorder dropped past PLAYBACK_MAX_S
+        cuts = [{"start": (a - offset) / SR, "end": (b - offset) / SR}
+                for a, b, _ in self.pipe.splicer.stats.removed_spans if b > offset]
+        return {"original": raw, "clean": render_edited(raw, cuts, NATURAL_JOIN) if cuts and len(raw) else raw,
+                "heard": self.out.audio()}
 
     # ---- what the UI shows ------------------------------------------------------------------
 

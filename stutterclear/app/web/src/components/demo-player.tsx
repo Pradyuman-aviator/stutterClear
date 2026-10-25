@@ -14,6 +14,9 @@ const HEAR = [
   { value: "original" as Hear, label: "Original" },
   { value: "clean" as Hear, label: "Clean voice" },
 ]
+// Live only: what a call hears, a short pause where each stutter was cut (it cannot play what was
+// not said yet). The clean voice is the same cuts with that time closed up, as a recording allows.
+const HEARD = { value: "heard" as Hear, label: "As the call heard it" }
 // Pause cuts only shorten a silence: they are counted apart from the stutters.
 function summary(cuts: { kind: string }[]) {
   const stutters = cuts.filter((c) => c.kind !== "pause").length
@@ -24,7 +27,7 @@ function summary(cuts: { kind: string }[]) {
 const ENGINES: { value: DemoEngine; label: string; hint: string }[] = [
   { value: "natural", label: "Natural", hint: "Repeated and broken-off words go, cut only between words; um and uh stay." },
   { value: "thorough", label: "Thorough", hint: "Natural, plus um, uh and repeated phrases; long pauses shrink to under half a second." },
-  { value: "live", label: "Live", hint: "Exactly what a call hears, decided in real time." },
+  { value: "live", label: "Live", hint: "The stutters the real-time model caught, cut out; a call hears a short pause in their place." },
 ]
 
 // Before a sample is chosen: real recordings anyone can try, no mic needed.
@@ -85,7 +88,9 @@ export function DemoBar({
   extra?: React.ReactNode // e.g. Nemotron insights for this recording
 }) {
   const tl = state.timeline
-  const total = !tl ? sample?.duration_s ?? 0 : state.hear === "clean" ? tl.clean_s : tl.original_s
+  const total = !tl ? sample?.duration_s ?? 0
+    : state.hear === "clean" ? tl.clean_s : state.hear === "heard" ? tl.heard_s ?? tl.original_s : tl.original_s
+  const hearOptions = tl?.heard_s != null ? [...HEAR, HEARD] : HEAR
   return (
     <div className="flex w-full flex-col items-center gap-3 rounded-2xl border border-white/8 bg-white/[0.03] p-3 sm:items-start">
       <div className="flex w-full items-center gap-3">
@@ -161,7 +166,7 @@ export function DemoBar({
       </div>
       <div className="flex flex-wrap items-center justify-center gap-2 sm:justify-start">
         <ToggleGroup aria-label="Hear" value={[state.hear]} onValueChange={(v) => v[0] && onHear(v[0] as Hear)} variant="outline" spacing={1}>
-          {HEAR.map((o) => (
+          {hearOptions.map((o) => (
             <ToggleGroupItem key={o.value} value={o.value}>{o.label}</ToggleGroupItem>
           ))}
         </ToggleGroup>

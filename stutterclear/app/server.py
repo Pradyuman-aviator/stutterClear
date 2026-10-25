@@ -893,7 +893,7 @@ def playback_info(page: str = ""):
 @app.get("/api/playback/{which}.wav")
 def playback(which: str, page: str = ""):
     last = _last(page)
-    if which not in ("original", "clean") or not last:
+    if which not in ("original", "clean", "heard") or not last:
         raise HTTPException(404, "Nothing to play yet: record a session first.")
     return Response(wav_bytes(last[which]), media_type="audio/wav", headers={"Cache-Control": "no-store"})
 
@@ -1324,11 +1324,14 @@ def demo_cuts(sid: str, fmt: str, engine: str = "natural"):
 
 @app.get("/api/demo/{sid}/{which}.wav")
 def demo_audio(sid: str, which: str, engine: str = "natural"):
-    if which not in ("original", "clean"):
+    if which not in ("original", "clean", "heard"):
+        raise HTTPException(404, "No such track.")
+    r = _demo(sid, engine)
+    if which not in r:  # "heard" (a call's version, with its pauses) is the live engine's only
         raise HTTPException(404, "No such track.")
     # A visitor's own voice is never kept by a browser or a proxy; the sample clips may be
     private = sid.startswith("note-")
-    return Response(wav_bytes(_demo(sid, engine)[which]), media_type="audio/wav",
+    return Response(wav_bytes(r[which]), media_type="audio/wav",
                     headers=PRIVATE if private else {"Cache-Control": "public, max-age=3600"})
 
 

@@ -151,7 +151,8 @@ def captions(sid: str, engine: str) -> dict | None:
         home = _note(sid)["renders"] if sid.startswith("note-") else _originals
         if ("original", sid) not in home:
             home[("original", sid)] = asr.caption_audio(r["original"])
-        r["captions"] = {"original": home[("original", sid)], "clean": asr.caption_audio(r["clean"])}
+        r["captions"] = {"original": home[("original", sid)], "clean": asr.caption_audio(r["clean"]),
+                         **({"heard": asr.caption_audio(r["heard"])} if "heard" in r else {})}
     return r["captions"]
 
 
@@ -233,15 +234,20 @@ def _render(sid: str, engine: str) -> dict:
         x = _source(sid)[0] if sid.startswith("note-") else _excerpt(sid)
         from ..live import delay_overrides
         detector, name = _live_detector()
-        pipe, y = stream(x, "trim", detector, **delay_overrides(name, "gentle"))  # Gentle mode's preset
+        pipe, heard = stream(x, "trim", detector, **delay_overrides(name, "gentle"))  # Gentle mode's preset
+        heard = heard[: len(x) + int(pipe.cfg.target_delay_ms * SR / 1000)]  # without stream()'s flush padding
         cuts = [{"kind": k, "start": round(a / SR, 3), "end": round(b / SR, 3)}
                 for a, b, k in pipe.splicer.stats.removed_spans]
+        # A call hears each stutter it caught as a short pause (it cannot play what was not said yet);
+        # a recording can close the time up, so that is the clean voice, and the call's version is "heard".
+        y = render_edited(x, cuts, NATURAL_JOIN)
         events = [{"kind": e.kind, "start": round(e.start / SR, 3), "end": round(e.end / SR, 3)}
                   for e in getattr(pipe.detector, "events", []) if e.kind in ("block", "pause")]
         summary = pipe.summary()
         from ..live import LABELS
         meta = {"detector": name, "label": f"Live · {LABELS.get(name, 'rule-based')}, Gentle",
-                "lag_ms": summary["lag_ms"]["p50"], "detect_ms": 0.0, "guard": None, "text": None}
+                "lag_ms": summary["lag_ms"]["p50"], "detect_ms": 0.0, "guard": None, "text": None,
+                "heard_s": round(len(heard) / SR, 2), "env_heard": _envelope(heard)}
     else:
         raise KeyError(engine)
     timeline = {
@@ -251,7 +257,7 @@ def _render(sid: str, engine: str) -> dict:
         "env_in": _envelope(x), "env_out": _envelope(y), "cuts": cuts, "events": events,
         "captions": None,  # captions(): only when the page asks (Dictate never shows them)
     }
-    return {"timeline": timeline, "original": x, "clean": y}
+    return {"timeline": timeline, "original": x, "clean": y, **({"heard": heard} if engine == "live" else {})}
 
 
 SPOKEN_FILLER = {"[UM]": "um", "[UH]": "uh"}

@@ -13,7 +13,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-from .config import SAMPLE_RATE
+from .config import SAMPLE_RATE, cut_limit_factor
 from .detector import CutUpdate, DetectorEvent
 from .features import FeatureStream
 from .segments import BALANCED_CUTS, CutConfig
@@ -174,12 +174,14 @@ class StudentDetector:
 
     def set_sensitivity(self, scale: float) -> None:
         """Cut thresholds times scale (below 1 cuts more), from those the detector had when first
-        asked, so it can change while running; the floor comes down with them."""
+        asked, so it can change while running; the floor comes down with them, and an eager cut may
+        run longer before it is taken for a detector error."""
         if not hasattr(self, "base_thresholds"):
             self.base_thresholds = self.thresholds.copy()
         t = self.base_thresholds.copy()
         t[self.cut_idx] = np.clip(t[self.cut_idx] * scale, self.MIN_CUT_THRESHOLD * min(1.0, scale), 0.99)
         self.thresholds = t
+        self.MAX_FRAMES = round(type(self).MAX_FRAMES * cut_limit_factor(scale))
 
     def process(self, x: np.ndarray) -> list[CutUpdate]:
         first, probs = self.stream.push(x)

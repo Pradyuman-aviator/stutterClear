@@ -3,7 +3,7 @@ import { demoAudioUrl, getDemo, type DemoEngine, type DemoTimeline } from "@/lib
 import type { Store } from "@/lib/store"
 import { loudness, PLAYBACK_DELAY_S, STEP_S, type Caption, type LiveData, type Stats } from "./use-live"
 
-export type Hear = "clean" | "original"
+export type Hear = "clean" | "original" | "heard" // heard: the live engine's call version
 
 export interface DemoState {
   id: string
@@ -36,6 +36,8 @@ function captionAt(words: { w: string; t: number }[], t: number): Caption {
 // forgets them, and so does the page.
 const sampleTimelines = new Map<string, DemoTimeline>()
 const NO_AUDIO = "The audio could not be loaded. Check your connection and try again."
+const pauseAll = (tracks: Partial<Record<Hear, HTMLAudioElement>> | null) =>
+  Object.values(tracks ?? {}).forEach((a) => a?.pause())
 
 export function useDemo(
   data: RefObject<LiveData>,
@@ -44,7 +46,7 @@ export function useDemo(
   caption?: Store<Caption | null>
 ) {
   const [state, setState] = useState<DemoState | null>(null)
-  const audio = useRef<Record<Hear, HTMLAudioElement> | null>(null)
+  const audio = useRef<Partial<Record<Hear, HTMLAudioElement>> | null>(null)
   const timeline = useRef<DemoTimeline | null>(null)
   const hear = useRef<Hear>("clean")
   const cursor = useRef({ cut: 0, event: 0, lastStats: 0 })
@@ -55,8 +57,7 @@ export function useDemo(
 
   const close = useCallback(() => {
     loadId.current++
-    audio.current?.original.pause()
-    audio.current?.clean.pause()
+    pauseAll(audio.current)
     audio.current = null
     timeline.current = null
     reset()
@@ -80,8 +81,7 @@ export function useDemo(
   const load = useCallback(
     async (id: string, engine: DemoEngine, keep?: { hear: Hear; t: number; playing: boolean }) => {
       const my = ++loadId.current
-      audio.current?.original.pause()
-      audio.current?.clean.pause()
+      pauseAll(audio.current)
       hear.current = keep?.hear ?? "clean"
       setState({ id, engine, hear: hear.current, timeline: null, playing: false, t: 0 })
       try {
@@ -100,11 +100,13 @@ export function useDemo(
           })
           return a
         }
-        audio.current = { original: make("original"), clean: make("clean") }
+        // Only the live engine has the call's own version (with its pauses): elsewhere, the clean voice.
+        if (hear.current === "heard" && tl.heard_s == null) hear.current = "clean"
+        audio.current = { original: make("original"), clean: make("clean"), ...(tl.heard_s != null ? { heard: make("heard") } : {}) }
         timeline.current = tl
         cursor.current = { cut: 0, event: 0, lastStats: 0 }
         reset()
-        const a = audio.current[hear.current]
+        const a = audio.current[hear.current]!
         if (keep?.t) a.currentTime = keep.t
         setState({ id, engine, hear: hear.current, timeline: tl, playing: false, t: keep?.t ?? 0 })
         if (keep?.playing ?? true) {
@@ -124,6 +126,8 @@ export function useDemo(
     if (!tracks || h === hear.current) return
     const from = tracks[hear.current]
     const to = tracks[h]
+    if (!from || !to) return
+    data.current.envOut = [] // the mirror redraws the output this track plays
     const wasPlaying = !from.paused
     from.pause()
     to.currentTime = Math.min(from.currentTime, Number.isFinite(to.duration) ? to.duration : from.currentTime)
@@ -154,8 +158,9 @@ export function useDemo(
       if (tl && a) {
         const t = a.currentTime
         const d = data.current
+        const envOut = hear.current === "heard" && tl.env_heard ? tl.env_heard : tl.env_out
         const nIn = Math.min(tl.env_in.length, Math.floor(t / STEP_S))
-        const nOut = Math.min(tl.env_out.length, Math.floor(t / STEP_S))
+        const nOut = Math.min(envOut.length, Math.floor(t / STEP_S))
         if (nIn < d.envIn.length || nOut < d.envOut.length) {
           // Went backwards (restart or a switch): rebuild from the start.
           d.envIn = []
@@ -166,7 +171,7 @@ export function useDemo(
           cursor.current.event = 0
         }
         for (let i = d.envIn.length; i < nIn; i++) d.envIn.push(tl.env_in[i])
-        for (let i = d.envOut.length; i < nOut; i++) d.envOut.push(tl.env_out[i])
+        for (let i = d.envOut.length; i < nOut; i++) d.envOut.push(envOut[i])
         const c = cursor.current
         // A cut is shown once it has fully passed, as the live detector decides after the fact.
         while (c.cut < tl.cuts.length && tl.cuts[c.cut].end <= t) {
@@ -183,7 +188,7 @@ export function useDemo(
         d.clockOffset = t - now / 1000 + PLAYBACK_DELAY_S // the mirror's clock = the audio clock
         d.receivedAt = now
         d.level = a.paused ? 0 : loudness(tl.env_in[Math.max(0, nIn - 1)] ?? 0)
-        d.outLevel = a.paused ? 0 : loudness(tl.env_out[Math.max(0, nOut - 1)] ?? 0)
+        d.outLevel = a.paused ? 0 : loudness(envOut[Math.max(0, nOut - 1)] ?? 0)
         d.heardSound = true
         d.lastSoundAt = now
         if (now - c.lastStats > 150) {
@@ -208,10 +213,7 @@ export function useDemo(
   }, [active, data, stats, caption])
 
   // Leaving the page or unmounting: stop the audio.
-  useEffect(() => () => {
-    audio.current?.original.pause()
-    audio.current?.clean.pause()
-  }, [])
+  useEffect(() => () => pauseAll(audio.current), [])
 
   return { state, load, play, pause, setHear, setEngine, close, progress }
 }

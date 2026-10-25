@@ -9,8 +9,9 @@ from fastapi.testclient import TestClient
 from stutterclear import live
 from stutterclear.app import server
 from stutterclear.audio import load_wav
+from stutterclear.config import preset
 from stutterclear.detector import HeuristicDetector
-from stutterclear.pipeline import stream
+from stutterclear.pipeline import Pipeline, stream
 from stutterclear.remote_detector import RemoteTeacherDetector
 from stutterclear.student_runtime import StudentDetector
 
@@ -35,10 +36,20 @@ def test_model_thresholds_scale_from_where_they_started():
     det.set_sensitivity(0.5)
     det.set_sensitivity(0.5)  # moving the slider back and forth never compounds
     assert det.thresholds.tolist() == pytest.approx([0.15, 0.2, 0.25, 0.6, 0.7])  # blocks are never cut: untouched
+    assert det.MAX_FRAMES == 141  # eager cuts run longer before they count as a detector error
     det.set_sensitivity(10.0)
-    assert det.thresholds[:3].tolist() == [0.99, 0.99, 0.99]
+    assert det.thresholds[:3].tolist() == [0.99, 0.99, 0.99] and det.MAX_FRAMES == StudentDetector.MAX_FRAMES
     det.set_sensitivity(0.1)  # the floor comes down with the slider, never to nothing
     assert det.thresholds[:3].tolist() == pytest.approx([0.03, 0.04, 0.05])
+
+
+def test_the_splicer_lets_eager_cuts_run_longer_and_never_shorter():
+    pipe = Pipeline(preset("clean"), detector=HeuristicDetector())
+    base = pipe.splicer.max_open
+    pipe.set_sensitivity(0.25)
+    assert pipe.splicer.max_open == 2 * base and pipe.detector.REP_THRESHOLD > HeuristicDetector.REP_THRESHOLD
+    pipe.set_sensitivity(2.0)
+    assert pipe.splicer.max_open == base
 
 
 def test_rule_based_detector_loosens_its_tests_for_one_session_only():

@@ -88,8 +88,8 @@ class HeuristicDetector:
 
     EDGE = 2  # frames of margin before a unit onset
     # How far the live sensitivity moves the repeat and prolongation tests. On 7 held-out speakers, 0.4
-    # puts the slider's top (threshold scale 0.3) at about 40% of stutters removed and 18% of words lost,
-    # where the tests start matching fluent speech; the model detectors reach 58% and 10% there.
+    # puts the slider's top (threshold scale 0.3) at 41% of stutters removed and 20% of words lost,
+    # where the tests start matching fluent speech (0.5 lost 45% of words at scale 0.25).
     SENSITIVITY_POWER = 0.4
 
     def __init__(self, sr: int = SAMPLE_RATE):

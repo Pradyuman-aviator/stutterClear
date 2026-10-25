@@ -6,26 +6,29 @@ import { playbackUrl, type PlaybackInfo } from "@/lib/api"
 import { SPRING } from "@/lib/motion"
 import { cn } from "@/lib/utils"
 
-type Which = "clean" | "original"
+type Which = "clean" | "heard" | "original"
 
+// Clean voice: the stutters cut out with the time closed up. As heard: what the call heard live, a
+// short pause where each stutter was cut (a call cannot play what was not said yet).
 const TRACKS: { which: Which; label: string; color: string; ring: string }[] = [
   { which: "clean", label: "Clean voice", color: "#5eead4", ring: "rgb(94 234 212 / 0.18)" },
+  { which: "heard", label: "As heard", color: "#c4b5fd", ring: "rgb(196 181 253 / 0.16)" },
   { which: "original", label: "Original", color: "#93c5fd", ring: "rgb(147 197 253 / 0.16)" },
 ]
 
 const clock = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`
 
-// Play the last session back: what the listener heard (clean) and what you said (original).
+// Play the last session back: the clean voice, what the listener heard live, and what you said.
 // The audio comes from the app server's memory; one track plays at a time.
 export function Playback({ info, version }: { info: PlaybackInfo; version: number }) {
   const audio = useRef<HTMLAudioElement | null>(null)
   const [playing, setPlaying] = useState<Which | null>(null)
-  const progress = useRef<Record<Which, SVGCircleElement | null>>({ clean: null, original: null })
-  const [elapsed, setElapsed] = useState<Record<Which, number>>({ clean: 0, original: 0 })
+  const progress = useRef<Record<Which, SVGCircleElement | null>>({ clean: null, heard: null, original: null })
+  const [elapsed, setElapsed] = useState<Record<Which, number>>({ clean: 0, heard: 0, original: 0 })
 
   // A new recording: forget positions and stop whatever was playing.
   useEffect(() => {
-    setElapsed({ clean: 0, original: 0 })
+    setElapsed({ clean: 0, heard: 0, original: 0 })
     setPlaying(null)
     for (const ring of Object.values(progress.current)) if (ring) ring.style.strokeDashoffset = "1"
     return () => {
@@ -82,8 +85,8 @@ export function Playback({ info, version }: { info: PlaybackInfo; version: numbe
 
   return (
     <div className="flex flex-wrap items-center justify-center gap-2.5 sm:justify-start">
-      {TRACKS.map(({ which, label, color, ring }) => {
-        const total = which === "clean" ? info.clean_s : info.original_s
+      {TRACKS.filter((t) => t.which !== "heard" || info.heard_s != null).map(({ which, label, color, ring }) => {
+        const total = which === "clean" ? info.clean_s : which === "heard" ? info.heard_s ?? 0 : info.original_s
         const on = playing === which
         return (
           <motion.button

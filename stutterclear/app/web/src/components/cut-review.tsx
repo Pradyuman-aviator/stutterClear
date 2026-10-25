@@ -7,10 +7,12 @@ import { getFeedback, sendFeedback, type FeedbackSummary, type Span } from "@/li
 import { keepLocal, localSummary, reviewOff, setReviewOff } from "@/lib/feedback"
 
 // The server reads a missed stutter's time on the original recording's clock. The cleaned track is
-// shorter by every cut before that point (and, from the live engine, starts its delay later).
-function originalTime(t: number, cuts: Span[], hear: "clean" | "original", lagS: number) {
+// shorter by every cut before that point; the live engine's call version ("heard") keeps that time as
+// pauses and starts its delay later.
+function originalTime(t: number, cuts: Span[], hear: "clean" | "original" | "heard", lagS: number) {
   if (hear === "original") return t
-  let o = Math.max(0, t - lagS)
+  if (hear === "heard") return Math.max(0, t - lagS)
+  let o = t
   for (const c of [...cuts].sort((a, b) => a.start - b.start)) {
     if (c.start > o) break
     o += c.end - c.start
@@ -29,7 +31,7 @@ export function CutReview({
   id: string
   cuts: Span[]
   at: number // playback position of the track being heard
-  hear: "clean" | "original"
+  hear: "clean" | "original" | "heard"
   lagS: number
   browserStore: boolean
 }) {

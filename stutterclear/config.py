@@ -34,3 +34,11 @@ PRESETS = {
 
 def preset(name: str, **overrides) -> SpliceConfig:
     return replace(PRESETS[name], **overrides)
+
+
+def cut_limit_factor(scale: float) -> float:
+    """How much longer a cut may stay open at a live sensitivity scale (stutterclear/live.py). Below 1
+    the detector cuts more readily and its cuts run longer: at the old 2 s limits Strong dropped 31 of
+    them on 7 held-out speakers at the slider's top, removing fewer stutters than at 75. 1 at and
+    above the measured setting, 1/sqrt(scale) below it."""
+    return 1.0 / min(1.0, scale) ** 0.5
