@@ -90,6 +90,10 @@ class RemoteTeacherDetector(TeacherDetector):
     def decided_samples(self) -> int:
         return self.total if self.note else self.decided * FRAME
 
+    def set_sensitivity(self, scale: float) -> None:
+        super().set_sensitivity(scale)
+        self.shadow.set_sensitivity(scale)  # the rule-based detector that may take over
+
     def process(self, x: np.ndarray) -> list[CutUpdate]:
         try:
             return self._process(np.asarray(x, np.float32).ravel())

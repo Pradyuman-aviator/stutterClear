@@ -37,7 +37,7 @@ writes live captions; the hosted demo is built to run on a Nebius AI Cloud GPU V
 
 | | What it is | How well it works today (7 speakers it never trained on) |
 |---|---|---|
-| **Live** | Your mic (or your browser's, on the hosted demo), cleaned in real time, sent to headphones or a virtual mic for Zoom, Meet or Teams. | Big model on a laptop GPU: **33% of stutters removed in Gentle** (fillers kept, 3.1% of words lost) and **65% in Strong** (fillers too, 5.7% lost), 0.5-0.85 s behind you. Without a GPU the rule-based detector removes ~8%. |
+| **Live** | Your mic (or your browser's, on the hosted demo), cleaned in real time, sent to headphones or a virtual mic for Zoom, Meet or Teams. A **Sensitivity** bar sets how readily it cuts, changed while you talk. | Big model on a laptop GPU: **33% of stutters removed in Gentle** (fillers kept, 3.1% of words lost) and **65% in Strong** (fillers too, 5.7% lost), 0.5-0.85 s behind you; at full sensitivity Gentle removes **58%** (9.9% lost). Without a GPU the rule-based detector removes ~8% (41% at full sensitivity, with 20% of words lost). |
 | **Clean a voice note** | Record or upload a message (up to 3 minutes) in the browser and get it back cleaned, to play or download. | Cuts land **between words only**: 57% of stutters removed in Natural, **91% in Thorough** (fillers and repeated phrases too), with **no real word cut**. |
 | **Try a real recording** | Real stuttered recordings (UCLASS: three men aged 18 to 35, about 30 s each, credited on the page), with A/B playback, no mic needed. Where they cannot be shown, read speech from LibriSpeech with synthetic stutters stands in. | Every engine, side by side, on the same 30 s of speech. |
 | **Dictate** | Speak (or upload) and get the text without the stutters, ready to paste into an email or a chat. | The Thorough engine read as text; the removed words are shown struck through. |
@@ -348,7 +348,8 @@ The page talks to a FastAPI server; everything it does is available to other cli
 | `GET /api/info` | Features available here (GPU model, captions, Nemotron, voice notes, Say it, interview, where feedback is kept, UCLASS clips), detectors with measured quality, the recommended one. |
 | `GET /api/devices` | Microphones and outputs (local only). |
 | `POST /api/start`, `POST /api/stop` | Start / stop a live session on this computer's devices (local only). |
-| `WS /ws/mic` | Live from a browser mic: settings as JSON, then 16 kHz float32 audio frames, then `"stop"`; replies with the summary. |
+| `POST /api/sensitivity` | The Sensitivity slider moved: the session running on this computer cuts more or less readily from then on (local only). |
+| `WS /ws/mic` | Live from a browser mic: settings as JSON (mode, detector, sensitivity 0-100), then 16 kHz float32 audio frames (and `{"sensitivity": n}` whenever the slider moves), then `"stop"`; replies with the summary. |
 | `WS /ws` | Live updates for the page: waveforms, cuts, captions, stats, about 30 a second. |
 | `GET /api/playback`, `GET /api/playback/{clean,original}.wav` | The last session's audio, kept in memory. |
 | `POST /api/notes`, `GET /api/notes/{id}` | Clean a voice note (16 kHz WAV body); poll its status. |

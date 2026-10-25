@@ -172,6 +172,15 @@ class StudentDetector:
         """Audio up to here has been judged (frames lag the input by the lookahead)."""
         return max(0, self.frames_seen - self.lookahead + 1) * FRAME
 
+    def set_sensitivity(self, scale: float) -> None:
+        """Cut thresholds times scale (below 1 cuts more), from those the detector had when first
+        asked, so it can change while running; the floor comes down with them."""
+        if not hasattr(self, "base_thresholds"):
+            self.base_thresholds = self.thresholds.copy()
+        t = self.base_thresholds.copy()
+        t[self.cut_idx] = np.clip(t[self.cut_idx] * scale, self.MIN_CUT_THRESHOLD * min(1.0, scale), 0.99)
+        self.thresholds = t
+
     def process(self, x: np.ndarray) -> list[CutUpdate]:
         first, probs = self.stream.push(x)
         updates = []

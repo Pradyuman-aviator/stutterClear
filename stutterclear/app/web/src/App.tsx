@@ -40,7 +40,7 @@ import { useLive, type LiveData, type Stats } from "@/hooks/use-live"
 import { behind, useNow } from "@/hooks/use-now"
 import { useSignals, type Signals } from "@/hooks/use-signals"
 import {
-  askRescue, playSaid, sayInCall, getDemos, getDevices, getInfo, getPlayback, KIND_LABEL, prepareContext, startSession, stopSession,
+  askRescue, playSaid, sayInCall, getDemos, getDevices, getInfo, getPlayback, KIND_LABEL, prepareContext, setLiveSensitivity, startSession, stopSession,
   type DemoTimeline, type InsightsBody, type GpuInfo,
   type DemoSample, type DetectorInfo, type DetectorKind, type Devices, type Mode, type PlaybackInfo, type StartBody,
 } from "@/lib/api"
@@ -65,6 +65,18 @@ function modeHint(mode: Mode, info: DetectorInfo | undefined, liveDelay?: { gent
   return mode === "gentle"
     ? `Removes clear repeats. About ${late} behind you.`
     : `Removes the most stutters, fillers too; may clip a word now and then. About ${late} behind you.`
+}
+// Sensitivity: how readily the live detector cuts (stutterclear/live.py). 50 is each mode as measured.
+function sensitivityValue(raw: string) {
+  const v = Number(raw)
+  return Number.isFinite(v) ? Math.min(100, Math.max(0, Math.round(v))) : 50
+}
+function sensitivityHint(v: number) {
+  if (v < 25) return "Only the clearest stutters are cut."
+  if (v < 45) return "Fewer cuts: clear stutters only."
+  if (v <= 55) return "As tested."
+  if (v < 80) return "More cuts: catches more stutters, may clip a real word."
+  return "Aggressive: cuts most stutters, and real words with them."
 }
 const DETECTOR_NOTE: Record<DetectorKind, string> = {
   teacher: "The big model, run live on your GPU.",
@@ -141,6 +153,9 @@ export default function App() {
   const [sessionDet, setSessionDet] = useState<DetectorKind | null>(null) // what the running session started with
   const [aidOn, setAidOn] = useState(() => stored("sc.aid", "") === "on")
   const [aidMs, setAidMs] = useState(() => Number(stored("sc.aidms", "80")) || 80)
+  const [sensitivity, setSensitivity] = useState(() => sensitivityValue(stored("sc.sens", "50")))
+  const sensitivityNow = useRef(sensitivity) // the latest value, for a session that is still starting
+  const sensitivityTimer = useRef(0)
   const [tab, setTab] = useState(() => {
     const h = location.hash.slice(1)
     return h === "calls" || h === "recordings" ? h : ON_THIS_COMPUTER ? "calls" : "recordings"
@@ -355,7 +370,8 @@ export default function App() {
             try {
               // On a public server this browser's own reviews tune the detector (the server keeps none).
               const adjust = feedbackBrowser ? await localAdjust() : undefined
-              const r = await mic.start({ mode: over.mode ?? mode, detector: over.detector ?? chosen, aidMs: aidOn ? aidMs : 0, adjust }, (end) => {
+              const sens = sensitivityNow.current
+              const r = await mic.start({ mode: over.mode ?? mode, detector: over.detector ?? chosen, aidMs: aidOn ? aidMs : 0, adjust, sensitivity: sens }, (end) => {
                 if (browserMic.current !== mic) return
                 browserMic.current = null
                 mic.stop()
@@ -371,6 +387,7 @@ export default function App() {
                 }
               })
               browserMic.current = mic
+              if (sensitivityNow.current !== sens) mic.setSensitivity(sensitivityNow.current) // moved while starting
               setDetName(r.detector)
               break
             } catch (e) {
@@ -381,14 +398,17 @@ export default function App() {
           }
           return
         }
+        const sens = sensitivityNow.current
         const r = await startSession({
           mode, detector: chosen, save,
           in_device: null,
           out_device: null,
           in_name: inDev || null,
           out_name: outDev === NO_OUTPUT ? null : outDev,
+          sensitivity: sens,
           ...over,
         })
+        if (sensitivityNow.current !== sens) setLiveSensitivity(sensitivityNow.current).catch(() => undefined)
         setDetName(r.detector)
       } catch (e) {
         setRunning(false)
@@ -457,6 +477,19 @@ export default function App() {
       store("sc.det", over.detector)
     }
     if (running && !busy.current) start(over)
+  }
+
+  // The sensitivity slider changes a running session in place (no restart): sent once it settles.
+  const changeSensitivity = (v: number) => {
+    setSensitivity(v)
+    sensitivityNow.current = v
+    store("sc.sens", String(v))
+    if (!running) return
+    window.clearTimeout(sensitivityTimer.current)
+    sensitivityTimer.current = window.setTimeout(() => {
+      if (inDev === BROWSER_MIC) browserMic.current?.setSensitivity(v) // still starting: it catches up then
+      else setLiveSensitivity(v).catch(() => undefined)
+    }, 150)
   }
 
   // Wake the GPU for Best (GPU) from the detector card: picking it now, it is used from the first
@@ -722,6 +755,28 @@ export default function App() {
                       <p className="max-w-md text-[13px] leading-relaxed text-white/50">
                         {modeHint(mode, detectorList.find((d) => d.kind === shownDet), gpu.status?.live.delay_ms)}
                       </p>
+                      {mode !== "off" && (
+                        <div id="tutorial-sensitivity" className="w-full max-w-md pt-1">
+                          <div className="flex items-baseline justify-between gap-3 text-xs">
+                            <span className="font-medium text-white/70">Sensitivity</span>
+                            <span className="tabular-nums text-white/45">{sensitivity}</span>
+                          </div>
+                          <Slider
+                            className="mt-2"
+                            min={0}
+                            max={100}
+                            step={5}
+                            value={[sensitivity]}
+                            onValueChange={(v) => changeSensitivity(Array.isArray(v) ? v[0] : sensitivity)}
+                            aria-label="Sensitivity: how readily a stutter is cut"
+                          />
+                          <div className="mt-1.5 flex justify-between text-[11px] text-white/35">
+                            <span>Clear stutters only</span>
+                            <span>Cut aggressively</span>
+                          </div>
+                          <p className="mt-1 text-xs text-white/50">{sensitivityHint(sensitivity)}</p>
+                        </div>
+                      )}
                       {!running && demos.samples.length > 0 && (
                         <button
                           id="tutorial-demo-btn"

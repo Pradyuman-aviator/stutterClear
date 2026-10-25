@@ -103,7 +103,7 @@ export class BrowserMic {
   // connection dropped mid-session (network, server restart) and there is none (null). Not called
   // after stop().
   async start(
-    settings: { mode: string; detector: string; aidMs?: number; adjust?: Record<string, number> },
+    settings: { mode: string; detector: string; aidMs?: number; adjust?: Record<string, number>; sensitivity?: number },
     onEnd?: (r: MicEnd | null) => void,
   ): Promise<{ detector: string; delay_ms?: number }> {
     this.stream = await openMic()
@@ -176,6 +176,11 @@ export class BrowserMic {
     this.pending = []
     this.pendingLen = 0
     if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(out.buffer)
+  }
+
+  // The sensitivity slider moved: the running session cuts more or less readily from now on (no reply).
+  setSensitivity(value: number) {
+    if (!this.stopping && this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify({ sensitivity: value }))
   }
 
   // Ends the session: the server replies with the same summary and playback info as a local stop.

@@ -5,6 +5,7 @@ poll() hands the UI everything new since the last call: input and output level e
 """
 import ctypes
 import json
+import math
 import queue
 import sys
 import threading
@@ -31,6 +32,12 @@ from .segments import CutConfig
 STRONG_CUTS = CutConfig(thresholds=(0.3, 0.25, 0.4, 0.5, 0.3), off_ratio=0.5, merge_gap=5, snap=0,
                         refine_long_s=1e9, prolong_keep_ms=100.0)
 MODES = {"off": ("verbatim", None, 0), "gentle": ("trim", "gentle", 200), "strong": ("clean", "strong", 500)}
+# Sensitivity, 0 to 100 (the Live panel's slider, changed while talking too): how readily a stutter
+# is cut. 50 is each mode as measured; higher cuts more stutters and more real words with them, lower
+# only the clearest. Every detector's cut thresholds are multiplied by sensitivity_scale() (its
+# set_sensitivity), from SENSITIVITY_RANGE[0] at 0 to SENSITIVITY_RANGE[1] at 100.
+SENSITIVITY = 50.0
+SENSITIVITY_RANGE = (2.0, 0.3)
 DEFAULT_STUDENT = Path(__file__).resolve().parents[1] / "runs" / "kaggle_student" / "student" / "student.pt"
 PLAYBACK_MAX_S = 600  # the app keeps the last 10 minutes in memory so you can play it back
 
@@ -126,6 +133,21 @@ def recommended() -> str:
             if s > score:
                 best, score = d["kind"], s
     return best
+
+
+def clamp_sensitivity(v) -> float:
+    """A slider value from a page: a number from 0 to 100, else the default."""
+    try:
+        v = float(v)
+    except (TypeError, ValueError):
+        return SENSITIVITY
+    return min(100.0, max(0.0, v)) if math.isfinite(v) else SENSITIVITY
+
+
+def sensitivity_scale(v: float) -> float:
+    """What the cut thresholds are multiplied by at sensitivity v: 1 at 50, below 1 above it (cuts more)."""
+    end = SENSITIVITY_RANGE[0] if v < 50 else SENSITIVITY_RANGE[1]
+    return end ** (abs(v - 50) / 50)
 
 
 def delay_overrides(kind: str, mode: str, extra_ms: float = 0) -> dict:
@@ -238,7 +260,7 @@ class LiveSession:
     arrives through feed() from a browser mic over a WebSocket, and the input clock drives output."""
 
     def __init__(self, mode="gentle", in_device=None, out_device=None, detector="student", student_path=None,
-                 save=False, source="device", adjust: dict | None = None):
+                 save=False, source="device", adjust: dict | None = None, sensitivity: float = SENSITIVITY):
         self.mode = mode
         self.source = source
         preset_name, _, _ = MODES[mode]
@@ -246,6 +268,7 @@ class LiveSession:
         try:
             extra = getattr(det, "extra_delay_ms", 0)  # a teacher on a GPU worker elsewhere answers later
             self.pipe = Pipeline(preset(preset_name, **delay_overrides(self.detector_name, mode, extra)), detector=det)
+            self.set_sensitivity(sensitivity)
             if source == "browser":
                 in_device = out_device = None
             self.in_device = in_device if in_device is not None or source == "browser" else devices()["default_input"]
@@ -275,6 +298,14 @@ class LiveSession:
         except Exception:
             _close(det)  # a teacher on a GPU worker must not keep its stream open for nobody
             raise
+
+    def set_sensitivity(self, v) -> float:
+        """The slider moved: from now on the detector cuts more or less readily. Returns the value used."""
+        self.sensitivity = clamp_sensitivity(v)
+        tune = getattr(self.pipe.detector, "set_sensitivity", None)
+        if tune is not None:
+            tune(sensitivity_scale(self.sensitivity))
+        return self.sensitivity
 
     # ---- audio callbacks and worker -------------------------------------------------------
 
@@ -408,6 +439,7 @@ class LiveSession:
             self.thread.join(timeout=2)
         _close(self.pipe.detector)  # a teacher on a GPU worker frees its stream there
         summary = self.pipe.summary()
+        summary["sensitivity"] = self.sensitivity
         if self.save and self.raw.n:  # files are written only when the user switched saving on
             folder = Path(__file__).resolve().parents[1] / "sessions" / datetime.now().strftime("%Y%m%d-%H%M%S")
             save_wav(folder / "raw.wav", self.raw.audio())

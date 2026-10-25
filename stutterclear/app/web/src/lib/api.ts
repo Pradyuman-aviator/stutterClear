@@ -54,6 +54,7 @@ export interface StartBody {
   in_name: string | null // the server matches names, since Windows renumbers devices
   out_name: string | null
   save: boolean
+  sensitivity: number // 0-100: how readily a stutter is cut; 50 is each mode as measured
 }
 
 export interface PlaybackInfo {
@@ -210,6 +211,9 @@ export const startSession = (body: StartBody) =>
 
 export const stopSession = () =>
   json<{ ok: boolean; summary: Summary | null; playback?: PlaybackInfo }>(fetch("/api/stop", { method: "POST" }))
+// The sensitivity slider moved while a session runs on this computer (a browser mic sends it itself).
+export const setLiveSensitivity = (sensitivity: number) =>
+  send<{ ok: boolean; sensitivity: number | null }>("/api/sensitivity", { sensitivity })
 
 // "Try a real recording" (UCLASS excerpts): "natural" and "thorough" are the offline model with two
 // cutting styles, "live" the real-time pipeline.

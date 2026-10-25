@@ -466,6 +466,11 @@ class StartRequest(BaseModel):
     out_name: str | None = None
     detector: str = "student"
     save: bool = False
+    sensitivity: float = live.SENSITIVITY  # 0-100: how readily a stutter is cut (live.py)
+
+
+class SensitivityRequest(BaseModel):
+    sensitivity: float
 
 
 def resolve(kind: str, index: int | None, name: str | None, available: list[dict]) -> int | None:
@@ -836,7 +841,8 @@ def start(req: StartRequest):
     in_device = resolve("microphone", req.in_device, req.in_name, devs["inputs"])
     out_device = resolve("output", req.out_device, req.out_name, devs["outputs"])
     notes.release_gpu()  # the live teacher gets the GPU back from a finished voice note
-    s = LiveSession(req.mode, in_device, out_device, req.detector, save=req.save, adjust=feedback.current())
+    s = LiveSession(req.mode, in_device, out_device, req.detector, save=req.save, adjust=feedback.current(),
+                    sensitivity=req.sensitivity)
     try:
         s.start()
     except Exception as e:  # device busy or gone between listing and opening
@@ -845,6 +851,16 @@ def start(req: StartRequest):
         raise HTTPException(409, f"Could not open the audio device: {e}") from e
     state["session"] = s
     return {"ok": True, "detector": s.detector_name, "mode": req.mode}
+
+
+@app.post("/api/sensitivity")
+def set_sensitivity(req: SensitivityRequest):
+    """The Live panel's sensitivity slider moved while a session runs on this computer (a browser-mic
+    session changes it over its own connection)."""
+    if HOSTED:
+        raise HTTPException(403, "On the hosted demo, the page that started a session changes it over its own connection.")
+    s = state["session"]
+    return {"ok": True, "sensitivity": s.set_sensitivity(req.sensitivity) if s is not None else None}
 
 
 @app.post("/api/stop")
@@ -977,6 +993,7 @@ async def _live_session(socket: WebSocket, client: str):
                 break
             data = msg.get("bytes")
             if not data:
+                _retune(s, msg.get("text"))
                 continue
             if len(data) > FRAME_MAX:
                 ended = "Audio frames must be at most half a second."
@@ -1004,6 +1021,19 @@ async def _live_session(socket: WebSocket, client: str):
             await socket.close(code=close or 1000, reason=ended if close else "")
         except Exception:
             pass
+
+
+def _retune(s: LiveSession, text: str | None):
+    """A settings change from the page mid-session, {"sensitivity": 0-100}; anything else is ignored.
+    No reply: the page reads the next message as the session's end."""
+    if not text or len(text) > 200:
+        return
+    try:
+        cfg = json.loads(text)
+    except ValueError:
+        return
+    if isinstance(cfg, dict) and "sensitivity" in cfg:
+        s.set_sensitivity(cfg["sensitivity"])
 
 
 async def _open_browser_session(socket: WebSocket, client: str):
@@ -1037,7 +1067,8 @@ async def _open_browser_session(socket: WebSocket, client: str):
     s = None
     try:  # may load a model: off the event loop. A detector on a GPU worker is closed if this fails.
         s = await loop.run_in_executor(None, lambda: LiveSession(cfg.get("mode", "gentle"), detector=detector,
-                                                                 source="browser", adjust=adjust))
+                                                                 source="browser", adjust=adjust,
+                                                                 sensitivity=cfg.get("sensitivity", live.SENSITIVITY)))
         s.start()
         await socket.send_json({"ok": True, "detector": s.detector_name, "limit_s": LIVE_LIMIT_S,
                                 "delay_ms": round(s.pipe.cfg.target_delay_ms)})

@@ -87,6 +87,10 @@ class HeuristicDetector:
     PAUSE_CONTEXT = 150  # pause counts as mid-utterance if speech ended within 1.5 s
 
     EDGE = 2  # frames of margin before a unit onset
+    # How far the live sensitivity moves the repeat and prolongation tests. On 7 held-out speakers, 0.4
+    # puts the slider's top (threshold scale 0.3) at about 40% of stutters removed and 18% of words lost,
+    # where the tests start matching fluent speech; the model detectors reach 58% and 10% there.
+    SENSITIVITY_POWER = 0.4
 
     def __init__(self, sr: int = SAMPLE_RATE):
         assert sr == SAMPLE_RATE
@@ -112,6 +116,14 @@ class HeuristicDetector:
         self.events: list[DetectorEvent] = []
 
     # ---- public -------------------------------------------------------------
+
+    def set_sensitivity(self, scale: float) -> None:
+        """scale below 1 cuts more (a looser repeat match; a less steady sound, held for less time,
+        counts as prolonged), above 1 fewer; 1 is the tuned setting. Safe while running."""
+        k = scale ** -self.SENSITIVITY_POWER
+        self.REP_THRESHOLD = type(self).REP_THRESHOLD * k
+        self.PRO_STATIONARY_DB = type(self).PRO_STATIONARY_DB * k
+        self.PRO_MIN = max(10, round(type(self).PRO_MIN / k))
 
     def process(self, x: np.ndarray) -> list[CutUpdate]:
         first, energy, logmel, mfcc = self.features.push(x)
