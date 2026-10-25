@@ -7,8 +7,8 @@ Secret Manager's API as base64, never through gcloud's input or command line (Wi
 adds a byte-order mark and a line ending to text it pipes).
 
     powershell -ExecutionPolicy Bypass -File scripts\deploy_cloudrun.ps1 [-Project ID] [-NoGpu | -LaptopOnly]
-        [-Live] [-SetGpuSecret] [-UpdateSecrets NAME,...] [-SkipBuild] [-WarmDuringJudging | -MinInstances N]
-        [-DryRun]
+        [-Live] [-SetGpuSecret] [-UpdateSecrets NAME,...] [-SkipBuild] [-BuildAccount EMAIL]
+        [-WarmDuringJudging | -MinInstances N] [-DryRun]
 
   -NoGpu              the CPU app alone (phase P0): no GPU worker, no Kaggle or GPU secret
   -LaptopOnly         the GPU features only through the team's laptop: nothing is started on Kaggle
@@ -16,6 +16,8 @@ adds a byte-order mark and a line ending to text it pipes).
   -SetGpuSecret       store a new STUTTERCLEAR_GPU_SECRET (typed in at a hidden prompt)
   -UpdateSecrets      store new versions of these secrets (typed in at a hidden prompt each)
   -SkipBuild          never build: deploy the image built earlier for this commit (settings changes)
+  -BuildAccount       run Cloud Build as this account (<project number>@cloudbuild.gserviceaccount.com
+                      when the Compute Engine default account has no roles and an Editor cannot add one)
   -WarmDuringJudging  keep one instance always on (Dec 1-15: no cold start for judges, about $0.05/h)
   -MinInstances N     set the always-on instances explicitly (0 after judging); otherwise left as they are
   -DryRun             check everything and print each change (gcloud command) instead of making it
@@ -41,6 +43,10 @@ param(
         "STUTTERCLEAR_GPU_SECRET")]
     [string[]]$UpdateSecrets = @(),
     [switch]$SkipBuild,
+    # The account Cloud Build runs as. Empty: Cloud Build's default, which in new projects is the
+    # Compute Engine default account; when that has no roles (an Editor cannot grant one), name the
+    # project's own Cloud Build account, <project number>@cloudbuild.gserviceaccount.com, which has.
+    [string]$BuildAccount = "",
     [switch]$WarmDuringJudging,
     [int]$MinInstances = -1,
     [switch]$DryRun
@@ -185,6 +191,7 @@ function Invoke-Build([string]$Tag, [string]$Sha) {
     # Streams the build's log; when it fails for want of a permission, prints the Owner's command
     $build = "builds", "submit", "--config=deploy/cloudrun/cloudbuild.yaml", "--project=$Project",
         "--substitutions=_TAG=$Tag,_COMMIT=$Sha,_REGION=$Region", "."
+    if ($BuildAccount) { $build += "--service-account=projects/$Project/serviceAccounts/$BuildAccount" }
     if ($DryRun) { Write-Host "  would run: gcloud $($build -join ' ')" -ForegroundColor Cyan; return }
     $log = New-Object System.Collections.Generic.List[string]
     $ErrorActionPreference = "Continue"
