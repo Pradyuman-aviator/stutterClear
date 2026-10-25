@@ -25,6 +25,12 @@ COPY scripts/download_asr.py ./scripts/
 COPY stutterclear ./stutterclear
 COPY data/demo_clips ./data/demo_clips
 COPY runs/eval ./runs/eval
+# The three real recordings the demo plays (stutterclear/app/demo_samples.json, source uclass) with their
+# model caches: never in git (UCLASS is free for research and teaching, with credit), uploaded by the
+# deploy and checked against the list this commit carries, so a commit's image always plays the same audio.
+COPY deploy/cloudrun/uclass.sha256 ./
+COPY data/external ./data/external
+RUN tr -d '\r' < uclass.sha256 | sha256sum -c -
 # The captions model (NVIDIA FastConformer for sherpa-onnx, 106 MB), fetched at build time and
 # checked against the laptop's tested copy (tr: a Windows checkout gives the list CRLF line endings);
 # compiled bytecode makes a cold start a little faster.

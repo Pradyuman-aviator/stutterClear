@@ -2,11 +2,12 @@
 # an allowlist. Everything at the top is left out, then only what the image needs is let back in:
 # its package lock (deploy/cloudrun/requirements.lock), the code without the web sources, the
 # captions download script, the sample clips and their caches, and the two measured-results files.
-# Never checkpoints (runs/), datasets (data/), models/, sessions/, video/, personal recordings, .env
-# or keys.
+# Never checkpoints (runs/), datasets (data/, except the three UCLASS recordings the demo plays),
+# models/, sessions/, video/, personal recordings, .env or keys.
 #
 # Check what would go up:  gcloud meta list-files-for-upload
-# (scripts/deploy_cloudrun.ps1 also refuses to build if anything uploaded is not committed.)
+# (scripts/deploy_cloudrun.ps1 also refuses to build if anything uploaded is not committed, except
+# the UCLASS files deploy/cloudrun/uclass.sha256 lists, which it checks against their hashes.)
 /*
 
 !/scripts/
@@ -23,6 +24,25 @@
 !/data/
 /data/*
 !/data/demo_clips/
+# The real recordings on show (stutterclear/app/demo_samples.json, source uclass) and their caches, by
+# name: never in git (UCLASS is free for research and teaching, with credit)
+!/data/external/
+/data/external/*
+!/data/external/uclass_eval/
+/data/external/uclass_eval/*
+!/data/external/uclass_eval/monologue/
+/data/external/uclass_eval/monologue/*
+!/data/external/uclass_eval/monologue/M_0065_20y1m_1.wav
+!/data/external/uclass_eval/monologue/M_0065_20y1m_1.teacher.npy
+!/data/external/uclass_eval/monologue/M_0065_20y1m_1.crisper.json
+!/data/external/uclass_eval/monologue/M_0104_18y1m_1.wav
+!/data/external/uclass_eval/monologue/M_0104_18y1m_1.teacher.npy
+!/data/external/uclass_eval/monologue/M_0104_18y1m_1.crisper.json
+!/data/external/uclass_eval/release1/
+/data/external/uclass_eval/release1/*
+!/data/external/uclass_eval/release1/M_1101_35y0m_1.wav
+!/data/external/uclass_eval/release1/M_1101_35y0m_1.teacher.npy
+!/data/external/uclass_eval/release1/M_1101_35y0m_1.crisper.json
 
 !/runs/
 /runs/*

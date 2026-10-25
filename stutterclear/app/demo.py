@@ -12,7 +12,10 @@ what a listener hears as a jerk); word-aligned cutting slices none (scripts/chec
 
 The audio is read from the local UCLASS download (data/external) and never committed: UCLASS is
 free for research and teaching with credit (CREDIT below), not for redistribution as a product, so a
-public server shows only synthetic and consented clips (data/demo_clips) unless told otherwise.
+public server shows only synthetic and consented clips (data/demo_clips) unless told otherwise (the
+Cloud Run demo is: its private image carries the three recordings, deploy/cloudrun/uclass.sha256).
+The read-aloud clips with synthetic stutters stand in for real recordings: they show only where no
+real recording can.
 """
 import csv
 import io
@@ -78,9 +81,11 @@ def _tokens(sample: dict) -> list:
 
 
 def available() -> list:
+    shown = [s for s in SAMPLES.values() if _wav(s).exists() and (_source_of(s) != "uclass" or uclass_enabled())]
+    if any(_source_of(s) != "synthetic" for s in shown):  # real recordings replace the stand-ins
+        shown = [s for s in shown if _source_of(s) != "synthetic"]
     return [{"id": s["id"], "title": s["title"], "who": s["who"], "duration_s": round(s["end"] - s["start"], 2),
-             "engines": engines(s), "source": _source_of(s)} for s in SAMPLES.values()
-            if _wav(s).exists() and (_source_of(s) != "uclass" or uclass_enabled())]
+             "engines": engines(s), "source": _source_of(s)} for s in shown]
 
 
 def credit(samples: list) -> str:

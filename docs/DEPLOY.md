@@ -19,7 +19,9 @@ server and, for the GPU features, on the worker, and forgotten within an hour.
 
 The image (`deploy/cloudrun/Dockerfile`) is the app with CPU PyTorch and no checkpoints: the GPU models
 live on the worker. Cloud Build builds it from an allowlisted upload (`.gcloudignore`: the code, the
-sample clips and the two measured-results files; never `runs/`, `models/`, recordings, `.env` or keys),
+sample clips and the two measured-results files; never `runs/`, `models/`, recordings, `.env` or keys,
+except the three UCLASS recordings the demo plays: never in git, they go up from `data/external` on the
+machine that deploys, checked against `deploy/cloudrun/uclass.sha256`, and only their ~30 s excerpts are served),
 fetches the captions model and checks it against `deploy/cloudrun/asr.sha256`, and labels the image
 with the commit it was built from. Its packages are exactly the files in `deploy/cloudrun/requirements.lock`,
 each checked against its sha256 (`pip install --require-hashes`), so nothing published later reaches the
@@ -495,7 +497,7 @@ The UCLASS clips never go to the Space (research licence); `STUTTERCLEAR_UCLASS_
 |---|---|
 | `STUTTERCLEAR_HOSTED=1` | Public mode (see above) |
 | `STUTTERCLEAR_NOTES=0` | No voice notes: for a server without a GPU, where they would take minutes |
-| `STUTTERCLEAR_UCLASS_DEMOS=1` / `=0` | Show UCLASS clips on a public server (private judging) / hide them anywhere |
+| `STUTTERCLEAR_UCLASS_DEMOS=1` / `=0` | Show UCLASS clips on a public server (the Cloud Run demo does, credited) / hide them anywhere; the read-aloud clips with synthetic stutters stand in wherever none show |
 | `NVIDIA_API_KEY` | Say it (NVIDIA Magpie TTS); `MAGPIE_VOICE` picks the voice |
 | `NEBIUS_API_KEY` | Nemotron on Nebius Token Factory: word rescue, the meaning guard, the context agent, insights |
 | `STUTTERCLEAR_TRUST_PROXY=N` | Behind N proxies that append to `X-Forwarded-For` (Cloud Run or Caddy alone: 1): the visitor is the N-th entry from the end. How to check it: [Google Cloud Run](#google-cloud-run-the-main-app) |

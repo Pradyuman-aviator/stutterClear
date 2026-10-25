@@ -8,7 +8,18 @@
 stutterclear/app/web
 !deploy/cloudrun/requirements.lock
 !deploy/cloudrun/asr.sha256
+!deploy/cloudrun/uclass.sha256
 !data/demo_clips
+# The UCLASS recordings on show, never in git (deploy/cloudrun/uclass.sha256 lists them)
+!data/external/uclass_eval/monologue/M_0065_20y1m_1.wav
+!data/external/uclass_eval/monologue/M_0065_20y1m_1.teacher.npy
+!data/external/uclass_eval/monologue/M_0065_20y1m_1.crisper.json
+!data/external/uclass_eval/monologue/M_0104_18y1m_1.wav
+!data/external/uclass_eval/monologue/M_0104_18y1m_1.teacher.npy
+!data/external/uclass_eval/monologue/M_0104_18y1m_1.crisper.json
+!data/external/uclass_eval/release1/M_1101_35y0m_1.wav
+!data/external/uclass_eval/release1/M_1101_35y0m_1.teacher.npy
+!data/external/uclass_eval/release1/M_1101_35y0m_1.crisper.json
 !runs/eval/live_quality.json
 !runs/eval/recordings.json
 

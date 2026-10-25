@@ -61,12 +61,15 @@ def test_public_servers_leave_uclass_clips_out(tmp_path, monkeypatch):
     ids = lambda: [s["id"] for s in demo.available()]  # noqa: E731
     monkeypatch.delenv("STUTTERCLEAR_UCLASS_DEMOS", raising=False)
     monkeypatch.delenv("STUTTERCLEAR_HOSTED", raising=False)
-    assert ids() == ["u", "s"]
+    assert ids() == ["u"]  # the real recording replaces the synthetic stand-in
     monkeypatch.setenv("STUTTERCLEAR_HOSTED", "1")
     assert ids() == ["s"]
     assert "LibriSpeech" in demo.credit(demo.available()) and "UCLASS" not in demo.credit(demo.available())
-    monkeypatch.setenv("STUTTERCLEAR_UCLASS_DEMOS", "1")  # private judging
-    assert ids() == ["u", "s"] and "UCLASS" in demo.credit(demo.available())
+    monkeypatch.setenv("STUTTERCLEAR_UCLASS_DEMOS", "1")  # the Cloud Run demo
+    assert ids() == ["u"]
+    assert "UCLASS" in demo.credit(demo.available()) and "LibriSpeech" not in demo.credit(demo.available())
+    (tmp_path / "u.wav").unlink()  # an image without the recording still has something to play
+    assert ids() == ["s"]
 
 
 def test_transcript_marks_removed_words_and_cleans_the_text():

@@ -39,7 +39,7 @@ writes live captions; the hosted demo is built to run on a Nebius AI Cloud GPU V
 |---|---|---|
 | **Live** | Your mic (or your browser's, on the hosted demo), cleaned in real time, sent to headphones or a virtual mic for Zoom, Meet or Teams. | Big model on a laptop GPU: **33% of stutters removed in Gentle** (fillers kept, 3.1% of words lost) and **65% in Strong** (fillers too, 5.7% lost), 0.5-0.85 s behind you. Without a GPU the rule-based detector removes ~8%. |
 | **Clean a voice note** | Record or upload a message (up to 3 minutes) in the browser and get it back cleaned, to play or download. | Cuts land **between words only**: 57% of stutters removed in Natural, **91% in Thorough** (fillers and repeated phrases too), with **no real word cut**. |
-| **Try a real recording** | Real stuttered recordings (UCLASS, adult speakers; on this computer only) and read speech from LibriSpeech with synthetic stutters (safe to publish), with A/B playback, no mic needed. | Every engine, side by side, on the same 30 s of speech. |
+| **Try a real recording** | Real stuttered recordings (UCLASS: three men aged 18 to 35, about 30 s each, credited on the page), with A/B playback, no mic needed. Where they cannot be shown, read speech from LibriSpeech with synthetic stutters stands in. | Every engine, side by side, on the same 30 s of speech. |
 | **Dictate** | Speak (or upload) and get the text without the stutters, ready to paste into an email or a chat. | The Thorough engine read as text; the removed words are shown struck through. |
 | **Clean my video** | Upload a talk, a post or a recorded answer (up to 3 minutes) and get the video back with the stutters cut from picture and sound together. | The recording engines on its soundtrack; ffmpeg cuts at word boundaries with 10 ms fades. |
 | **On stage** (needs `NVIDIA_API_KEY`) | Paste your speech; the highlight follows what you say, and when you are stuck the next words appear; Say it speaks them in a synthetic voice, only on your click. | Script following from the live captions; NVIDIA Magpie TTS. |
@@ -332,7 +332,7 @@ Environment variables, read where the app runs:
 | `NVIDIA_API_KEY` | (none) | Enables Say it (NVIDIA Magpie TTS on build.nvidia.com, free). Never put it in code or chat. |
 | `MAGPIE_VOICE` | `Magpie-Multilingual.EN-US.Aria` | Say it's voice (`MAGPIE_SERVER`, `MAGPIE_FUNCTION_ID` override the hosted endpoint). |
 | `STUTTERCLEAR_NOTES` | (on) | `0` = no voice notes (a server without a GPU). |
-| `STUTTERCLEAR_UCLASS_DEMOS` | on locally, off when hosted | `1` / `0`: show / hide the UCLASS demo clips (research licence). |
+| `STUTTERCLEAR_UCLASS_DEMOS` | on locally, off when hosted | `1` / `0`: show / hide the UCLASS demo clips (research licence; the Cloud Run demo shows them, credited). |
 | `STUTTERCLEAR_FEEDBACK` | `runs/feedback/feedback.jsonl` | Where this computer keeps your review decisions. |
 | `STUTTERCLEAR_JOURNAL` | `runs/journal/journal.jsonl` | Where this computer keeps the fluency journal (once started). |
 
@@ -391,7 +391,8 @@ through an HTTPS tunnel): `docs/DEPLOY.md`. On a public server (`STUTTERCLEAR_HO
 - visitors' Nemotron calls are capped at 60 a minute and Say it at 30, because they spend the
   owner's credits;
 - review feedback stays in the visitor's browser (the page sends its multipliers with a session);
-- UCLASS clips are left out unless `STUTTERCLEAR_UCLASS_DEMOS=1` (private judging);
+- UCLASS clips are left out unless `STUTTERCLEAR_UCLASS_DEMOS=1` (the Cloud Run demo sets it: three
+  ~30 s excerpts, credited; the recordings themselves are never in git);
 - nothing is written to disk.
 
 Free hosting from the laptop with a stable HTTPS link: `scripts/serve_public.ps1` (Tailscale

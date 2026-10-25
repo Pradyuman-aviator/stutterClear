@@ -235,19 +235,37 @@ try {
         Write-Warning "Commit $tag is not on GitHub yet. Push it before Kaggle uses it."
     }
 
-    # 3. The upload: only committed files, never recordings, checkpoints or keys (.gcloudignore)
-    $upload = @(Invoke-GCloud meta list-files-for-upload . | ForEach-Object { $_ -replace "\\", "/" })
+    # 3. The upload: only committed files, never recordings, checkpoints or keys (.gcloudignore), except
+    # the UCLASS recordings the demo plays: never in git, each checked against the hash the commit lists
     $tracked = @{}
     git ls-files | ForEach-Object { $tracked[$_] = $true }
-    $stray = @($upload | Where-Object { -not $tracked.ContainsKey($_) })
+    $private = @{}
+    foreach ($line in @(Get-Content deploy/cloudrun/uclass.sha256 | Where-Object { $_.Trim() })) {
+        $hash, $file = -split $line
+        if ($tracked.ContainsKey($file)) { throw "$file is in git: UCLASS audio must never be committed (git rm --cached)." }
+        if (-not (Test-Path -LiteralPath $file -PathType Leaf)) {
+            throw "$file is missing: the sample clips need the UCLASS download and its caches (data/external)."
+        }
+        if ((Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash -ne $hash) {
+            throw "$file is not the file deploy/cloudrun/uclass.sha256 lists: update the list and commit it."
+        }
+        $private[$file] = $true
+    }
+    $upload = @(Invoke-GCloud meta list-files-for-upload . | ForEach-Object { $_ -replace "\\", "/" })
+    $stray = @($upload | Where-Object { -not $tracked.ContainsKey($_) -and -not $private.ContainsKey($_) })
     $stray += @($upload | Where-Object {
             $_ -match "\.(ogg|opus|m4a|mp3|wav|mp4|mov|webm|pt|onnx|pem|key)$|(^|/)\.env|kaggle\.json$" -and
-            $_ -notmatch "^data/demo_clips/[\w.-]+\.wav$" })
+            $_ -notmatch "^data/demo_clips/[\w.-]+\.wav$" -and -not $private.ContainsKey($_) })
     if ($stray) {
         $stray | Sort-Object -Unique | ForEach-Object { Write-Host "  $_" }
         throw "These would be uploaded to the build: commit them or leave them out (.gcloudignore)."
     }
-    Write-Host "Upload checked: $($upload.Count) committed files."
+    $left = @($private.Keys | Where-Object { $upload -notcontains $_ })
+    if ($left) {
+        $left | ForEach-Object { Write-Host "  $_" }
+        throw "These must go up for the sample clips: let them in (.gcloudignore)."
+    }
+    Write-Host "Upload checked: $($upload.Count - $private.Count) committed files and $($private.Count) UCLASS files."
 
     # 4. The project's parts: APIs, the image repository, the service's own account
     Invoke-Change services enable run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com `
