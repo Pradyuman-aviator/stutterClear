@@ -58,3 +58,24 @@ def test_listen_back_serves_the_calls_version(monkeypatch):
     monkeypatch.setattr(server, "HOSTED", False)
     assert client.get("/api/playback").json() == {"available": True, "original_s": 1.0, "clean_s": 0.5, "heard_s": 1.0}
     assert client.get("/api/playback/heard.wav").status_code == 200
+
+
+def test_a_recorded_live_run_replays_exactly():
+    import json
+
+    from stutterclear.audio import load_wav
+    from stutterclear.pipeline import stream
+    x = load_wav(Path(demo.CLIPS) / "read-1.wav")
+    rec = json.loads(json.dumps(demo.record_live(x, HeuristicDetector(), "heuristic")))  # as stored
+    a, ya = stream(x, "trim", HeuristicDetector())
+    b, yb = stream(x, "trim", demo.ReplayDetector(rec))
+    assert a.splicer.stats.removed_spans and a.splicer.stats.removed_spans == b.splicer.stats.removed_spans
+    assert np.array_equal(ya, yb) and len(b.detector.events) == len(a.detector.events)
+
+
+def test_the_demo_plays_the_recorded_gpu_decisions_when_it_has_them(monkeypatch):
+    rec = demo.record_live(demo._excerpt("read-1"), HeuristicDetector(), "heuristic")
+    monkeypatch.setattr(demo, "_recorded_live", lambda s: {**rec, "detector": "teacher"})
+    monkeypatch.setattr(demo, "_live_detector", lambda: (_ for _ in ()).throw(AssertionError("woke a detector")))
+    tl = demo._render("read-1", "live")["timeline"]
+    assert tl["label"] == "Live · Best (GPU), Gentle" and tl["cuts"]

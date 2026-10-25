@@ -32,6 +32,7 @@ import numpy as np
 
 from ..audio import load_wav
 from ..config import HOP, SAMPLE_RATE as SR
+from ..detector import CutUpdate, DetectorEvent
 from ..pipeline import stream
 from ..segments import NATURAL_JOIN, render_edited
 from ..guard import guarded_cuts
@@ -103,6 +104,62 @@ def _excerpt(sid: str) -> np.ndarray:
     s = SAMPLES[sid]
     x = load_wav(_wav(s))
     return x[int(s["start"] * SR): int(s["end"] * SR)]
+
+
+LIVE_REC = ".live.json"  # a clip's recorded live decisions, next to its audio (scripts/record_live_demo.py)
+
+
+class ReplayDetector:
+    """The decisions a live detector made on a demo clip, played back block by block: the splicer
+    does the same with them, so a server whose GPU sleeps still plays what the GPU model does live."""
+
+    def __init__(self, rec: dict):
+        self.steps = {i: (decided, [CutUpdate(*u) for u in ups]) for i, decided, ups in rec["steps"]}
+        self.events = [DetectorEvent(*e) for e in rec["events"]]
+        self.block = self.decided = 0
+
+    def process(self, x: np.ndarray) -> list:
+        step = self.steps.get(self.block)
+        self.block += 1
+        if step is None:
+            return []
+        self.decided = step[0]
+        return step[1]
+
+    def decided_samples(self) -> int:
+        return self.decided
+
+
+def record_live(x: np.ndarray, detector, name: str) -> dict:
+    """Run a clip through the live pipeline as the demo does (Gentle), keeping every decision the
+    detector made and how far it had judged, block by block, for ReplayDetector."""
+    from ..live import delay_overrides
+    steps, process, judged = [], detector.process, getattr(detector, "decided_samples", None)
+    state = {"block": 0, "fed": 0, "last": None}
+
+    def recording(block: np.ndarray):
+        ups = process(block)
+        state["fed"] += len(block)
+        decided = int(judged()) if judged else state["fed"]  # without a limit, all it was fed is judged
+        if ups or decided != state["last"]:
+            steps.append([state["block"], decided, [[u.op, int(u.cut_id), int(u.start), None if u.end is None else int(u.end),
+                                                     u.kind] for u in ups]])
+            state["last"] = decided
+        state["block"] += 1
+        return ups
+    detector.process = recording
+    stream(x, "trim", detector, **delay_overrides(name, "gentle"))
+    return {"detector": name, "steps": steps,
+            "events": [[e.kind, int(e.start), int(e.end), int(e.decided_at), e.info] for e in getattr(detector, "events", [])]}
+
+
+def _recorded_live(sample: dict) -> dict | None:
+    """The GPU model's recorded live decisions on this clip, if they were made on this very excerpt."""
+    try:
+        rec = json.loads(_wav(sample).with_suffix(LIVE_REC).read_text())
+    except (OSError, ValueError):
+        return None
+    return rec if (rec.get("start"), rec.get("end")) == (sample["start"], sample["end"]) else None
 
 
 def _live_detector():
@@ -233,7 +290,8 @@ def _render(sid: str, engine: str) -> dict:
     elif engine == "live":
         x = _source(sid)[0] if sid.startswith("note-") else _excerpt(sid)
         from ..live import delay_overrides
-        detector, name = _live_detector()
+        rec = None if sid.startswith("note-") else _recorded_live(SAMPLES[sid])
+        detector, name = (ReplayDetector(rec), rec["detector"]) if rec else _live_detector()
         pipe, heard = stream(x, "trim", detector, **delay_overrides(name, "gentle"))  # Gentle mode's preset
         heard = heard[: len(x) + int(pipe.cfg.target_delay_ms * SR / 1000)]  # without stream()'s flush padding
         cuts = [{"kind": k, "start": round(a / SR, 3), "end": round(b / SR, 3)}

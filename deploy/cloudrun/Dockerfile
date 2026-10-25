@@ -26,8 +26,9 @@ COPY stutterclear ./stutterclear
 COPY data/demo_clips ./data/demo_clips
 COPY runs/eval ./runs/eval
 # The three real recordings the demo plays (stutterclear/app/demo_samples.json, source uclass) with their
-# model caches: never in git (UCLASS is free for research and teaching, with credit), uploaded by the
-# deploy and checked against the list this commit carries, so a commit's image always plays the same audio.
+# model caches and recorded live decisions: never in git (UCLASS is free for research and teaching,
+# with credit), uploaded by the deploy and checked against the list this commit carries, so a commit's
+# image always plays the same audio.
 COPY deploy/cloudrun/uclass.sha256 ./
 COPY data/external ./data/external
 RUN tr -d '\r' < uclass.sha256 | sha256sum -c -

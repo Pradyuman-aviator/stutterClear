@@ -14,12 +14,15 @@ stutterclear/app/web
 !data/external/uclass_eval/monologue/M_0065_20y1m_1.wav
 !data/external/uclass_eval/monologue/M_0065_20y1m_1.teacher.npy
 !data/external/uclass_eval/monologue/M_0065_20y1m_1.crisper.json
+!data/external/uclass_eval/monologue/M_0065_20y1m_1.live.json
 !data/external/uclass_eval/monologue/M_0104_18y1m_1.wav
 !data/external/uclass_eval/monologue/M_0104_18y1m_1.teacher.npy
 !data/external/uclass_eval/monologue/M_0104_18y1m_1.crisper.json
+!data/external/uclass_eval/monologue/M_0104_18y1m_1.live.json
 !data/external/uclass_eval/release1/M_1101_35y0m_1.wav
 !data/external/uclass_eval/release1/M_1101_35y0m_1.teacher.npy
 !data/external/uclass_eval/release1/M_1101_35y0m_1.crisper.json
+!data/external/uclass_eval/release1/M_1101_35y0m_1.live.json
 !runs/eval/live_quality.json
 !runs/eval/recordings.json
 
