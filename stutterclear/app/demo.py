@@ -19,7 +19,9 @@ import io
 import json
 import os
 import re
+import threading
 import time
+from collections import deque
 from functools import lru_cache
 from pathlib import Path
 
@@ -121,16 +123,38 @@ def _source(sid: str):
     return x, probs[f0: f0 + len(x) // TEACHER_FRAME], _tokens(s)
 
 
-def _captions(x: np.ndarray, y: np.ndarray) -> dict | None:
-    """Word-timed captions of both tracks (NVIDIA streaming FastConformer), if the model is here."""
-    from .. import captions
-    if not captions.available():
+def _note(sid: str) -> dict:
+    from . import notes
+    note = notes.ready(sid)
+    if note is None:
+        raise KeyError(sid)
+    return note
+
+
+_originals: dict = {}  # sample id -> captions of its original audio (the same for every engine)
+
+
+def captions(sid: str, engine: str) -> dict | None:
+    """Word-timed captions of a render's original and cleaned audio (NVIDIA streaming
+    FastConformer), if the model is here. Kept with the render they describe: a sample's for good,
+    a voice note's for as long as the note."""
+    from .. import captions as asr
+    if not asr.available():
         return None
-    return {"original": captions.caption_audio(x), "clean": captions.caption_audio(y)}
+    r = render(sid, engine)
+    if "captions" not in r:
+        home = _note(sid)["renders"] if sid.startswith("note-") else _originals
+        if ("original", sid) not in home:
+            home[("original", sid)] = asr.caption_audio(r["original"])
+        r["captions"] = {"original": home[("original", sid)], "clean": asr.caption_audio(r["clean"])}
+    return r["captions"]
 
 
 _samples: dict = {}  # (sample, engine) -> (time, guard failed, render)
 GUARD_RETRY_S = 300.0
+NOTE_RENDERS = 12  # renders voice notes keep at once (each holds the cleaned audio); the oldest go first
+_note_renders: deque = deque()  # (note, engine), oldest first
+_note_locks = threading.Lock()
 
 
 def render(sid: str, engine: str) -> dict:
@@ -138,9 +162,17 @@ def render(sid: str, engine: str) -> dict:
 
     Demo samples are rendered once and kept, so visitors' voice notes never push them out of the
     cache (a re-render waits on Nemotron). If Nemotron did not answer, the guard is asked again
-    after GUARD_RETRY_S. Voice notes share a small cache of their own."""
+    after GUARD_RETRY_S. A voice note keeps its renders itself, so they are forgotten with it."""
     if sid.startswith("note-"):
-        return _render_note(sid, engine)
+        note = _note(sid)
+        with _note_locks:
+            lock = note.setdefault("lock", threading.Lock())
+        with lock:  # one render of a note at a time: a second click waits for the first
+            renders = note.setdefault("renders", {})
+            if engine not in renders:
+                renders[engine] = _render(sid, engine)
+                _keep_note_render(sid, engine)
+            return renders[engine]
     hit = _samples.get((sid, engine))
     if hit is None or (hit[1] and time.time() - hit[0] > GUARD_RETRY_S):
         r = _render(sid, engine)
@@ -149,9 +181,26 @@ def render(sid: str, engine: str) -> dict:
     return hit[2]
 
 
-@lru_cache(maxsize=12)
-def _render_note(sid: str, engine: str) -> dict:
-    return _render(sid, engine)
+def _keep_note_render(sid: str, engine: str):
+    """Past NOTE_RENDERS, the oldest render of a voice note is let go (asked for again, it is made
+    again), so cleaned audio never piles up on a small server."""
+    from . import notes
+    with _note_locks:
+        _note_renders.append((sid, engine))
+        while len(_note_renders) > NOTE_RENDERS:
+            old, old_engine = _note_renders.popleft()
+            if (old, old_engine) != (sid, engine):
+                notes._notes.get(old, {}).get("renders", {}).pop(old_engine, None)
+
+
+def _env_calibration() -> dict:
+    """The recordings teacher's calibration (its live_cuts.json) from STUTTERCLEAR_CALIBRATION_JSON,
+    for a server that has no runs/ folder; empty when unset or unreadable."""
+    try:
+        c = json.loads(os.environ.get("STUTTERCLEAR_CALIBRATION_JSON") or "{}")
+    except ValueError:
+        return {}
+    return c if isinstance(c, dict) else {}
 
 
 def _render(sid: str, engine: str) -> dict:
@@ -161,7 +210,7 @@ def _render(sid: str, engine: str) -> dict:
         thorough = engine == "thorough"
         from .. import feedback
         from ..teacher_runtime import RECORDINGS_CKPT, calibration
-        confirm = calibration(RECORDINGS_CKPT).get("confirm", 0.3)
+        confirm = (calibration(RECORDINGS_CKPT) or _env_calibration()).get("confirm", 0.3)
         if sid.startswith("note-"):  # the person's own voice: their feedback applies
             confirm = feedback.confirm(confirm, feedback.current())
         cuts, guard = guarded_cuts(toks, stutter, cut_fillers=thorough, cut_phrases=thorough,  # Nemotron checks each cut
@@ -195,7 +244,7 @@ def _render(sid: str, engine: str) -> dict:
         "original_s": round(len(x) / SR, 2), "clean_s": round(len(y) / SR, 2),
         "removed_s": round(sum(c["end"] - c["start"] for c in cuts), 2),
         "env_in": _envelope(x), "env_out": _envelope(y), "cuts": cuts, "events": events,
-        "captions": _captions(x, y),
+        "captions": None,  # captions(): only when the page asks (Dictate never shows them)
     }
     return {"timeline": timeline, "original": x, "clean": y}
 

@@ -1,6 +1,6 @@
 import { type RefObject } from "react"
 import { AnimatePresence, motion } from "motion/react"
-import { AudioLines, Download, LoaderCircle, Pause, Play, ShieldCheck, X } from "lucide-react"
+import { AudioLines, CircleAlert, Download, LoaderCircle, Pause, Play, ShieldCheck, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import type { DemoState, Hear } from "@/hooks/use-demo"
@@ -118,13 +118,15 @@ export function DemoBar({
           </svg>
           <AnimatePresence mode="popLayout" initial={false}>
             <motion.span
-              key={!tl ? "load" : state.playing ? "pause" : "play"}
+              key={!tl ? (state.error ? "failed" : "load") : state.playing ? "pause" : "play"}
               initial={{ scale: 0.4, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.4, opacity: 0 }}
               transition={SPRING.press}
             >
-              {!tl ? (
+              {!tl && state.error ? (
+                <CircleAlert className="size-4 text-rose-300" />
+              ) : !tl ? (
                 <LoaderCircle className="size-4 animate-spin" />
               ) : state.playing ? (
                 <Pause className="size-4 fill-current" />
@@ -140,7 +142,7 @@ export function DemoBar({
           </div>
           <div className="flex items-center gap-1.5 text-[11px] text-white/45">
             <AudioLines className="size-3" />
-            <span className="truncate">{tl ? tl.label : "Cleaning…"}</span>
+            <span className="truncate">{tl ? tl.label : state.error ? "Could not load" : "Cleaning…"}</span>
             <span className="shrink-0 whitespace-nowrap tabular-nums">
               · {clock(state.t)} / {clock(total)}
             </span>

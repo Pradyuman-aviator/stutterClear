@@ -17,6 +17,7 @@
     "src",
     "remotion.config.ts",
     "storyboard.json",
-    "storyboard-demo.json"
+    "storyboard-demo.json",
+    "storyboard-submission.json"
   ]
 }

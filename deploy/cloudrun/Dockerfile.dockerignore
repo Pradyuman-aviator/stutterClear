@@ -1,0 +1,32 @@
+# A local build sends only what the image needs, the same allowlist Cloud Build gets from
+# .gcloudignore. BuildKit (Docker's default builder) reads this file instead of the root
+# .dockerignore, which is for the GPU VM image:
+#   docker build -f deploy/cloudrun/Dockerfile --build-arg COMMIT=<the full git sha> -t stutterclear-cloudrun .
+*
+!scripts/download_asr.py
+!stutterclear
+stutterclear/app/web
+!deploy/cloudrun/requirements.lock
+!deploy/cloudrun/asr.sha256
+!data/demo_clips
+!runs/eval/live_quality.json
+!runs/eval/recordings.json
+
+# Never, wherever they appear inside what is let in
+**/__pycache__
+**/node_modules
+**/.env
+**/.env.*
+**/kaggle.json
+**/access_token
+**/*.pem
+**/*.key
+**/*.pt
+**/*.onnx
+**/*.ogg
+**/*.opus
+**/*.m4a
+**/*.mp3
+**/*.mp4
+**/*.mov
+**/*.webm

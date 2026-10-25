@@ -1,0 +1,63 @@
+# What the GPU worker needs on Kaggle beyond the Kaggle image (torch, numpy, scipy, requests, accelerate
+# and safetensors come with the image). Installed by kernel_template/run.py with
+#   pip install --only-binary=:all: --no-deps --require-hashes -r requirements.lock
+# so pip never resolves anything at boot, never touches the image's torch, and installs only the exact
+# files hashed here (each version's Linux x86_64 wheels): one published later under the same version,
+# or a changed one, is refused. Every line needs a wheel for the image's Python (cp3xx, abi3 or pure).
+#
+# These are the team laptop's tested versions. The Kaggle smoke run (docs/DEPLOY.md, "GPU on demand")
+# replaces them with what its `pip freeze` and `pip check` show: keep only what the image lacks or has
+# in a version that does not work, pin every one, then refresh the hashes:
+#   python scripts/lock_hashes.py stutterclear/gpu_worker/requirements.lock
+transformers==4.46.0 \
+    --hash=sha256:e161268ae8bee315eb9e9b4c0b27f1bd6980f91e0fc292d75249193d339704c0
+tokenizers==0.20.3 \
+    --hash=sha256:07d7851a72717321022f3774e84aa9d595a041d643fafa2e87fbc9b18711dac0 \
+    --hash=sha256:0e9b81321a1e05b16487d312b4264984513f8b4a7556229cafac6e88c2036b09 \
+    --hash=sha256:0fc7a39e5bedc817bda395a798dfe2d9c5f7c71153c90d381b5135a0328d9520 \
+    --hash=sha256:16121eb030a2b13094cfec936b0c12e8b4063c5f839591ea7d0212336d8f9921 \
+    --hash=sha256:18e4c7c64172e7789bd8b07aa3087ea87c4c4de7e90937a2aa036b5d92332536 \
+    --hash=sha256:1fd9fee817f655a8f50049f685e224828abfadd436b8ff67979fc1d054b435f1 \
+    --hash=sha256:2b6e54e71f84c4202111a489879005cb14b92616a87417f6c102c833af961ea2 \
+    --hash=sha256:3eda46ca402751ec82553a321bf35a617b76bbed7586e768c02ccacbdda94d6d \
+    --hash=sha256:453c7769d22231960ee0e883d1005c93c68015025a5e4ae56275406d94a3c907 \
+    --hash=sha256:7b6583a65c01db1197c1eb36857ceba8ec329d53afadd268b42a6b04f4965724 \
+    --hash=sha256:843729bf0f991b29655a069a2ff58a4c24375a553c70955e15e37a90dd4e045c \
+    --hash=sha256:900991a2b8ee35961b1095db7e265342e0e42a84c1a594823d5ee9f8fb791958 \
+    --hash=sha256:938441babf3e5720e4459e306ef2809fb267680df9d1ff2873458b22aef60248 \
+    --hash=sha256:a07962340b36189b6c8feda552ea1bfeee6cf067ff922a1d7760662c2ee229e5 \
+    --hash=sha256:a4c186bb006ccbe1f5cc4e0380d1ce7806f5955c244074fd96abc55e27b77f01 \
+    --hash=sha256:b1e5bfaae740ef9ece000f8a07e78ac0e2b085c5ce9648f8593ddf0243c9f76d \
+    --hash=sha256:ba96367db9d8a730d3a1d5996b4b7babb846c3994b8ef14008cd8660f55db59d \
+    --hash=sha256:c47c037116310dc976eb96b008e41b9cfaba002ed8005848d4d632ee0b7ba9ae \
+    --hash=sha256:c4fd4d71e6deb6ddf99d8d0eab87d1d16f635898906e631914a9bae8ae9f2cfb \
+    --hash=sha256:da1ec842035ed9999c62e45fbe0ff14b7e8a7e02bb97688cc6313cf65e5cd755 \
+    --hash=sha256:efcf0eb939988b627558aaf2b9dc3e56d759cad2e0cfa04fcab378e4b48fc4fd \
+    --hash=sha256:f2b7cb962564785a83dafbba0144ecb7f579f1d57d8c406cdaa7f32fe32f18ad
+huggingface-hub==0.36.2 \
+    --hash=sha256:48f0c8eac16145dfce371e9d2d7772854a4f591bcb56c9cf548accf531d54270
+crisperwhisper==2.0.3 \
+    --hash=sha256:526dd8556883808d0ccbc4da38b05181953a4f7599a16c7a721e47d7590e108a
+soxr==1.1.0 \
+    --hash=sha256:26925618945f1a44dfbd783cc572874f0685e9ecdf46b96f4000f6b8c9c8b825 \
+    --hash=sha256:3b033078e86f3c4a658e5697fac8995764fad9e799563616b630136b613167f1 \
+    --hash=sha256:3da87e3ffa3e41823d873b051c7ecb2acebd8d1b6b46b752f5facf10a0d84ab9 \
+    --hash=sha256:8e11e26f1718b5c2e5b96f2f71b9f00e31d247b065289661e3a6996c758669d9 \
+    --hash=sha256:f4977323ef9c3aa3c2a26ff5fe0191c84b8fd759daf7afb1f25a91a55ad8b730
+soundfile==0.14.0 \
+    --hash=sha256:1e38bac1853412871318e82a1ba69a8be677619b56025bbfcccdb41b6cafe82d \
+    --hash=sha256:8ba81ae3a89fd5ab3bef8a8eb481fbbe794e806309675a89b4df48b8d31908a8
+websockets==15.0.1 \
+    --hash=sha256:0f3c1e2ab208db911594ae5b4f79addeb3501604a165019dd221c0bdcabe4db8 \
+    --hash=sha256:2034693ad3097d5355bfdacfffcbd3ef5694f9718ab7f29c29689a9eae841880 \
+    --hash=sha256:3be571a8b5afed347da347bfcf27ba12b069d9d7f42cb8c7028b5e98bbb12597 \
+    --hash=sha256:3d00075aa65772e7ce9e990cab3ff1de702aa09be3940d1dc88d5abf1ab8a09c \
+    --hash=sha256:4b826973a4a2ae47ba357e4e82fa44a463b8f168e1ca775ac64521442b19e87f \
+    --hash=sha256:54479983bd5fb469c38f2f5c7e3a24f9a4e70594cd68cd1fa6b9340dadaff7cf \
+    --hash=sha256:558d023b3df0bffe50a04e710bc87742de35060580a293c2a984299ed83bc4e4 \
+    --hash=sha256:64dee438fed052b52e4f98f76c5790513235efaa1ef7f3f2192c392cd7c91b65 \
+    --hash=sha256:8dd8327c795b3e3f219760fa603dcae1dcc148172290a8ab15158cf85a953413 \
+    --hash=sha256:ac017dd64572e5c3bd01939121e4d16cf30e5d7e110a119399cf3133b63ad054 \
+    --hash=sha256:ac1e5c9054fe23226fb11e05a6e630837f074174c4c2f0fe442996112a6de4fb \
+    --hash=sha256:b359ed09954d7c18bbc1680f380c7301f92c60bf924171629c5db97febb12f04 \
+    --hash=sha256:f7a866fbc1e97b5c617ee4116daaa09b722101d4a3c170c787450ba409f9736f

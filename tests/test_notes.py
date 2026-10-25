@@ -99,3 +99,71 @@ def test_lean_crisper_runs_the_encoder_without_attention_maps():
     assert seen["kw"] == {"output_attentions": True, "max_new_tokens": 5, "encoder_outputs": "encoded"}
     gen("feats", max_new_tokens=5)  # no attention asked for: untouched
     assert seen["features"] == "feats" and "encoder_outputs" not in seen["kw"]
+
+
+# ---- what an upload may hold ----------------------------------------------------------------------
+
+def wav_bytes(x: np.ndarray, sr: int = 16000, channels: int = 1, extra: bytes = b"") -> bytes:
+    """A 16-bit PCM WAV, with any chunks before the samples (`extra`), written by hand."""
+    import struct
+    pcm = (np.clip(x, -1, 1) * 32767).astype("<i2").tobytes()
+    fmt = struct.pack("<HHIIHH", 1, channels, sr, sr * 2 * channels, 2 * channels, 16)
+    body = b"WAVE" + b"fmt " + struct.pack("<I", 16) + fmt + extra + b"data" + struct.pack("<I", len(pcm)) + pcm
+    return b"RIFF" + struct.pack("<I", len(body)) + body
+
+
+def test_the_pages_wav_is_read_directly():
+    x = np.random.default_rng(0).uniform(-0.5, 0.5, 32000).astype(np.float32)
+    y = notes.pcm16_wav(wav_bytes(x, extra=b"LIST" + (5).to_bytes(4, "little") + b"abcde\0"))  # (odd chunk padded)
+    assert y is not None and len(y) == 32000 and np.allclose(y, x, atol=1e-4)
+    assert notes.pcm16_wav(wav_bytes(x, sr=44100)) is None and notes.pcm16_wav(wav_bytes(x, channels=2)) is None
+    assert notes.pcm16_wav(b"not audio at all, but long enough to look at its first bytes") is None
+
+
+def test_a_public_server_reads_nothing_but_the_pages_wav(monkeypatch):
+    monkeypatch.setattr(notes, "HOSTED", True)
+    x = np.zeros(32000, np.float32)
+    assert len(notes.decode(wav_bytes(x))) == 32000
+    for other in (wav_bytes(x, sr=8000), wav_bytes(x, channels=2), b"fLaC" + b"\0" * 100):
+        try:
+            notes.decode(other)
+        except notes.NoteError as e:
+            assert str(e) == notes.UNREADABLE  # no audio library ever parses what a visitor sent
+        else:
+            raise AssertionError("decoded")
+
+
+def flac(seconds: float, sr: int, channels: int) -> bytes:
+    """Silence as FLAC, written a second at a time (it compresses to almost nothing)."""
+    import io
+    import soundfile as sf
+    buf = io.BytesIO()
+    with sf.SoundFile(buf, "w", sr, channels, format="FLAC") as f:
+        for _ in range(int(seconds)):
+            f.write(np.zeros((sr, channels), np.float32))
+    return buf.getvalue()
+
+
+def test_a_file_that_claims_hours_of_audio_is_never_read_whole():
+    for data, said in ((flac(1, 48000, 8), "8 to 48 kHz, one or two channels"),  # 8 channels: refused unread
+                       (wav_bytes(np.zeros(20000, np.float32), sr=1), "8 to 48 kHz"),  # 1 Hz: 16000 times longer
+                       (wav_bytes(np.zeros(20000, np.float32), sr=192000), "8 to 48 kHz"),
+                       (flac(notes.MAX_S + 60, 44100, 1), "up to 3 minutes")):  # only MAX_S of it is ever read
+        t = time.perf_counter()
+        try:
+            notes.decode(data)
+        except notes.NoteError as e:
+            assert said in str(e), str(e)
+        else:
+            raise AssertionError("decoded")
+        assert time.perf_counter() - t < 3
+
+
+def test_a_note_past_its_hour_is_gone_even_if_nothing_else_happens(monkeypatch):
+    now = time.time()
+    monkeypatch.setattr(notes, "_notes", {"note-old": {"status": "done", "x": np.zeros(16000, np.float32),
+                                                       "created": now - notes.KEEP_S - 1, "error": None, "seen": now},
+                                          "note-new": {"status": "done", "x": np.zeros(16000, np.float32),
+                                                       "created": now, "error": None, "seen": now}})
+    assert notes.ready("note-old") is None and notes.status("note-old") is None and "note-old" not in notes._notes
+    assert notes.ready("note-new") is not None

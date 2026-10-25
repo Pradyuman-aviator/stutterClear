@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useEffectEvent, useRef, useState, type ReactNode, type RefObject } from "react"
 import { AnimatePresence, MotionConfig, motion, type Variants } from "motion/react"
-import { Check, Cpu, Gamepad2, Lock, Mic, Play, Sparkles, Square } from "lucide-react"
+import { Check, Cpu, Gamepad2, Lock, Mic, Play, Sparkles, Square, WifiOff } from "lucide-react"
 import { IsoBadge, IsoContext, IsoLogo, IsoMirror, IsoSetup } from "@/components/iso-icon"
 
 import { CaptionStrip } from "@/components/caption-strip"
@@ -8,6 +8,7 @@ import { GameTutorial } from "@/components/game-tutorial"
 import { SignUpModal, type UserProfile } from "@/components/signup-modal"
 import { DelayMatrix } from "@/components/delay-matrix"
 import { DemoBar, DemoPicker } from "@/components/demo-player"
+import { GpuNote, GpuPill } from "@/components/gpu-note"
 import { HowItWorks } from "@/components/how-it-works"
 import { InsightsPanel } from "@/components/insights-panel"
 import { GlassCard } from "@/components/glass-card"
@@ -34,11 +35,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { VoiceNoteCard } from "@/components/voice-note"
 import { VoiceOrb } from "@/components/voice-orb"
 import { useDemo } from "@/hooks/use-demo"
+import { useGpu } from "@/hooks/use-gpu"
 import { useLive, type LiveData, type Stats } from "@/hooks/use-live"
+import { behind, useNow } from "@/hooks/use-now"
 import { useSignals, type Signals } from "@/hooks/use-signals"
 import {
   askRescue, playSaid, sayInCall, getDemos, getDevices, getInfo, getPlayback, KIND_LABEL, prepareContext, startSession, stopSession,
-  type DemoTimeline, type InsightsBody,
+  type DemoTimeline, type InsightsBody, type GpuInfo,
   type DemoSample, type DetectorInfo, type DetectorKind, type Devices, type Mode, type PlaybackInfo, type StartBody,
 } from "@/lib/api"
 import { EASE_OUT, SPRING } from "@/lib/motion"
@@ -53,13 +56,15 @@ const MODES: { value: Mode; label: string }[] = [
   { value: "strong", label: "Strong" },
 ]
 // How far behind you the listener hears you depends on the detector: the big model needs to hear
-// a little after each moment before deciding (see stutterclear/live.py delay_overrides).
-function modeHint(mode: Mode, detector: DetectorKind) {
+// a little after each moment before deciding (see stutterclear/live.py delay_overrides). The server
+// says how far (delay_ms); Best (GPU) on a GPU worker elsewhere adds the round trip (liveDelay).
+function modeHint(mode: Mode, info: DetectorInfo | undefined, liveDelay?: { gentle: number; strong: number } | null) {
   if (mode === "off") return "Mirror only: nothing is cut, so you can watch your speech as it is."
-  const behind = detector === "teacher" ? (mode === "gentle" ? "0.5 s" : "0.85 s") : mode === "gentle" ? "250 ms" : "600 ms"
+  const fallback = info?.kind === "teacher" ? (mode === "gentle" ? 500 : 850) : mode === "gentle" ? 250 : 600
+  const late = behind((info?.on_demand && liveDelay?.[mode]) || info?.delay_ms?.[mode] || fallback)
   return mode === "gentle"
-    ? `Removes clear repeats. About ${behind} behind you.`
-    : `Removes the most stutters, fillers too; may clip a word now and then. About ${behind} behind you.`
+    ? `Removes clear repeats. About ${late} behind you.`
+    : `Removes the most stutters, fillers too; may clip a word now and then. About ${late} behind you.`
 }
 const DETECTOR_NOTE: Record<DetectorKind, string> = {
   teacher: "The big model, run live on your GPU.",
@@ -68,9 +73,22 @@ const DETECTOR_NOTE: Record<DetectorKind, string> = {
 }
 const NO_OUTPUT = "none"
 const BROWSER_MIC = "__browser__" // live from this browser's mic, streamed to the server
+// Until the server says, a page opened from anywhere but this computer is taken to be a public server.
+const ON_THIS_COMPUTER = ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname)
+// Where a visitor learns what is up when the server cannot be reached (the GitHub Pages front door).
+const STATUS_URL: string = import.meta.env.VITE_STATUS_URL ?? "https://pradyuman-aviator.github.io/stutterClear/?stay=1"
+
+// "voice notes, videos and Best (GPU)": what the GPU worker does on this server.
+function gpuUses(g: GpuInfo) {
+  const uses = [
+    g.features.some((f) => f === "notes" || f === "dictate") && "voice notes",
+    g.features.includes("video") && "videos",
+    (g.live || g.features.includes("live")) && "Best (GPU)",
+  ].filter(Boolean) as string[]
+  return uses.length > 1 ? `${uses.slice(0, -1).join(", ")} and ${uses[uses.length - 1]}` : (uses[0] ?? "recordings")
+}
 
 // Entrances animate opacity and position only: blurring big panels while they move costs frames.
-const page: Variants = { hidden: {}, show: { transition: { staggerChildren: 0.07, delayChildren: 0.05 } } }
 const rise: Variants = {
   hidden: { opacity: 0, y: 22, scale: 0.985 },
   show: { opacity: 1, y: 0, scale: 1, transition: SPRING.enter },
@@ -92,7 +110,9 @@ function store(key: string, value: string) {
 }
 
 export default function App() {
-  const { data, stats, caption, connected, serverRunning, reset } = useLive()
+  const [hosted, setHosted] = useState(!ON_THIS_COMPUTER)
+  const live = useLive(hosted)
+  const { data, stats, caption, notice, connected, serverRunning, reset } = live
   const [running, setRunning] = useState(false)
   const [starting, setStarting] = useState(false)
   const busy = useRef(false)
@@ -112,13 +132,23 @@ export default function App() {
   const [captionsOn, setCaptionsOn] = useState(false)
   const [rescueAvailable, setRescueAvailable] = useState(false)
   const [searchOn, setSearchOn] = useState(false)
-  const [hosted, setHosted] = useState(false)
   const [ttsOn, setTtsOn] = useState(false)
   const [interviewOn, setInterviewOn] = useState(false)
   const [feedbackBrowser, setFeedbackBrowser] = useState(false)
+  const [gpuInfo, setGpuInfo] = useState<GpuInfo | null>(null) // a GPU worker this server wakes on demand
+  const [videoMaxMb, setVideoMaxMb] = useState<number | undefined>(undefined)
+  const gpu = useGpu(!!gpuInfo, live.paused)
+  const [sessionDet, setSessionDet] = useState<DetectorKind | null>(null) // what the running session started with
   const [aidOn, setAidOn] = useState(() => stored("sc.aid", "") === "on")
   const [aidMs, setAidMs] = useState(() => Number(stored("sc.aidms", "80")) || 80)
-  const [tab, setTab] = useState("calls")
+  const [tab, setTab] = useState(() => {
+    const h = location.hash.slice(1)
+    return h === "calls" || h === "recordings" ? h : ON_THIS_COMPUTER ? "calls" : "recordings"
+  })
+  const tabShown = useRef(tab)
+  useEffect(() => {
+    tabShown.current = tab
+  }, [tab])
   const [rescueOn, setRescueOn] = useState(() => stored("sc.rescue", "") === "on")
   const [rescue, setRescue] = useState<{ loading: boolean; words: string[]; error?: string }>({ loading: false, words: [] })
   const [noteSamples, setNoteSamples] = useState<DemoSample[]>([])
@@ -188,8 +218,14 @@ export default function App() {
       .catch(() => setDevices(null))
   }, [])
 
-  useEffect(() => {
-    if (!connected) return
+  // What this server can do, over plain HTTP: on load, and again after every reconnect (a restarted
+  // server may differ), so the sample clips and voice notes work even when the live socket cannot
+  // connect.
+  const infoAt = useRef(-Infinity)
+  const detectorPicked = useRef(false)
+  const loadInfo = useCallback(() => {
+    if (performance.now() - infoAt.current < 10000) return // just asked
+    infoAt.current = performance.now()
     getInfo()
       .then((i) => {
         setInfoReady(true)
@@ -202,23 +238,82 @@ export default function App() {
         setTtsOn(!!i.tts)
         setInterviewOn(!!i.interview)
         setFeedbackBrowser(i.feedback === "browser")
+        setGpuInfo(i.gpu ?? null)
+        setVideoMaxMb(i.video_max_mb)
         setDetectorList(i.detectors)
         setRecommendedDet(i.recommended)
-        // Use the best measured detector unless one was picked before (and is still available here).
+        if (detectorPicked.current) return
+        detectorPicked.current = true
+        // Use the best measured detector unless one was picked before and can run now (one on a
+        // GPU worker elsewhere cannot tell yet: the GPU may be asleep).
         const kept = stored("sc.det", "") as DetectorKind
-        const ok = i.detectors.some((d) => d.kind === kept && d.available)
+        const ok = i.detectors.some((d) => d.kind === kept && d.available && !d.on_demand)
         setDetector(ok ? kept : i.recommended)
       })
-      .catch(() => {})
+      .catch(() => {
+        infoAt.current = -Infinity // ask again on the next chance
+      })
     getPlayback().then((p) => setPlayback(p.available ? p : null)).catch(() => {})
     getDemos().then(setDemos).catch(() => {})
     loadDevices()
-  }, [connected, loadDevices])
+  }, [loadDevices])
+
+  const refreshGpu = gpu.refresh
+  useEffect(() => {
+    loadInfo()
+    if (connected) refreshGpu() // back after an outage: the GPU may have moved on meanwhile
+  }, [connected, loadInfo, refreshGpu])
+
+  // Until /api/info has answered (a server starting from cold, or a busy moment), ask again every 2 s
+  // up to every 30 s, whether or not the live socket connects: the samples and voice notes need only HTTP.
+  useEffect(() => {
+    if (infoReady) return
+    let wait = 2000
+    let timer = 0
+    const again = () => {
+      timer = window.setTimeout(() => {
+        loadInfo()
+        wait = Math.min(30000, wait * 2)
+        again()
+      }, wait)
+    }
+    again()
+    return () => window.clearTimeout(timer)
+  }, [infoReady, loadInfo])
 
   const goTab = (next: string) => {
     setTab(next)
     history.replaceState(null, "", `#${next}`)
   }
+  // The GPU notes' "meanwhile" links: live cleaning, or the sample clips, scrolled into view.
+  const goto = (next: "calls" | "recordings") => {
+    goTab(next)
+    window.setTimeout(() => {
+      document.getElementById(next === "calls" ? "hero" : "samples")?.scrollIntoView({ behavior: "smooth", block: "center" })
+    }, 60)
+  }
+
+  // A detector that changed mid-session (say, the GPU dropped and the rule-based one took over)
+  // says so once.
+  useEffect(
+    () =>
+      notice.subscribe(() => {
+        const note = notice.get()
+        if (note) notify.warning(note)
+      }),
+    [notice]
+  )
+
+  // The detector a new session uses: the visitor's pick while it can run here, else the
+  // recommended one, without forgetting the pick (Best (GPU) comes back once the GPU is awake).
+  const liveReady = !!gpu.status?.live.available
+  const usable = (kind: DetectorKind) => {
+    const d = detectorList.find((x) => x.kind === kind)
+    return !!d?.available && (!d.on_demand || liveReady)
+  }
+  const chosen = usable(detector) ? detector : recommendedDet
+  const shownDet = running && sessionDet ? sessionDet : chosen
+  const teacherOnDemand = detectorList.some((d) => d.kind === "teacher" && d.available && d.on_demand)
 
   // The tabs this server can show. A link to one (#dictate, #stage...) waits for the server to say
   // which features it has.
@@ -246,6 +341,7 @@ export default function App() {
       setRunning(true)
       setStarting(true)
       setPlayback(null) // the server drops the previous recording when a session starts
+      setSessionDet(over.detector ?? chosen)
       reset()
       try {
         if (browserMic.current) {
@@ -259,7 +355,7 @@ export default function App() {
             try {
               // On a public server this browser's own reviews tune the detector (the server keeps none).
               const adjust = feedbackBrowser ? await localAdjust() : undefined
-              const r = await mic.start({ mode: over.mode ?? mode, detector: over.detector ?? detector, aidMs: aidOn ? aidMs : 0, adjust }, (end) => {
+              const r = await mic.start({ mode: over.mode ?? mode, detector: over.detector ?? chosen, aidMs: aidOn ? aidMs : 0, adjust }, (end) => {
                 if (browserMic.current !== mic) return
                 browserMic.current = null
                 mic.stop()
@@ -286,7 +382,7 @@ export default function App() {
           return
         }
         const r = await startSession({
-          mode, detector, save,
+          mode, detector: chosen, save,
           in_device: null,
           out_device: null,
           in_name: inDev || null,
@@ -303,7 +399,7 @@ export default function App() {
         setStarting(false)
       }
     },
-    [mode, detector, save, inDev, outDev, reset, loadDevices, aidOn, aidMs, feedbackBrowser]
+    [mode, chosen, save, inDev, outDev, reset, loadDevices, aidOn, aidMs, feedbackBrowser]
   )
 
   const stop = useCallback(async () => {
@@ -325,14 +421,16 @@ export default function App() {
     }
   }, [])
 
+  // The orb, the button and Space. Nothing starts while the server cannot be reached; a running
+  // session can always be stopped.
   const toggle = useCallback(() => {
     if (busy.current) return
     if (running) stop()
-    else {
+    else if (connected) {
       if (demo.state) demo.close()
       start()
     }
-  }, [running, start, stop, demo])
+  }, [running, connected, start, stop, demo])
 
   // Space starts and stops, unless you are typing or on another control.
   useEffect(() => {
@@ -359,6 +457,14 @@ export default function App() {
       store("sc.det", over.detector)
     }
     if (running && !busy.current) start(over)
+  }
+
+  // Wake the GPU for Best (GPU) from the detector card: picking it now, it is used from the first
+  // session that starts once the GPU is ready (never switched in mid-session).
+  const wakeForBest = () => {
+    setDetector("teacher")
+    store("sc.det", "teacher")
+    gpu.wake("live")
   }
 
   const lastMode = useRef<Mode>(mode === "off" ? "gentle" : mode)
@@ -469,8 +575,9 @@ export default function App() {
                 <div className="hidden text-xs text-white/45 min-[420px]:block">Your real voice, on your terms</div>
               </div>
             </div>
-            <div className="flex items-center gap-2.5">
+            <div className="flex flex-wrap items-center justify-end gap-2.5">
               <EnginePill connected={connected} running={running} demo={demoOn} detector={detName} stats={stats} />
+              <GpuPill gpu={gpu} />
               {user ? (
                 <div className="flex items-center gap-2">
                   <button
@@ -518,6 +625,20 @@ export default function App() {
               )}
             </div>
           </header>
+
+          <ConnectionBanner
+            connected={connected}
+            everConnected={live.everConnected}
+            paused={live.paused}
+            retryAt={live.retryAt}
+            downAt={live.downAt}
+            refused={live.refused}
+            hosted={hosted}
+            onRetry={() => {
+              live.retryNow()
+              loadInfo()
+            }}
+          />
 
           <Tabs
             key={tabs} // new tabs register afresh, so the highlight follows a tab that appears with a link to it
@@ -598,7 +719,9 @@ export default function App() {
                           ))}
                         </ToggleGroup>
                       </div>
-                      <p className="max-w-md text-[13px] leading-relaxed text-white/50">{modeHint(mode, detector)}</p>
+                      <p className="max-w-md text-[13px] leading-relaxed text-white/50">
+                        {modeHint(mode, detectorList.find((d) => d.kind === shownDet), gpu.status?.live.delay_ms)}
+                      </p>
                       {!running && demos.samples.length > 0 && (
                         <button
                           id="tutorial-demo-btn"
@@ -687,12 +810,15 @@ export default function App() {
                   )}
                   <FormField id="tutorial-detector-select">
                   <FieldLabel>Detector</FieldLabel>
-                  <ToggleGroup aria-label="Detector" className="flex-wrap" value={[detector]} onValueChange={(v) => { const n = v[0] as DetectorKind | undefined; if (n) change({ detector: n }) }} variant="outline" spacing={1}>
+                  <ToggleGroup aria-label="Detector" className="flex-wrap" value={[shownDet]} onValueChange={(v) => { const n = v[0] as DetectorKind | undefined; if (n) change({ detector: n }) }} variant="outline" spacing={1}>
                     {detectorOptions(detectorList).map((d) => (
-                      <ToggleGroupItem key={d.value} value={d.value}>{d.label}</ToggleGroupItem>
+                      <ToggleGroupItem key={d.value} value={d.value} disabled={d.onDemand && !liveReady}>{d.label}</ToggleGroupItem>
                     ))}
                   </ToggleGroup>
-                  <DetectorNote info={detectorList.find((d) => d.kind === detector)} recommended={recommendedDet} />
+                  <DetectorNote info={detectorList.find((d) => d.kind === shownDet)} recommended={recommendedDet} />
+                  {teacherOnDemand && (
+                    <GpuNote gpu={gpu} feature="live" mode={mode === "strong" ? "strong" : "gentle"} onWake={wakeForBest} />
+                  )}
                   </FormField>
                   {inDev === BROWSER_MIC && (
                   <FormField>
@@ -784,6 +910,7 @@ export default function App() {
                 {captionsOn && (
                   <CaptionStrip
                     caption={caption}
+                    hosted={hosted}
                     rescue={{ enabled: rescueOn && rescueAvailable, loading: rescue.loading, words: rescue.words, error: rescue.error, onAsk: askForWord, onSay: ttsOn ? sayWord : undefined }}
                     label={demoOn ? `Captions · ${demo.state?.hear === "original" ? "original" : "clean voice"}` : "Live captions · what the listener hears"}
                   />
@@ -807,26 +934,45 @@ export default function App() {
               </div>
             </TabsContent>
 
-            <TabsContent value="recordings" className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            {/* Kept mounted (hidden, not removed) like Dictate: a recording, an upload or a wait for
+                the GPU carries on while the visitor looks at another tab. */}
+            <TabsContent value="recordings" keepMounted className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <GlassCard tilt={0} className="flex flex-col gap-4 p-5 sm:p-6 md:col-span-2">
               <VoiceNoteCard
                 enabled={notesOn}
                 busy={running}
+                gpu={gpuInfo ? gpu : undefined}
+                onGoto={goto}
+                offText={
+                  !infoReady
+                    ? "Connecting to the server…"
+                    : hosted
+                      ? "Voice notes need a GPU, and this server has none. Live cleaning and the sample clips work here."
+                      : undefined
+                }
                 onReady={(id, seconds) => {
                   setNoteSamples((ns) => [
                     ...ns,
                     { id, title: "Your voice note", who: "you", duration_s: seconds, engines: ["natural", "thorough", "live"] },
                   ])
-                  demo.load(id, "natural")
+                  // No sound out of nowhere: away from this tab (or this browser tab), it waits to be played.
+                  if (tabShown.current === "recordings" && !document.hidden) demo.load(id, "natural")
+                  else {
+                    demo.load(id, "natural", { hear: "clean", t: 0, playing: false })
+                    notify.success("Your voice note is clean.", { action: { label: "Listen", onClick: () => goto("recordings") } })
+                  }
                 }}
               />
+              <div id="samples" className="scroll-mt-4">
               {demo.state ? (
                 <DemoBar
                   state={demo.state}
                   sample={[...demos.samples, ...noteSamples].find((s) => s.id === demo.state?.id)}
                   credit={
                     demo.state.id.startsWith("note-")
-                      ? "Your recording stays on this computer and is forgotten within an hour."
+                      ? hosted
+                        ? "Kept only in memory, on the server and on our GPU while it is cleaned, and forgotten within an hour."
+                        : "Your recording stays on this computer and is forgotten within an hour."
                       : demos.credit
                   }
                   downloadUrl={
@@ -872,21 +1018,22 @@ export default function App() {
                   onPick={(id) => demo.load(id, demos.samples.find((s) => s.id === id)?.engines[0] ?? "live")}
                 />
               )}
+              </div>
             </GlassCard>
-            {videoOn && <VideoCard busy={running} />}
+            {videoOn && <VideoCard busy={running} gpu={gpuInfo ? gpu : undefined} maxMb={videoMaxMb} onGoto={goto} />}
             </TabsContent>
             {notesOn && (
-              <TabsContent value="dictate">
-                <DictatePanel enabled={notesOn} busy={running} />
+              <TabsContent value="dictate" keepMounted>
+                <DictatePanel enabled={notesOn} busy={running} gpu={gpuInfo ? gpu : undefined} onGoto={goto} />
               </TabsContent>
             )}
             {ttsOn && (
-              <TabsContent value="stage">
+              <TabsContent value="stage" keepMounted>
                 <StagePanel running={running} caption={caption} data={data} onToggle={toggle} />
               </TabsContent>
             )}
             {interviewOn && (
-              <TabsContent value="practice">
+              <TabsContent value="practice" keepMounted>
                 <PracticePanel
                   running={running}
                   caption={caption}
@@ -914,9 +1061,11 @@ export default function App() {
             className="mt-8 flex items-start justify-center gap-2 px-2 text-center text-xs text-white/35 sm:items-center"
           >
             <Lock className="mt-0.5 size-3.5 shrink-0 sm:mt-0" />
-            {hosted
-              ? "Audio is processed on StutterClear's server and is not stored. Recordings you clean are kept in memory for an hour, then forgotten. Live turns last up to 5 minutes, so everyone gets one."
-              : "Audio is processed on this laptop. Nothing is recorded unless you switch saving on."}
+            {!hosted
+              ? "Audio is processed on this laptop. Nothing is recorded unless you switch saving on."
+              : gpuInfo
+                ? `Audio is processed on StutterClear's server and, for ${gpuUses(gpuInfo)}, on our GPU worker (on Kaggle, or a team member's computer), in memory only. Nothing is stored: recordings you clean are forgotten within an hour. Live turns last up to 5 minutes, so everyone gets one.`
+                : "Audio is processed on StutterClear's server and is not stored. Recordings you clean are kept in memory for an hour, then forgotten. Live turns last up to 5 minutes, so everyone gets one."}
           </motion.footer>
         </div>
 
@@ -1035,12 +1184,62 @@ function CardTitle({ icon, children }: { icon: ReactNode; children: ReactNode })
   )
 }
 
-function Field({ label, children }: { label: string; children: ReactNode }) {
+// While the live connection is down: when the page tries again, a way to try now, and on a public
+// server the status page (the demo video and results, whatever state the server is in). A page
+// paused for being away says so instead.
+function ConnectionBanner({
+  connected, everConnected, paused, retryAt, downAt, refused, hosted, onRetry,
+}: {
+  connected: boolean
+  everConnected: boolean
+  paused: boolean
+  retryAt: number | null
+  downAt: number
+  refused: string | null // the server turned this page away (too many pages from one network), and why
+  hosted: boolean
+  onRetry: () => void
+}) {
+  const now = useNow(!connected && !paused, downAt)
+  // A blip is not worth a banner: 2 s down (5 s for the first connection, which may wake the server).
+  const show = paused || (!connected && now - downAt >= (everConnected ? 2000 : 5000))
+  const s = retryAt === null ? 0 : Math.ceil((retryAt - now) / 1000)
   return (
-    <div className="flex flex-col gap-2">
-      <div className="text-xs font-medium text-white/50">{label}</div>
-      {children}
-    </div>
+    <AnimatePresence initial={false}>
+      {show && (
+        <motion.div
+          key="banner"
+          role="status"
+          initial={{ opacity: 0, height: 0 }}
+          animate={{ opacity: 1, height: "auto" }}
+          exit={{ opacity: 0, height: 0 }}
+          transition={SPRING.glide}
+          className="overflow-hidden"
+        >
+          <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-2xl border border-amber-300/20 bg-amber-300/[0.07] px-4 py-2.5 text-sm text-amber-50/90">
+            <WifiOff className="size-4 shrink-0 text-amber-300" />
+            <span className="min-w-0">
+              {paused
+                ? "Paused while you were away, to save the server."
+                : `${refused ?? "Can't reach the StutterClear server."} ${s > 0 ? `Retrying in ${s}\u00a0s.` : "Retrying…"}`}
+            </span>
+            <span className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={onRetry}
+                className="cursor-pointer rounded-full border border-amber-200/25 bg-amber-200/10 px-2.5 py-0.5 text-xs font-medium text-amber-50 transition-colors hover:bg-amber-200/20"
+              >
+                {paused ? "Reconnect" : "Try now"}
+              </button>
+              {hosted && !paused && (
+                <a href={STATUS_URL} target="_blank" rel="noreferrer" className="text-xs text-amber-100/80 underline-offset-4 hover:text-amber-50 hover:underline">
+                  Status page
+                </a>
+              )}
+            </span>
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   )
 }
 
@@ -1131,7 +1330,7 @@ function EnginePill({
   stats: Store<Stats | null>
 }) {
   const live = useStore(stats, (s) => s?.detector ?? "")
-  const det = detector || live
+  const det = live || detector // the session's own word wins: a detector can hand over mid-session
   const label = !connected
     ? "Engine offline"
     : running
@@ -1299,7 +1498,7 @@ function DetectorNote({ info, recommended }: { info: DetectorInfo | undefined; r
           transition={{ duration: 0.25, ease: EASE_OUT }}
           className="text-xs leading-relaxed text-white/50 [grid-area:1/1]"
         >
-          {DETECTOR_NOTE[info.kind]}{" "}
+          {info.on_demand ? "The big model, run live on our GPU worker." : DETECTOR_NOTE[info.kind]}{" "}
           {q ? (
             <>
               Unseen speakers: removes <span className="text-white/80">{q.removed_pct}%</span> of stutters, loses{" "}
@@ -1316,10 +1515,13 @@ function DetectorNote({ info, recommended }: { info: DetectorInfo | undefined; r
   )
 }
 
-function detectorOptions(list: DetectorInfo[]): { value: DetectorKind; label: string }[] {
+// The detectors to offer. One on a GPU worker elsewhere (on_demand) is listed but can only be
+// picked while the GPU is awake for it.
+function detectorOptions(list: DetectorInfo[]): { value: DetectorKind; label: string; onDemand: boolean }[] {
   const avail = list.filter((d) => d.available)
   return (avail.length ? avail : [{ kind: "heuristic", label: "Rule-based" } as DetectorInfo]).map((d) => ({
     value: d.kind,
     label: d.label,
+    onDemand: !!d.on_demand,
   }))
 }

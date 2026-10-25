@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>StutterClear</title>
+<style>body { margin: 0; padding: 32px 16px; background: #0d1020; color: #f5f6fa; font: 16px/1.5 system-ui, sans-serif; } a { color: #8ccbf0; }</style>
+<script>
+  // GitHub Pages serves this page for any address that does not exist on the site: go to the front
+  // door instead, keeping ?stay=1 and the #tab (a project site lives under /<repo>/).
+  (function () {
+    var parts = location.pathname.split("/");
+    var base = /\.github\.io$/.test(location.hostname) && parts.length > 2 ? "/" + parts[1] + "/" : "/";
+    location.replace(base + location.search + location.hash);
+  })();
+</script>
+</head>
+<body>
+<p>Opening <a href="./">StutterClear</a>…</p>
+</body>
+</html>

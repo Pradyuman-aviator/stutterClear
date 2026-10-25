@@ -31,6 +31,12 @@ function captionAt(words: { w: string; t: number }[], t: number): Caption {
   return { lines: text.slice(0, -1), partial: text[text.length - 1] ?? "" }
 }
 
+// Timelines of the sample clips opened so far, so a sample plays again while the server is
+// unreachable (the browser keeps its audio for an hour). Voice notes are left out: the server
+// forgets them, and so does the page.
+const sampleTimelines = new Map<string, DemoTimeline>()
+const NO_AUDIO = "The audio could not be loaded. Check your connection and try again."
+
 export function useDemo(
   data: RefObject<LiveData>,
   stats: Store<Stats | null>,
@@ -79,13 +85,18 @@ export function useDemo(
       hear.current = keep?.hear ?? "clean"
       setState({ id, engine, hear: hear.current, timeline: null, playing: false, t: 0 })
       try {
-        const tl = await getDemo(id, engine)
+        const key = `${id}/${engine}`
+        const tl = sampleTimelines.get(key) ?? (await getDemo(id, engine))
+        if (!id.startsWith("note-")) sampleTimelines.set(key, tl)
         if (my !== loadId.current) return
         const make = (which: Hear) => {
           const a = new Audio(demoAudioUrl(id, which, engine))
           a.preload = "auto"
           a.addEventListener("ended", () => {
             if (audio.current?.[hear.current] === a) setState((s) => s && { ...s, playing: false })
+          })
+          a.addEventListener("error", () => {
+            if (audio.current?.[hear.current] === a) setState((s) => s && { ...s, playing: false, error: NO_AUDIO })
           })
           return a
         }

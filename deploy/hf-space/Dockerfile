@@ -8,8 +8,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends git libsndfile1
     && rm -rf /var/lib/apt/lists/*
 RUN useradd -m -u 1000 user
 USER user
+# Behind the Space's proxy: each visitor is told apart by the X-Forwarded-For entry it adds, so the
+# per-visitor limits of a public server never lump everyone together.
 ENV HOME=/home/user PATH=/home/user/.local/bin:$PATH PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 \
-    STUTTERCLEAR_HOSTED=1 STUTTERCLEAR_NOTES=0
+    STUTTERCLEAR_HOSTED=1 STUTTERCLEAR_NOTES=0 STUTTERCLEAR_TRUST_PROXY=1
 WORKDIR /home/user/app
 
 # The code from GitHub (rebuild the Space to update); CPU PyTorch, and everything else except what

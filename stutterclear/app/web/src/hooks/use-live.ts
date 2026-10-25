@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { PAGE_ID, type Span, type Tick } from "@/lib/api"
 import { createStore } from "@/lib/store"
 
@@ -63,37 +63,140 @@ export function liveClock(d: LiveData, now: number) {
   return d.clockOffset === null ? 0 : now / 1000 + d.clockOffset - PLAYBACK_DELAY_S
 }
 
-export function useLive() {
+const WATCHDOG_MS = 4000 // a live session sends ~30 messages a second: this long without one, the socket is dead
+const HIDDEN_MS = 5 * 60_000 // a page hidden this long lets go of its socket until it is shown again
+const AWAY_MS = 30 * 60_000 // no pointer, key or touch for this long, and no session: pause (see `pauseWhenAway`)
+
+// The page's live connection (/ws). It reconnects with backoff, at once when the network or the
+// visitor comes back, and lets go of the socket when nobody is looking, since an open socket keeps
+// a cloud server running (and billed). `pauseWhenAway`: also pause after 30 minutes without any
+// pointer, key or touch, on a public server (a page on this computer, like an OBS overlay, stays).
+export function useLive(pauseWhenAway = false) {
   const data = useRef<LiveData>(fresh())
   const [stats] = useState(() => createStore<Stats | null>(null))
   const [caption] = useState(() => createStore<Caption | null>(null))
+  const [notice] = useState(() => createStore<string | null>(null)) // the session's detector_note, once per change
   const [connected, setConnected] = useState(false)
   const [serverRunning, setServerRunning] = useState(false)
+  const [everConnected, setEverConnected] = useState(false)
+  const [paused, setPaused] = useState(false)
+  const [retryAt, setRetryAt] = useState<number | null>(null) // performance.now() of the next attempt
+  const [downAt, setDownAt] = useState(0) // performance.now() when the connection was lost (0: never up)
+  const [refused, setRefused] = useState<string | null>(null) // the server turned this page away, and why
+  const retry = useRef<() => void>(() => undefined)
+  const away = useRef(pauseWhenAway)
+  useEffect(() => {
+    away.current = pauseWhenAway
+  }, [pauseWhenAway])
 
   useEffect(() => {
     let ws: WebSocket | null = null
-    let retry: number | undefined
+    let open = false // ws has opened
+    let timer = 0
     let closed = false
+    let failures = 0 // attempts since a message last arrived
     let lastStats = 0
-    let running = false
+    let running = false // the server says a session is live (ticks, not IDLE)
+    let ticking = false // ticks arrive on this socket: the watchdog is armed
+    let lastMsg = 0
+    let lastActive = performance.now()
+    let hiddenSince = document.hidden ? performance.now() : 0
+    let resting = false // let go of on purpose (hidden, or away): no retries until the visitor is back
+    let turnedAway = false // the last close was the server's "too many pages from your network"
+
+    const lost = () => {
+      if (open) setDownAt(performance.now())
+      open = false
+      ticking = false
+      setConnected(false)
+    }
+    // Let go of the socket at once, without waiting for a closing handshake that may never come.
+    const drop = () => {
+      const sock = ws
+      if (!sock) return
+      ws = null
+      sock.onopen = sock.onclose = sock.onmessage = null
+      sock.close()
+      lost()
+    }
+    // 1, 2, 4... up to 30 s, each +-20 %, so the pages of a restarting server do not all come back at once.
+    const later = () => {
+      if (closed || resting) return
+      const wait = Math.min(30000, 1000 * 2 ** failures) * (0.8 + Math.random() * 0.4)
+      failures += 1
+      timer = window.setTimeout(connect, wait)
+      setRetryAt(performance.now() + wait)
+    }
+    const rest = (isAway: boolean) => {
+      resting = true
+      window.clearTimeout(timer)
+      setRetryAt(null)
+      drop()
+      if (isAway) setPaused(true)
+    }
+    const resume = () => {
+      lastActive = performance.now()
+      if (resting) {
+        resting = false
+        setPaused(false)
+        setDownAt(performance.now()) // the time away is not an outage: no banner unless this fails
+      }
+      if (ws?.readyState !== WebSocket.OPEN) {
+        drop()
+        connect()
+      }
+    }
 
     const connect = () => {
+      window.clearTimeout(timer)
+      setRetryAt(null)
+      if (closed || resting || ws) return
       const proto = location.protocol === "https:" ? "wss" : "ws"
-      ws = new WebSocket(`${proto}://${location.host}/ws?page=${PAGE_ID}`)
-      ws.onopen = () => setConnected(true)
-      ws.onclose = () => {
-        setConnected(false)
-        if (!closed) retry = window.setTimeout(connect, 1000)
+      const sock = new WebSocket(`${proto}://${location.host}/ws?page=${PAGE_ID}`)
+      ws = sock
+      sock.onopen = () => {
+        open = true
+        setConnected(true)
+        setEverConnected(true)
       }
-      ws.onmessage = (m) => {
-        const msg = JSON.parse(m.data)
+      sock.onclose = (e) => {
+        if (ws !== sock) return
+        ws = null
+        lost()
+        // The server closes a page's socket after 30 minutes (4000): come back only for someone there.
+        if (e.code === 4000) return performance.now() - lastActive < AWAY_MS ? connect() : rest(true)
+        if (e.code === 4429) {
+          // Too many pages from this network: say so (it is not an outage), and look again now and then
+          // (another page closing frees a place), not every second.
+          turnedAway = true
+          setRefused(e.reason || "Too many StutterClear pages are open from your network.")
+          failures = Math.max(failures, 4)
+        }
+        later()
+      }
+      sock.onmessage = (m) => {
+        failures = 0
+        lastMsg = performance.now()
+        if (turnedAway) {
+          turnedAway = false
+          setRefused(null)
+        }
+        let msg
+        try {
+          msg = JSON.parse(m.data)
+        } catch {
+          return
+        }
         if (msg.idle) {
+          ticking = false
+          notice.set(null)
           if (running) {
             running = false
             setServerRunning(false)
           }
           return
         }
+        ticking = true
         if (!running) {
           running = true
           setServerRunning(true)
@@ -149,21 +252,57 @@ export function useLive() {
           stats.set({ lag_ms: tick.lag_ms, n_cuts: tick.n_cuts, removed_s: tick.removed_s,
                      detect_ms: tick.detect_ms, detector: tick.detector })
         }
+        if (tick.detector_note) notice.set(tick.detector_note)
       }
     }
+
+    const check = window.setInterval(() => {
+      const now = performance.now()
+      if (ws && ticking && now - lastMsg > WATCHDOG_MS) {
+        drop() // a live session went quiet: the connection died without saying so
+        connect()
+      } else if (!resting && hiddenSince && now - hiddenSince > HIDDEN_MS) rest(false)
+      else if (!resting && away.current && !running && now - lastActive > AWAY_MS) rest(true)
+    }, 1000)
+    const onVisibility = () => {
+      if (document.hidden) hiddenSince = performance.now()
+      else {
+        hiddenSince = 0
+        resume()
+      }
+    }
+    // Any pointer, key or touch counts as someone there, and brings a paused page back.
+    const onActivity = () => {
+      lastActive = performance.now()
+      if (resting && !document.hidden) resume()
+    }
+    const onOnline = () => !resting && resume()
+    const activity = ["pointerdown", "pointermove", "keydown", "wheel", "touchstart"] as const
+    activity.forEach((t) => addEventListener(t, onActivity, { passive: true }))
+    document.addEventListener("visibilitychange", onVisibility)
+    addEventListener("online", onOnline)
+    retry.current = resume
     connect()
     return () => {
       closed = true
-      window.clearTimeout(retry)
-      ws?.close()
+      window.clearTimeout(timer)
+      window.clearInterval(check)
+      activity.forEach((t) => removeEventListener(t, onActivity))
+      document.removeEventListener("visibilitychange", onVisibility)
+      removeEventListener("online", onOnline)
+      retry.current = () => undefined
+      drop()
     }
-  }, [stats, caption])
+  }, [stats, caption, notice])
 
   const reset = () => {
     data.current = fresh()
     stats.set(null)
     caption.set(null)
+    notice.set(null)
   }
+  const retryNow = useCallback(() => retry.current(), [])
 
-  return { data, stats, caption, connected, serverRunning, reset }
+  return { data, stats, caption, notice, connected, serverRunning, reset, retryAt, retryNow, everConnected, paused, downAt,
+           refused }
 }

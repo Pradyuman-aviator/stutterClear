@@ -1,7 +1,7 @@
 import { AbsoluteFill, Composition, Freeze } from "remotion"
 
 import type { Data } from "./data"
-import { BOARD_DEMO, filmFrames, FPS, timeline } from "./data"
+import { BOARD_DEMO, BOARD_SUBMISSION, filmFrames, FPS, timeline } from "./data"
 import { sceneCompositions } from "./preview"
 import { VIEWS } from "./scenes/registry"
 import { Film, loadData } from "./stage"
@@ -14,6 +14,11 @@ function FilmView({ data }: { data: Data | null }) {
 // The film with a 30-second screen recording of the real app (storyboard-demo.json).
 function FilmDemoView({ data }: { data: Data | null }) {
   return <Film data={data} views={VIEWS} board={BOARD_DEMO} />
+}
+
+// The live-demo cut under three minutes, for the hackathon's video limit (storyboard-submission.json).
+function FilmSubmissionView({ data }: { data: Data | null }) {
+  return <Film data={data} views={VIEWS} board={BOARD_SUBMISSION} />
 }
 
 // Sixteen moments of the whole film on one image (or the frames passed as inputProps.frames), for
@@ -71,6 +76,19 @@ export function Root() {
         calculateMetadata={async () => {
           const data = await loadData()
           return { durationInFrames: filmFrames(timeline(data, BOARD_DEMO)), props: { data } }
+        }}
+      />
+      <Composition
+        id="StutterClearSubmission"
+        component={FilmSubmissionView}
+        width={1920}
+        height={1080}
+        fps={FPS}
+        durationInFrames={FPS * 10}
+        defaultProps={{ data: null as Data | null }}
+        calculateMetadata={async () => {
+          const data = await loadData()
+          return { durationInFrames: filmFrames(timeline(data, BOARD_SUBMISSION)), props: { data } }
         }}
       />
       <Composition
