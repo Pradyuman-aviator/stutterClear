@@ -1,0 +1,417 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>StutterClear · System architecture</title>
+<!-- One A3 landscape page. Print: msedge --headless=new --no-pdf-header-footer --print-to-pdf=<out.pdf> <this file>
+     (scripts below draw the connectors once the layout is final). Facts: README.md, docs/DEPLOY.md,
+     the Cloud Run logs of 26 Oct 2026, and the code at commit ab3eb2b. -->
+<style>
+  @page { size: 420mm 297mm; margin: 0; }
+  :root {
+    --ink: #0f172a; --ink2: #334155; --muted: #64748b; --hair: #e2e8f0; --paper: #ffffff;
+    --live: #0d9488; --live-bg: #f0fdfa; --live-line: #99f6e4;
+    --gpu: #7c3aed; --gpu-bg: #f5f3ff; --gpu-line: #ddd6fe;
+    --client: #0284c7; --client-bg: #f0f9ff; --client-line: #bae6fd;
+    --nv: #5f9400; --nv-bg: #f7fee7; --nv-line: #d9f99d;
+    --svc: #475569; --svc-bg: #f8fafc;
+    --warn: #b45309; --warn-bg: #fffbeb;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 1587px; height: 1120px; background: var(--paper); }
+  body {
+    font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; color: var(--ink);
+    font-size: 10.6px; line-height: 1.36; -webkit-print-color-adjust: exact; print-color-adjust: exact;
+    position: relative; overflow: hidden;
+  }
+  .page { position: absolute; inset: 24px 32px 20px 32px; display: flex; flex-direction: column; gap: 12px; }
+  b { font-weight: 650; color: var(--ink); }
+  .mono { font-family: "Cascadia Mono", Consolas, monospace; font-size: 0.93em; letter-spacing: -0.01em; }
+
+  /* ---- header ---- */
+  header { display: flex; justify-content: space-between; align-items: flex-end; gap: 24px;
+           padding-bottom: 10px; border-bottom: 1.5px solid var(--ink); }
+  .over { font-size: 9.5px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+  h1 { font-family: "Segoe UI Variable Display", "Segoe UI", sans-serif; font-size: 34px; line-height: 1.05;
+       font-weight: 700; letter-spacing: -0.02em; margin-top: 3px; }
+  h1 span { font-weight: 350; color: var(--ink2); }
+  .sub { margin-top: 5px; color: var(--ink2); font-size: 11px; max-width: 720px; }
+  .stats { display: flex; gap: 8px; }
+  .stat { border: 1px solid var(--hair); border-radius: 10px; padding: 6px 10px 7px; min-width: 150px; background: #fff; }
+  .stat .v { font-size: 19px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; }
+  .stat .k { font-size: 9.4px; color: var(--muted); line-height: 1.25; margin-top: 2px; }
+  .stat.live .v { color: var(--live); } .stat.gpu .v { color: var(--gpu); } .stat.rec .v { color: #9333ea; } .stat.nv .v { color: var(--nv); }
+
+  /* ---- main diagram ---- */
+  .main { display: grid; grid-template-columns: 258px 62px 1fr 62px 318px; grid-template-rows: 92px 36px 1fr;
+          height: 640px; position: relative; flex: none; }
+  .zone { border-radius: 14px; border: 1.2px solid; padding: 9px 10px 10px; position: relative; display: flex; flex-direction: column; gap: 7px; }
+  .zone > .zh { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+  .zone > .zh .zt { font-size: 12.5px; font-weight: 700; letter-spacing: -0.005em; }
+  .zone > .zh .zp { font-size: 9.4px; color: var(--muted); text-align: right; }
+  .z-client { grid-column: 1; grid-row: 1 / 4; background: var(--client-bg); border-color: var(--client-line); }
+  .z-client .zt { color: var(--client); }
+  .z-app { grid-column: 3; grid-row: 3; background: var(--live-bg); border-color: var(--live-line); }
+  .z-app .zt { color: var(--live); }
+  .z-gpu { grid-column: 5; grid-row: 3; background: var(--gpu-bg); border-color: var(--gpu-line); }
+  .z-gpu .zt { color: var(--gpu); }
+  .z-svc { grid-column: 3 / 6; grid-row: 1; background: var(--svc-bg); border-color: var(--hair); padding: 11px 10px 8px; }
+  .z-svc .zt { color: var(--svc); }
+  .z-svc > .zh { position: absolute; top: -8px; left: 12px; right: 12px; pointer-events: none; }
+  .z-svc > .zh span { background: var(--paper); padding: 0 6px; line-height: 14px; }
+  .svc-row { display: grid; grid-template-columns: 1.95fr 1fr 0.78fr 1fr 1.3fr; gap: 8px; flex: 1; }
+  .gpu-foot { font-size: 9.6px; color: var(--ink2); border-top: 1px dashed var(--gpu-line); padding-top: 6px; margin-top: auto; }
+
+  .card { background: #fff; border: 1px solid var(--hair); border-radius: 9px; padding: 7px 9px 8px; position: relative; }
+  .card h3 { font-size: 11.4px; font-weight: 700; display: flex; align-items: center; gap: 6px; margin-bottom: 3px; letter-spacing: -0.005em; }
+  .card h3 .tag { margin-left: auto; font-size: 8.6px; font-weight: 600; color: var(--muted); border: 1px solid var(--hair);
+                  border-radius: 99px; padding: 0 6px; white-space: nowrap; }
+  .dot { width: 7px; height: 7px; border-radius: 2px; flex: none; }
+  ul { list-style: none; }
+  li { position: relative; padding-left: 9px; margin-top: 2px; color: var(--ink2); }
+  li::before { content: ""; position: absolute; left: 0; top: 0.62em; width: 4px; height: 1.3px; background: #94a3b8; }
+  .nv-badge { font-size: 8.4px; font-weight: 700; color: #fff; background: var(--nv); border-radius: 4px; padding: 0 4px; letter-spacing: 0.04em; }
+  .app-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; flex: 1; }
+  .span2 { grid-column: 1 / 3; }
+  .flow { display: flex; align-items: center; gap: 5px; margin: 3px 0 1px; flex-wrap: wrap; }
+  .chip { font-size: 9.3px; font-weight: 600; border-radius: 5px; padding: 1px 6px; border: 1px solid; white-space: nowrap; }
+  .chip.l { color: var(--live); border-color: var(--live-line); background: var(--live-bg); }
+  .chip.g { color: var(--gpu); border-color: var(--gpu-line); background: var(--gpu-bg); }
+  .chip.n { color: var(--nv); border-color: var(--nv-line); background: var(--nv-bg); }
+  .chip.s { color: var(--svc); border-color: var(--hair); background: #fff; }
+  .arrow-t { color: #94a3b8; font-size: 10px; }
+  .guards { font-size: 9.6px; color: var(--ink2); background: #fff; border: 1px dashed #cbd5e1; border-radius: 8px; padding: 4px 9px; }
+  .wake { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; margin-top: 4px; border-radius: 6px; overflow: hidden; border: 1px solid var(--gpu-line); }
+  .wake div { padding: 3px 5px 4px; font-size: 8.9px; color: var(--ink2); background: #fff; border-right: 1px solid var(--gpu-line); line-height: 1.22; }
+  .wake div:last-child { border-right: 0; background: var(--gpu); color: #fff; }
+  .wake div b { display: block; font-size: 12px; color: var(--gpu); }
+  .wake div:last-child b { color: #fff; }
+  .bar { height: 5px; border-radius: 3px; display: flex; overflow: hidden; margin-top: 5px; }
+  .bar i { display: block; height: 100%; }
+
+  /* ---- bottom panels ---- */
+  .bottom { display: grid; grid-template-columns: 1.55fr 1fr 1.08fr 1fr; gap: 10px; flex: 1; min-height: 0; }
+  .panel { border: 1px solid var(--hair); border-radius: 12px; padding: 9px 11px 10px; background: #fff; display: flex; flex-direction: column; gap: 5px; }
+  .panel h2 { font-size: 12.3px; font-weight: 700; display: flex; align-items: center; gap: 7px; }
+  .steps { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin-top: 2px; }
+  .step { border: 1px solid var(--live-line); background: var(--live-bg); border-radius: 8px; padding: 6px 7px 7px; position: relative; font-size: 9.6px; color: var(--ink2); line-height: 1.3; }
+  .step .n { width: 17px; height: 17px; border-radius: 50%; background: var(--live); color: #fff; font-size: 10px; font-weight: 700;
+             display: grid; place-items: center; margin-bottom: 3px; }
+  .step b { display: block; font-size: 10.4px; margin-bottom: 1px; }
+  .step:not(:last-child)::after { content: "›"; position: absolute; right: -7px; top: 40%; color: var(--live); font-weight: 700; font-size: 14px; }
+  .sens { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; align-items: center; font-size: 9.6px; color: var(--ink2); margin-top: 3px; }
+  .meter { position: relative; height: 8px; border-radius: 4px; background: linear-gradient(90deg, #ccfbf1, #0d9488 55%, #7c3aed); }
+  .meter span { position: absolute; top: 9px; font-size: 8.6px; color: var(--muted); transform: translateX(-50%); white-space: nowrap; }
+  table { border-collapse: collapse; width: 100%; font-size: 9.9px; }
+  th { text-align: left; font-weight: 600; color: var(--muted); font-size: 8.9px; text-transform: uppercase; letter-spacing: 0.05em; padding: 2px 4px 3px; border-bottom: 1px solid var(--hair); }
+  td { padding: 3px 4px; border-bottom: 1px solid #f1f5f9; color: var(--ink2); vertical-align: top; }
+  td.r, th.r { text-align: right; white-space: nowrap; }
+  tr.hi td { background: var(--live-bg); }
+  tr.hi2 td { background: var(--gpu-bg); }
+  .note { font-size: 9.3px; color: var(--muted); }
+  footer { display: flex; justify-content: space-between; align-items: center; gap: 16px; font-size: 9.2px; color: var(--muted);
+           border-top: 1px solid var(--hair); padding-top: 6px; }
+  .legend { display: flex; gap: 14px; align-items: center; }
+  .legend span { display: inline-flex; align-items: center; gap: 5px; }
+  .legend svg { width: 30px; height: 8px; }
+
+  /* connectors */
+  svg#wires { position: absolute; inset: 0; width: 1587px; height: 1122px; pointer-events: none; overflow: visible; }
+  .pill { position: absolute; font-size: 8.4px; line-height: 1.18; font-weight: 600; background: #fff; border: 1px solid; border-radius: 6px;
+          padding: 1px 4px 2px; text-align: center; white-space: nowrap; transform: translate(-50%, -50%); z-index: 3; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header>
+    <div>
+      <div class="over">Nebius × NVIDIA Global AI Hackathon · System architecture</div>
+      <h1>StutterClear <span>· your real voice, without the repeats</span></h1>
+      <div class="sub">Stutter removal in the speaker's own voice, live on calls and in recordings, with NVIDIA Nemotron checking the meaning of every cut.
+        As deployed on 26 Oct 2026 (commit <span class="mono">ab3eb2b</span>); every number is measured on 7 speakers the models never trained on (23 min of real stuttered speech).</div>
+    </div>
+    <div class="stats">
+      <div class="stat live"><div class="v">33% → 77%</div><div class="k">of stutters removed live (GPU model,<br>Gentle at 50 → Strong at 100)</div></div>
+      <div class="stat rec"><div class="v">91% · 0</div><div class="k">removed from recordings (Thorough) ·<br>real words sliced by a cut</div></div>
+      <div class="stat gpu"><div class="v">109 s · 4.7 s</div><div class="k">free GPU waking on demand · to analyse<br>an 18.5 s voice note once awake</div></div>
+      <div class="stat nv"><div class="v">5 roles</div><div class="k">for NVIDIA Nemotron 3 Super on Nebius<br>Token Factory, text only</div></div>
+    </div>
+  </header>
+
+  <section class="main" id="main">
+
+    <!-- clients -->
+    <div class="zone z-client" id="z-client">
+      <div class="zh"><span class="zt">Who uses it</span><span class="zp">any modern browser · phones</span></div>
+      <div class="card" id="c-browser">
+        <h3><span class="dot" style="background:var(--client)"></span>Visitor's browser<span class="tag">React 19 · Vite</span></h3>
+        <ul>
+          <li>Tabs: <b>Calls</b> (live) · <b>Recordings</b> · Dictate · On stage · Practice</li>
+          <li>Mic captured by an <b>AudioWorklet at 16 kHz</b>, sent as <b>20 ms float32 frames</b></li>
+          <li><b>Fluency Mirror</b>: what you said, what was cut, what the listener hears; live captions</li>
+          <li><b>Sensitivity bar 0–100</b>, changed while you talk</li>
+          <li>A/B: Original · Clean voice · As the call heard it</li>
+          <li>Fluency aid and review feedback stay in the browser</li>
+        </ul>
+      </div>
+      <div class="card" id="c-door">
+        <h3><span class="dot" style="background:var(--client)"></span>Front door<span class="tag">GitHub Pages</span></h3>
+        <ul>
+          <li>The link judges open: a static page that <b>health-checks each server</b> and opens the first that answers</li>
+          <li>If none answers: video, results, status, <b>never an error page</b></li>
+        </ul>
+      </div>
+      <div class="card" id="c-local">
+        <h3><span class="dot" style="background:var(--client)"></span>On your own computer<span class="tag">local mode</span></h3>
+        <ul>
+          <li>Cleaned voice to headphones or a <b>virtual mic for Zoom, Meet, Teams</b></li>
+          <li>Big model on the laptop GPU (RTX 4050, <b>≈55 ms a window</b>), 0.54 s behind you</li>
+          <li>Can also <b>stand by as the GPU worker</b></li>
+        </ul>
+      </div>
+      <div class="card" id="c-people" style="border-color:var(--client-line)">
+        <h3><span class="dot" style="background:var(--warn)"></span>Built with people who stutter in mind</h3>
+        <ul>
+          <li>Always <b>your own voice</b>; Say it is labelled synthetic</li>
+          <li>Word rescue <b>suggests</b>; it never speaks for you</li>
+          <li>No diagnosis, no cure claims</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- external services -->
+    <div class="zone z-svc" id="z-svc">
+      <div class="zh"><span class="zt">NVIDIA models &amp; outside services</span><span class="zp">called over HTTPS; keys live only in Secret Manager</span></div>
+      <div class="svc-row">
+        <div class="card" id="s-nemo">
+          <h3><span class="nv-badge">NVIDIA</span>Nemotron 3 Super<span class="tag">Nebius Token Factory</span></h3>
+          <div class="flow"><span class="chip n">meaning guard</span><span class="chip n">word rescue</span><span class="chip n">context agent</span><span class="chip n">insights</span><span class="chip n">interview</span></div>
+          <div class="note"><span class="mono">nemotron-3-super-120b-a12b</span> · text only, never audio · keeps meant repeats ("that that is true")</div>
+        </div>
+        <div class="card" id="s-magpie">
+          <h3><span class="nv-badge">NVIDIA</span>Magpie TTS<span class="tag">build.nvidia.com</span></h3>
+          <div class="note">"Say it": speaks a word you picked, into the call or on stage; always labelled as a synthetic voice</div>
+        </div>
+        <div class="card" id="s-tavily">
+          <h3><span class="dot" style="background:var(--svc)"></span>Tavily</h3>
+          <div class="note">Web search for the context agent: names and terms you may need</div>
+        </div>
+        <div class="card" id="s-hf">
+          <h3><span class="dot" style="background:var(--svc)"></span>Hugging Face Hub</h3>
+          <div class="note">WavLM-Large and CrisperWhisper 2.0 at <b>pinned revisions</b>; the worker downloads them at boot</div>
+        </div>
+        <div class="card" id="s-gh">
+          <h3><span class="dot" style="background:var(--svc)"></span>GitHub<span class="tag">public repo</span></h3>
+          <div class="note">The worker runs <b>exactly the server's commit</b>. Actions: every PR runs the tests <b>Karma</b> selects; main runs the full suite</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- app server -->
+    <div class="zone z-app" id="z-app">
+      <div class="zh"><span class="zt">App server · Google Cloud Run, Mumbai</span><span class="zp">FastAPI + uvicorn, one process · 2 vCPU, 4 GiB, CPU PyTorch · max 1 instance, session affinity</span></div>
+      <div class="app-grid">
+        <div class="card" id="a-live" style="border-color:var(--live-line)">
+          <h3><span class="dot" style="background:var(--live)"></span>Live pipeline<span class="tag">/ws/mic → /ws</span></h3>
+          <div class="flow"><span class="chip s">20 ms frames</span><span class="arrow-t">→</span><span class="chip l">detector</span><span class="arrow-t">→</span><span class="chip l">splicer</span><span class="arrow-t">→</span><span class="chip s">listener</span></div>
+          <ul>
+            <li><b>Detector</b>: rule-based on the CPU (DTW repeat match, steady-sound prolongations), or <b>Best (GPU)</b>: teacher windows sent to the worker, a rule-based stand-in running alongside</li>
+            <li><b>Splicer</b>: delay 0.25–1.14 s; never plays audio not yet judged; skips cut spans with 8 ms fades; the room's own tone, never digital silence; lag rebuilt in natural pauses</li>
+            <li><b>Sensitivity</b> scales every detector's thresholds; cut limits grow with it</li>
+            <li>Captions: <span class="nv-badge">NVIDIA</span> <b>FastConformer</b> streaming (sherpa-onnx, int8) on the CPU</li>
+          </ul>
+        </div>
+        <div class="card" id="a-rec" style="border-color:var(--gpu-line)">
+          <h3><span class="dot" style="background:var(--gpu)"></span>Recording engines<span class="tag">Natural · Thorough · Live</span></h3>
+          <div class="flow"><span class="chip g">teacher probabilities</span><span class="chip g">verbatim words</span><span class="arrow-t">→</span><span class="chip s">word-aligned cuts</span><span class="arrow-t">→</span><span class="chip n">Nemotron guard</span></div>
+          <ul>
+            <li>Cuts land <b>only between words</b> (CrisperWhisper timings): no real word is sliced</li>
+            <li>Nemotron reviews every proposed cut and keeps the repeats that were meant</li>
+            <li>Thorough also cuts um, uh and repeated phrases, and shrinks long pauses to under 0.5 s</li>
+            <li>Rendered with crossfades and room tone; <b>Live</b> on a recording: the live model's cuts with the time closed up</li>
+          </ul>
+        </div>
+        <div class="card" id="a-feat">
+          <h3><span class="dot" style="background:var(--live)"></span>Features on top</h3>
+          <ul>
+            <li><b>Voice notes</b> ≤ 3 min (1 h in memory, never on disk) · <b>Dictate</b> (cleaned text) · <b>Clean my video</b> (ffmpeg cuts picture and sound together)</li>
+            <li><b>Demo clips</b>: 3 real UCLASS recordings, private in the image and hash-checked, with cached model output and the GPU model's recorded live decisions, replayed while the GPU sleeps</li>
+            <li>Word rescue · Context card · Insights · Interview practice · Say it</li>
+          </ul>
+        </div>
+        <div class="card" id="a-broker" style="border-color:var(--gpu-line)">
+          <h3><span class="dot" style="background:var(--gpu)"></span>GPU broker<span class="tag">wakes on demand</span></h3>
+          <ul>
+            <li>Wakes a GPU <b>only on an action</b>: voice note, Dictate, video, Best (GPU) live, Wake button</li>
+            <li>Each wake gets its own <b>signed token</b> (HMAC); the worker must present it</li>
+            <li>Queue with fair shares; <b>live windows never wait behind a recording</b></li>
+            <li>Budget: ≤ 20 of Kaggle's ~30 GPU hours a week, ≤ 5 a day; sleeps 10 min after its last job</li>
+          </ul>
+        </div>
+        <div class="guards span2"><b>Guards</b> · same-origin checks · per-route body limits · download budgets · per-visitor limits · one live slot (5 min a session, 20 min an hour each) · nothing stored on disk · secrets from Secret Manager</div>
+      </div>
+    </div>
+
+    <!-- GPU worker -->
+    <div class="zone z-gpu" id="z-gpu">
+      <div class="zh"><span class="zt">GPU worker · Kaggle, 2× T4</span><span class="zp">or the team laptop</span></div>
+      <div class="card" id="g-wake">
+        <h3><span class="dot" style="background:var(--gpu)"></span>A wake, measured on 26 Oct</h3>
+        <div class="wake">
+          <div><b>6 s</b>notebook pushed</div>
+          <div><b>26 s</b>boot, code at the exact commit, locked packages</div>
+          <div><b>77 s</b>models fetched, loaded, warmed</div>
+          <div><b>109 s</b>ready</div>
+        </div>
+        <div class="bar"><i style="width:5.5%;background:#c4b5fd"></i><i style="width:23.9%;background:#a78bfa"></i><i style="width:70.6%;background:var(--gpu)"></i></div>
+        <div class="note" style="margin-top:3px">Connects <b>out</b> to the app: nothing is opened where it runs. Leaves by itself when idle.</div>
+      </div>
+      <div class="card" id="g-live">
+        <h3><span class="dot" style="background:var(--live)"></span>GPU 0 · live teacher (v1)</h3>
+        <ul>
+          <li><b>WavLM-Large + BiGRU</b> head, 5 classes per 20 ms frame</li>
+          <li>Sliding windows: 4 s of context + <b>200 ms lookahead</b> (Gentle) or 500 ms (Strong); a decision every 160 ms</li>
+          <li>Round trip from Mumbai: p90 ≈ 0.3 s, so Best (GPU) runs 0.84 s behind you</li>
+        </ul>
+      </div>
+      <div class="card" id="g-rec">
+        <h3><span class="dot" style="background:var(--gpu)"></span>GPU 1 · recordings</h3>
+        <ul>
+          <li>Teacher v2 on 30 s chunks, fp16</li>
+          <li><b>CrisperWhisper 2.0 large</b>: verbatim words with timings, stutters included; encoder run without attention maps (4.0 GB peak, not 6.8)</li>
+          <li><b>18.5 s of audio analysed in 4.7 s</b></li>
+        </ul>
+      </div>
+      <div class="gpu-foot"><b>Only GPU work runs here.</b> Cut logic, the meaning guard, captions and rendering stay on the app server.
+        Weights are mounted read-only from private Kaggle notebooks and never published; nothing is kept on the machine.</div>
+    </div>
+  </section>
+
+  <section class="bottom">
+    <div class="panel">
+      <h2><span class="dot" style="background:var(--live);width:9px;height:9px"></span>A live call, frame by frame</h2>
+      <div class="steps">
+        <div class="step"><div class="n">1</div><b>Mic</b>20 ms frames at 16 kHz, from the browser or the laptop's device</div>
+        <div class="step"><div class="n">2</div><b>Delay buffer</b>your voice waits 0.25 s (rule-based) to 0.84 s (GPU model, Gentle)</div>
+        <div class="step"><div class="n">3</div><b>Detector</b>judges each 20 ms frame once it has heard 200 ms after it (500 ms in Strong)</div>
+        <div class="step"><div class="n">4</div><b>Splicer</b>plays only judged audio, skips each stutter span; while one is still going it holds the room's tone</div>
+        <div class="step"><div class="n">5</div><b>Listener</b>hears your own voice. A removed stutter becomes a short pause (a call can't play what wasn't said); recordings close it up</div>
+      </div>
+      <div class="sens">
+        <b style="font-size:10px">Sensitivity</b>
+        <div class="meter"><span style="left:0%;transform:none">0: clear stutters only</span><span style="left:50%">50: as measured</span><span style="left:100%;transform:translateX(-100%)">100: cuts aggressively</span></div>
+      </div>
+      <div class="note" style="margin-top:12px">GPU model, Gentle: removes <b>12% → 33% → 60%</b> of stutters at 0 / 50 / 100 (0.6% → 3.1% → 10% of words lost); Strong reaches <b>77%</b>. Above 50 a cut may run longer before it counts as a detector error.</div>
+    </div>
+
+    <div class="panel">
+      <h2><span class="dot" style="background:var(--warn);width:9px;height:9px"></span>Models &amp; training</h2>
+      <ul>
+        <li><b>Teacher</b> (v1 live, v2 recordings): WavLM-Large + BiGRU head → per 20 ms frame: sound repetition, word repetition, prolongation, interjection, and block (reported, never cut)</li>
+        <li><b>Trained on Kaggle GPUs</b>: SEP-28k, FluencyBank, LibriSpeech with synthetic stutters spliced in, and <b>silver labels from CrisperWhisper</b> verbatim transcripts of real stuttered speech</li>
+        <li><b>Causal student</b> (CNN + GRU, ONNX int8) for laptops without a GPU; <b>rule-based</b> detector as the fallback that always runs</li>
+        <li><b>SEP-28k-E</b> (speaker-exclusive): macro F1 <b>0.618</b>; AUC 0.98 for word repetitions, 0.96 for fillers</li>
+      </ul>
+    </div>
+
+    <div class="panel">
+      <h2><span class="dot" style="background:var(--gpu);width:9px;height:9px"></span>Measured on 7 held-out speakers</h2>
+      <table>
+        <tr><th></th><th class="r">stutters removed</th><th class="r">words lost</th></tr>
+        <tr><td>Live, rule-based (no GPU)</td><td class="r">7.6%</td><td class="r">1.25%</td></tr>
+        <tr class="hi"><td>Live, GPU, Gentle</td><td class="r"><b>33.1%</b></td><td class="r">3.10%</td></tr>
+        <tr class="hi"><td>Live, GPU, Strong (fillers too)</td><td class="r"><b>65.2%</b></td><td class="r">5.68%</td></tr>
+        <tr class="hi"><td>… at sensitivity 100: Gentle / Strong</td><td class="r">59.5% / <b>77.3%</b></td><td class="r">9.98% / 12.96%</td></tr>
+        <tr class="hi2"><td>Recordings: Natural / Thorough</td><td class="r">57.2% / <b>90.9%</b></td><td class="r">0 words sliced</td></tr>
+      </table>
+      <div class="note">Scored like <span class="mono">scripts/eval_live.py</span>: each recording streamed 10 ms at a time through the real pipeline, against verbatim labels. Live delay 0.25–1.14 s.</div>
+    </div>
+
+    <div class="panel">
+      <h2><span class="dot" style="background:var(--svc);width:9px;height:9px"></span>Trust, privacy &amp; delivery</h2>
+      <ul>
+        <li><b>Stores nothing</b>: voice notes live 1 h in memory; a live session's data goes only to its own tab</li>
+        <li>Real recordings (UCLASS, research licence, credited) and model checkpoints are <b>never public</b>: private image, private notebooks</li>
+        <li><b>Supply chain</b>: hash-locked packages, pinned base image, one image per commit, deployed by digest; the worker runs only that commit</li>
+        <li><b>Delivery</b>: Cloud Build → Artifact Registry → Cloud Run; GitHub Actions + Karma on every PR</li>
+      </ul>
+    </div>
+  </section>
+
+  <footer>
+    <div class="legend">
+      <span><svg viewBox="0 0 30 8"><line x1="0" y1="4" x2="30" y2="4" stroke="#0d9488" stroke-width="2.2"/></svg>live audio &amp; updates</span>
+      <span><svg viewBox="0 0 30 8"><line x1="0" y1="4" x2="30" y2="4" stroke="#7c3aed" stroke-width="2.2"/></svg>GPU work</span>
+      <span><svg viewBox="0 0 30 8"><line x1="0" y1="4" x2="30" y2="4" stroke="#5f9400" stroke-width="1.8"/></svg>NVIDIA model calls</span>
+      <span><svg viewBox="0 0 30 8"><line x1="0" y1="4" x2="30" y2="4" stroke="#64748b" stroke-width="1.6" stroke-dasharray="4 3"/></svg>control, code &amp; models</span>
+    </div>
+    <div>github.com/Pradyuman-aviator/stutterClear · try it: pradyuman-aviator.github.io/stutterClear · sources: README.md, docs/DEPLOY.md, Cloud Run logs</div>
+  </footer>
+</div>
+
+<svg id="wires"><defs>
+  <marker id="m-live" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#0d9488"/></marker>
+  <marker id="m-gpu" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#7c3aed"/></marker>
+  <marker id="m-nv" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#5f9400"/></marker>
+  <marker id="m-ctl" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#64748b"/></marker>
+</defs></svg>
+
+<script>
+  // Connectors between cards, drawn once the layout is final. side: l r t b; at: 0..1 along that side.
+  const STYLE = {
+    live: { stroke: "#0d9488", width: 2.2, marker: "m-live" },
+    gpu: { stroke: "#7c3aed", width: 2.2, marker: "m-gpu" },
+    nv: { stroke: "#5f9400", width: 1.8, marker: "m-nv" },
+    ctl: { stroke: "#64748b", width: 1.6, marker: "m-ctl", dash: "4 3" },
+  };
+  function point(id, side, at) {
+    const r = document.getElementById(id).getBoundingClientRect();
+    if (side === "l") return [r.left, r.top + r.height * at];
+    if (side === "r") return [r.right, r.top + r.height * at];
+    if (side === "t") return [r.left + r.width * at, r.top];
+    return [r.left + r.width * at, r.bottom];
+  }
+  const dir = { l: [-1, 0], r: [1, 0], t: [0, -1], b: [0, 1] };
+  function wire(a, sa, ta, b, sb, tb, kind, label, opt = {}) {
+    const [x1, y1] = point(a, sa, ta), [x2, y2] = point(b, sb, tb), s = STYLE[kind];
+    const k = opt.bend ?? Math.max(18, Math.min(60, Math.hypot(x2 - x1, y2 - y1) * 0.45));
+    const c1 = [x1 + dir[sa][0] * k, y1 + dir[sa][1] * k], c2 = [x2 + dir[sb][0] * k, y2 + dir[sb][1] * k];
+    const p = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    p.setAttribute("d", `M${x1},${y1} C${c1[0]},${c1[1]} ${c2[0]},${c2[1]} ${x2},${y2}`);
+    p.setAttribute("fill", "none"); p.setAttribute("stroke", s.stroke); p.setAttribute("stroke-width", s.width);
+    p.setAttribute("stroke-linecap", "round");
+    if (s.dash) p.setAttribute("stroke-dasharray", s.dash);
+    p.setAttribute("marker-end", `url(#${s.marker})`);
+    if (opt.both) p.setAttribute("marker-start", `url(#${s.marker})`);
+    document.getElementById("wires").appendChild(p);
+    if (label) {
+      const t = opt.t ?? 0.5, u = 1 - t;  // a point on the curve, then an optional offset
+      const x = u*u*u*x1 + 3*u*u*t*c1[0] + 3*u*t*t*c2[0] + t*t*t*x2 + (opt.dx ?? 0);
+      const y = u*u*u*y1 + 3*u*u*t*c1[1] + 3*u*t*t*c2[1] + t*t*t*y2 + (opt.dy ?? 0);
+      const d = document.createElement("div");
+      d.className = "pill"; d.innerHTML = label; d.style.left = x + "px"; d.style.top = y + "px";
+      d.style.color = s.stroke; d.style.borderColor = s.stroke + "55";
+      document.body.appendChild(d);
+    }
+  }
+  function draw() {
+    // browser <-> live pipeline: the mic up; the mirror, cuts and captions back
+    wire("c-browser", "r", 0.30, "a-live", "l", 0.26, "live", "/ws/mic<br>20 ms audio", { dy: -13 });
+    wire("a-live", "l", 0.60, "c-browser", "r", 0.62, "live", "/ws: mirror,<br>captions", { dy: 13 });
+    // the front door opens the app
+    wire("c-door", "r", 0.45, "z-app", "l", 0.83, "ctl", "health check,<br>then opens", { dy: -13 });
+    // broker <-> GPU worker: the push, then the worker's own connection
+    wire("a-broker", "r", 0.22, "g-wake", "l", 0.62, "ctl", "Kaggle API:<br>push notebook", { dy: -13 });
+    wire("g-rec", "l", 0.42, "a-broker", "r", 0.70, "gpu", "wss /ws/gpu<br>live + jobs", { both: true, dy: 13 });
+    // the app calls NVIDIA's models and search; the worker fetches its models and code
+    wire("z-app", "t", 0.30, "s-nemo", "b", 0.45, "nv", "HTTPS · text only", { dx: 50, bend: 16 });
+    wire("z-app", "t", 0.63, "s-magpie", "b", 0.50, "nv", "", { bend: 16 });
+    wire("z-app", "t", 0.86, "s-tavily", "b", 0.50, "ctl", "", { bend: 16 });
+    wire("z-gpu", "t", 0.16, "s-hf", "b", 0.40, "ctl", "models", { dx: -26, bend: 16 });
+    wire("z-gpu", "t", 0.62, "s-gh", "b", 0.55, "ctl", "code at the commit", { dx: 44, bend: 16 });
+  }
+  (document.fonts ? document.fonts.ready : Promise.resolve()).then(() => requestAnimationFrame(draw));
+</script>
+</body>
+</html>
