@@ -116,8 +116,9 @@ GitHub Pages.
 
 ## Demo video (under 3 minutes)
 
-The submitted cut is `video/out/stutterclear-submission.mp4` (2:58), built from
-`video/storyboard-submission.json`; the table below was the original shot list.
+The submitted cut is `video/out/stutterclear-submission.mp4` (2:58), on YouTube at
+https://youtu.be/7Gc7NccUGN8, built from `video/storyboard-submission.json`; the table below was the
+original shot list.
 
 | Time | Shot | Say |
 |---|---|---|

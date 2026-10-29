@@ -17,6 +17,7 @@ NVIDIA Nemotron checks the meaning of every cut. Nothing is re-synthesised: the 
 [![NVIDIA Magpie TTS](https://img.shields.io/badge/NVIDIA-Magpie_TTS-76B900?logo=nvidia&logoColor=white)](#nvidia-and-nebius-inside)
 
 **[Try it](https://pradyuman-aviator.github.io/stutterClear/)** ·
+**[Watch the video (2:58)](https://youtu.be/7Gc7NccUGN8)** ·
 **[Architecture (PDF)](docs/StutterClear_Architecture.pdf)** ·
 **[How it works](#how-it-works)** ·
 **[Results](#results)** ·
